@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tty00a381/anybot/internal/scaffold"
 )
 
 func TestAddPluginModuleGeneratesWorkspace(t *testing.T) {
@@ -405,6 +407,114 @@ plugins: {}
 	}
 	if _, err := os.Stat(filepath.Join(botDir, "plugins.d", "weathre.yaml")); !os.IsNotExist(err) {
 		t.Fatalf("unknown plugin config should not be created: %v", err)
+	}
+}
+
+func TestGeneratedPluginWorkspaceBuildsStarterTemplates(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	type starter struct {
+		template   string
+		name       string
+		module     string
+		wantConfig []string
+	}
+	starters := []starter{
+		{
+			template: "companion",
+			name:     "buddy",
+			module:   "example.com/anybot-buddy",
+			wantConfig: []string{
+				"command: chat",
+				"bot_name: buddy",
+				"persona:",
+				"allowed_groups: []",
+				"memory_ttl: 12h",
+			},
+		},
+		{
+			template: "minecraft",
+			name:     "mc-admin",
+			module:   "example.com/anybot-mc-admin",
+			wantConfig: []string{
+				"command: mc",
+				"server_name: survival",
+				"admins: []",
+				"allowed_groups: []",
+			},
+		},
+	}
+	pluginDirs := map[string]string{}
+	for _, item := range starters {
+		pluginDir := filepath.Join(dir, item.name)
+		result, err := scaffold.NewPlugin(scaffold.PluginOptions{
+			Dir:           pluginDir,
+			Name:          item.name,
+			Module:        item.module,
+			Template:      item.template,
+			AnyBotVersion: "v0.0.0",
+			AnyBotReplace: root,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Name != strings.ReplaceAll(item.name, "-", "_") || result.Template != item.template {
+			t.Fatalf("plugin result = %#v", result)
+		}
+		pluginDirs[item.module] = pluginDir
+	}
+
+	botDir := filepath.Join(dir, "bot")
+	for _, item := range starters {
+		if _, err := AddPluginModule(AddPluginOptions{Dir: botDir, Name: strings.ReplaceAll(item.name, "-", "_"), Module: item.module}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGo(t, botDir, "mod", "edit", "-replace", "github.com/tty00a381/anybot="+root)
+	for module, pluginDir := range pluginDirs {
+		runGo(t, botDir, "mod", "edit", "-replace", module+"="+pluginDir)
+	}
+	runGo(t, botDir, "mod", "tidy")
+	runGo(t, botDir, "build", "-o", "anybot-bot", ".")
+	if err := os.WriteFile(filepath.Join(botDir, "anybot.yaml"), []byte(`plugin_config_dir: plugins.d
+plugins: {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(botDir, "anybot-bot")
+	for _, item := range starters {
+		name := strings.ReplaceAll(item.name, "-", "_")
+		out := runCommand(t, botDir, binary, "plugin", "enable", name)
+		if !strings.Contains(out, "插件已启用："+name) {
+			t.Fatalf("plugin enable %s:\n%s", name, out)
+		}
+		pluginConfig := readFile(t, filepath.Join(botDir, "plugins.d", name+".yaml"))
+		if !strings.Contains(pluginConfig, "enabled: true") {
+			t.Fatalf("plugin config %s:\n%s", name, pluginConfig)
+		}
+		for _, want := range item.wantConfig {
+			if !strings.Contains(pluginConfig, want) {
+				t.Fatalf("plugin config %s missing %q:\n%s", name, want, pluginConfig)
+			}
+		}
+		out = runCommand(t, botDir, binary, "plugin", "check")
+		if !strings.Contains(out, name+"\t外部\t可用\t-") {
+			t.Fatalf("plugin check %s:\n%s", name, out)
+		}
+		out = runCommand(t, botDir, binary, "plugin", "inspect", name)
+		if !strings.Contains(out, "名称："+name) ||
+			!strings.Contains(out, "当前配置：") ||
+			!strings.Contains(out, "默认配置：") {
+			t.Fatalf("plugin inspect %s:\n%s", name, out)
+		}
+		for _, want := range item.wantConfig {
+			if !strings.Contains(out, want) {
+				t.Fatalf("plugin inspect %s missing %q:\n%s", name, want, out)
+			}
+		}
 	}
 }
 
