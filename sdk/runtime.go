@@ -17,6 +17,15 @@ type EventContext = core.Context
 // App 是底层运行时。常规插件应优先使用 sdk.Context 上的窄接口。
 type App = core.App
 
+// Option 调整底层运行时配置，常用于插件测试。
+type Option = core.Option
+
+// Adapter 把具体聊天协议接入 AnyBot 运行时。
+type Adapter = core.Adapter
+
+// EmitFunc 是适配器向运行时投递标准化事件的函数。
+type EmitFunc = core.EmitFunc
+
 // Route 表示一条事件路由。
 type Route = core.Route
 
@@ -109,6 +118,18 @@ var (
 
 // NewMemoryStore 创建默认内存存储。
 func NewMemoryStore() *MemoryStore { return core.NewMemoryStore() }
+
+// NewApp 创建测试或嵌入式运行时。常规插件安装逻辑应使用 Context 上的窄接口。
+func NewApp(opts ...Option) *App { return core.New(opts...) }
+
+// WithAdapter 配置运行时使用的协议适配器。
+func WithAdapter(adapter Adapter) Option { return core.WithAdapter(adapter) }
+
+// WithSuperUsers 配置测试或嵌入式运行时的超级用户 ID。
+func WithSuperUsers(ids ...string) Option { return core.WithSuperUsers(ids...) }
+
+// NewTestContext 创建测试用事件上下文。
+func NewTestContext(app *App, event *Event) *EventContext { return core.NewTestContext(app, event) }
 
 // NewSession 创建指定键前缀下的会话视图。
 func NewSession(store Store, key string) *Session { return core.NewSession(store, key) }

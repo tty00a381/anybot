@@ -116,6 +116,7 @@ AnyBot 是一个 Go module 下的三个项目目录：
 - `examples/httpaction`：HTTP 接口调用和事件回调。
 - `examples/proactive`：主动消息、adapter readiness、observer 和生命周期任务。
 - `examples/dialogueplugin`：只使用 SDK 的对话插件示例。
+- `examples/companionplugin`：人格化聊天插件起步示例。
 - `examples/media`：登录信息读取和图片发送。
 - `examples/pluginbot`：直接安装核心插件。
 - `examples/permission`：权限控制和限速。
@@ -151,10 +152,20 @@ anybot version
 
 ```sh
 anybot dev init [-module 模块名] [-dir 目录] [-force]
-anybot dev plugin <名称> [-dir 目录] [-force]
+anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
 anybot dev doctor [-config core.yaml] [-connect]
 anybot dev run [go run 参数...]
 ```
+
+发布给别人安装的插件可以直接生成独立 Go module：
+
+```sh
+anybot dev plugin hello -dir ./anybot-hello -module github.com/acme/anybot-hello
+cd ./anybot-hello
+go test ./...
+```
+
+源码开发版会自动写入本仓库 `replace`，生成后可直接测试；指定远端 `-anybot-version` 时先运行 `go mod tidy`。
 
 ## 本地检查
 

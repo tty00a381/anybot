@@ -183,7 +183,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	if err := run([]string{"dev", "plugin", "hello-world", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成插件骨架：hello-world") ||
+	if !strings.Contains(out.String(), "已生成插件骨架：hello_world") ||
 		!strings.Contains(out.String(), "go test ./...") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
@@ -192,6 +192,83 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 		!strings.Contains(plugin, "absdk.EventContext") ||
 		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
+	}
+}
+
+func TestRunDevPluginStandalone(t *testing.T) {
+	root := t.TempDir()
+	anybotDir := filepath.Join(root, "anybot")
+	setTestFrameworkDependencies(t, []moduleDependency{
+		{Module: "github.com/tty00a381/anybot", Version: "v0.0.0", Replace: anybotDir},
+	})
+	dir := filepath.Join(root, "weather")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{
+		"dev", "plugin", "daily-weather",
+		"-dir", dir,
+		"-module", "github.com/acme/anybot-weather",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已生成独立插件模块：daily_weather (github.com/acme/anybot-weather)") ||
+		!strings.Contains(out.String(), "go test ./...") ||
+		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -name daily_weather -replace "+dir) ||
+		!strings.Contains(out.String(), "anybot plugin enable daily_weather") {
+		t.Fatalf("dev plugin output:\n%s", out.String())
+	}
+	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "module github.com/acme/anybot-weather") ||
+		!strings.Contains(goMod, "require github.com/tty00a381/anybot v0.0.0") ||
+		!strings.Contains(goMod, "replace github.com/tty00a381/anybot => ../anybot") {
+		t.Fatalf("go.mod:\n%s", goMod)
+	}
+	plugin := readTestFile(t, filepath.Join(dir, "daily_weather.go"))
+	if !strings.Contains(plugin, `absdk.Manifest{Name: "daily_weather"`) ||
+		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
+		t.Fatalf("plugin scaffold:\n%s", plugin)
+	}
+	readme := readTestFile(t, filepath.Join(dir, "README.md"))
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather -name daily_weather -replace <插件目录>") {
+		t.Fatalf("README.md:\n%s", readme)
+	}
+}
+
+func TestRunDevPluginStandaloneReleaseVersion(t *testing.T) {
+	setTestFrameworkDependencies(t, releaseFrameworkDependencies("v1.2.3"))
+	dir := filepath.Join(t.TempDir(), "space dir", "weather")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{
+		"dev", "plugin", "daily-weather",
+		"-dir", dir,
+		"-module", "github.com/acme/anybot-weather",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "go mod tidy") ||
+		!strings.Contains(out.String(), shellQuote(dir)) {
+		t.Fatalf("dev plugin output:\n%s", out.String())
+	}
+	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "require github.com/tty00a381/anybot v1.2.3") ||
+		strings.Contains(goMod, "replace github.com/tty00a381/anybot") {
+		t.Fatalf("go.mod:\n%s", goMod)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "go.sum")); !os.IsNotExist(err) {
+		t.Fatalf("go.sum should not be generated without local replace: %v", err)
+	}
+}
+
+func TestRunDevPluginStandaloneRejectsUnknownFrameworkDependency(t *testing.T) {
+	setTestFrameworkDependencies(t, []moduleDependency{{Module: "github.com/tty00a381/anybot", Version: "v0.0.0"}})
+	err := run([]string{
+		"dev", "plugin", "daily-weather",
+		"-dir", t.TempDir(),
+		"-module", "github.com/acme/anybot-weather",
+	})
+	if err == nil || !strings.Contains(err.Error(), "生成独立插件需要可解析的 AnyBot 版本") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

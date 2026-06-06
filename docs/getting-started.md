@@ -68,6 +68,35 @@ anybot up
 
 `up` 会在需要时补齐生成文件、同步 Go module 依赖、构建宿主、同步插件默认配置，然后启动生成的二进制。
 
+## 第一个可安装插件
+
+生成一个独立插件 module：
+
+```sh
+anybot dev plugin hello -dir ./anybot-hello -module github.com/acme/anybot-hello
+cd ./anybot-hello
+go test ./...
+```
+
+上面这条路径适用于源码开发版 `anybot` 自动写入本地 `replace` 的场景；如果你显式指定了 `-anybot-version` 使用远端版本，先运行 `go mod tidy` 再测试。
+
+本地装进机器人工作目录：
+
+```sh
+cd ../mybot
+anybot plugin add github.com/acme/anybot-hello -name hello -replace ../anybot-hello
+anybot plugin enable hello
+anybot up
+```
+
+插件发布 Go module 版本后，用户可以安装固定版本：
+
+```sh
+anybot plugin add github.com/acme/anybot-hello@v0.1.0 -name hello
+anybot plugin enable hello
+anybot up
+```
+
 ## 使用核心库
 
 生成项目：

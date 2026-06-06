@@ -37,7 +37,7 @@ func runDev(args []string) error {
 func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
   anybot dev init [-module 模块名] [-dir 目录] [-force]
-  anybot dev plugin <名称> [-dir 目录] [-force]
+  anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev doctor [-config core.yaml] [-connect]
   anybot dev run [go run 参数...]`)
 }
@@ -73,6 +73,9 @@ func runDevNew(args []string) error {
 func runDevPlugin(args []string) error {
 	fs := flag.NewFlagSet("dev plugin", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标项目目录")
+	module := fs.String("module", "", "独立插件 Go 模块路径；为空时生成到项目 plugins/ 目录")
+	anybotVersion := fs.String("anybot-version", "", "独立插件依赖的 AnyBot 版本")
+	replace := fs.String("replace", "", "独立插件 go.mod 中的 AnyBot 本地源码替换路径")
 	force := fs.Bool("force", false, "覆盖已有文件")
 	name, flagArgs, err := splitDevPluginArgs(args)
 	if err != nil {
@@ -82,14 +85,94 @@ func runDevPlugin(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot dev plugin <名称>")
+		return fmt.Errorf("用法：anybot dev plugin <名称> [-dir 目录] [-module 插件模块]")
 	}
-	if err := scaffold.NewPlugin(scaffold.PluginOptions{Dir: *dir, Name: name, Force: *force}); err != nil {
+	opts := scaffold.PluginOptions{
+		Dir:           *dir,
+		Name:          name,
+		Module:        *module,
+		AnyBotVersion: *anybotVersion,
+		AnyBotReplace: *replace,
+		Force:         *force,
+	}
+	if err := fillDevPluginDependency(&opts); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "已生成插件骨架：%s\n", name)
+	result, err := scaffold.NewPlugin(opts)
+	if err != nil {
+		return err
+	}
+	if result.Standalone {
+		fmt.Fprintf(stdout, "已生成独立插件模块：%s (%s)\n", result.Name, result.Module)
+		printStandalonePluginNextSteps(*dir, result)
+		return nil
+	}
+	fmt.Fprintf(stdout, "已生成插件骨架：%s\n", result.Name)
 	printNextSteps(*dir, "go test ./...")
 	return nil
+}
+
+func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
+	fmt.Fprintln(stdout, "测试插件：")
+	if clean := cleanDisplayDir(dir); clean != "." {
+		fmt.Fprintf(stdout, "  cd %s\n", shellQuote(clean))
+	}
+	if result.TestReady {
+		fmt.Fprintln(stdout, "  go test ./...")
+	} else {
+		fmt.Fprintln(stdout, "  go mod tidy")
+		fmt.Fprintln(stdout, "  go test ./...")
+	}
+	if absDir, err := filepath.Abs(dir); err == nil {
+		fmt.Fprintln(stdout, "在机器人工作目录中安装本地插件：")
+		fmt.Fprintf(stdout, "  anybot plugin add %s -name %s -replace %s -dir <机器人工作目录>\n", result.Module, result.Name, shellQuote(absDir))
+		fmt.Fprintf(stdout, "  anybot plugin enable %s -dir <机器人工作目录>\n", result.Name)
+		fmt.Fprintln(stdout, "  anybot up -dir <机器人工作目录>")
+	}
+}
+
+func fillDevPluginDependency(opts *scaffold.PluginOptions) error {
+	if opts == nil || strings.TrimSpace(opts.Module) == "" {
+		return nil
+	}
+	opts.AnyBotVersion = strings.TrimSpace(opts.AnyBotVersion)
+	opts.AnyBotReplace = strings.TrimSpace(opts.AnyBotReplace)
+	if opts.AnyBotVersion == "" && opts.AnyBotReplace == "" {
+		dep := devPluginFrameworkDependency("github.com/tty00a381/anybot")
+		opts.AnyBotVersion = dep.Version
+		opts.AnyBotReplace = dep.Replace
+	}
+	if opts.AnyBotReplace == "" {
+		if opts.AnyBotVersion == "" || opts.AnyBotVersion == "v0.0.0" {
+			return fmt.Errorf("生成独立插件需要可解析的 AnyBot 版本；请传 -anybot-version vX.Y.Z，或传 -replace /path/to/anybot 使用本地源码")
+		}
+		return nil
+	}
+	replace, err := normalizeReplacePath(opts.Dir, opts.AnyBotReplace)
+	if err != nil {
+		return err
+	}
+	opts.AnyBotReplace = replace
+	return nil
+}
+
+func devPluginFrameworkDependency(module string) moduleDependency {
+	for _, dep := range frameworkDependencies() {
+		if dep.Module == module {
+			return dep
+		}
+	}
+	return detectFrameworkDependency(module)
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(value, " \t\n'\"\\$`!*?[]{}()<>|&;") {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func splitDevPluginArgs(args []string) (string, []string, error) {
@@ -98,13 +181,19 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "-dir" || arg == "--dir":
+		case arg == "-dir" || arg == "--dir" ||
+			arg == "-module" || arg == "--module" ||
+			arg == "-anybot-version" || arg == "--anybot-version" ||
+			arg == "-replace" || arg == "--replace":
 			if i+1 >= len(args) {
 				return "", nil, fmt.Errorf("%s 需要值", arg)
 			}
 			flagArgs = append(flagArgs, arg, args[i+1])
 			i++
-		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir="):
+		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
+			strings.HasPrefix(arg, "-module=") || strings.HasPrefix(arg, "--module=") ||
+			strings.HasPrefix(arg, "-anybot-version=") || strings.HasPrefix(arg, "--anybot-version=") ||
+			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
 			flagArgs = append(flagArgs, arg)
 		case arg == "-force" || arg == "--force":
 			flagArgs = append(flagArgs, arg)

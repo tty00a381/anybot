@@ -127,7 +127,7 @@ security:
     - "10000"
 ```
 
-`superusers` 是宿主级管理员 ID。插件可以通过 `core.RequireSuperUser()` 和 `Context.IsSuperUser()` 复用这套身份。
+`superusers` 是宿主级管理员 ID。SDK 插件可以通过 `absdk.RequireSuperUser()` 复用这套身份；直接使用 core 时可以用 `core.RequireSuperUser()` 和 `Context.IsSuperUser()`。
 
 内置 `admin` 插件在未单独配置 `users` 时也会使用 `security.superusers`。
 

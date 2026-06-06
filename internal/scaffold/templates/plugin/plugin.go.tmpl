@@ -1,0 +1,33 @@
+package {{.Package}}
+
+import (
+	"fmt"
+
+	absdk "github.com/tty00a381/anybot/sdk"
+)
+
+// Config 配置 {{.Name}} 插件。
+type Config struct {
+	Command string `yaml:"command"`
+}
+
+// Validate 校验 {{.Name}} 插件配置。
+func (cfg Config) Validate() error {
+	if cfg.Command == "" {
+		return fmt.Errorf("command 不能为空")
+	}
+	return nil
+}
+
+// Module 是 {{.Name}} 插件导出的 anybot 模块。
+var Module = absdk.Define(
+	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
+	Config{Command: "{{.Command}}"},
+	func(ctx *absdk.Context, cfg Config) error {
+		ctx.Command(cfg.Command).Handle(func(c *absdk.EventContext) error {
+			_, err := c.ReplyText("{{.Name}} 已启动")
+			return err
+		})
+		return nil
+	},
+)

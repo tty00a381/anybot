@@ -2,6 +2,54 @@
 
 成熟插件应使用 `github.com/tty00a381/anybot/sdk` SDK。它让插件声明清单、typed config、默认配置、校验和安装逻辑，宿主负责解码配置并装进 `App`。
 
+## 生成独立插件
+
+发布给别人安装的插件应是独立 Go module：
+
+```sh
+anybot dev plugin hello -dir ./anybot-hello -module github.com/acme/anybot-hello
+cd ./anybot-hello
+go test ./...
+```
+
+生成内容包括：
+
+- `go.mod`：插件 module，依赖当前 AnyBot。
+- `go.sum`：使用本地 AnyBot 源码 `replace` 时生成的测试依赖校验和。
+- `hello.go`：导出 `Module` 的 SDK 插件。
+- `hello_test.go`：只使用 SDK 的路由和回复 smoke test。
+- `README.md`：本地安装、配置和发布命令。
+
+源码开发版的 `anybot` 会在插件 `go.mod` 里自动写入本仓库 `replace`，所以生成后可以直接测试。正式发布的 `anybot` 会写入自身版本；这种模式下先运行 `go mod tidy` 补齐远端模块校验和。需要指定框架依赖时，可以显式传：
+
+```sh
+anybot dev plugin hello \
+  -dir ./anybot-hello \
+  -module github.com/acme/anybot-hello \
+  -anybot-version v1.0.0
+cd ./anybot-hello
+go mod tidy
+go test ./...
+```
+
+本地调试时，在机器人工作目录安装这个插件：
+
+```sh
+anybot plugin add github.com/acme/anybot-hello -name hello -replace ../anybot-hello
+anybot plugin enable hello
+anybot up
+```
+
+`anybot up` 会启动机器人并占用当前终端。停止机器人后，或在另一个终端里，可以运行 `./anybot-bot plugin inspect hello` 检查插件配置。
+
+发布 Go module 版本后，最终用户安装固定版本：
+
+```sh
+anybot plugin add github.com/acme/anybot-hello@v0.1.0 -name hello
+anybot plugin enable hello
+anybot up
+```
+
 ## 最小插件
 
 ```go
@@ -231,19 +279,23 @@ anybot up
 
 `-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。本地替换不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。发布前可以用 `anybot plugin update anybot_weather -clear-replace -version v0.1.0` 切回远端版本；继续本地开发时也可以用 `anybot plugin update anybot_weather -replace ../anybot-weather` 改路径。远端插件省略版本或使用 `latest` 时，CLI 会解析并记录具体版本，避免生成宿主构建时追随浮动 latest。`update` 不会改写 `plugins.d/<name>.yaml`，适合保留对话插件的复杂配置。`anybot plugin inspect` 可以查看当前配置和 typed config 默认值；`anybot plugin check` 会在不启动 adapter 的情况下验证可加载插件配置；外部插件构建进宿主后，也可以运行 `./anybot-bot plugin enable`、`./anybot-bot plugin config`、`./anybot-bot plugin inspect` 和 `./anybot-bot plugin check` 做最终校验。
 
+插件可以通过 `ctx.Config().Set`、`SetAll` 和 `Reset` 写回自己的 `config` 字段。写回会立即落盘到 `anybot.yaml` 或对应的 `plugins.d/<name>.yaml`，适合由管理员命令保存插件偏好；当前已经完成解码的运行中配置不会因此自动热刷新，通常应在事件处理或显式迁移命令里使用，而不是在 `Setup` 中做隐式迁移。
+
 ## 生成插件骨架
 
-直接写 Go 项目时可以使用：
+在直接写 Go 的 core 项目里，可以生成项目内插件：
 
 ```sh
 anybot dev plugin hello
 ```
 
-生成的插件会导出 SDK 风格的 `Module`，既能直接安装，也能被 `anybot` 外部插件工作区引用。
+生成的插件会写入 `plugins/hello/hello.go`，适合只在当前机器人项目中使用。要发布给别人安装，使用本页开头的 `-module` 独立插件模式。
 
-## 对话插件示例
+## 插件示例
 
 仓库里的 `examples/dialogueplugin` 是一个 SDK-only 对话插件示例，覆盖 typed config、自定义规则、会话记忆、自然语言回复、限速和后台任务。它可以作为复杂聊天插件的起点。
+
+`examples/companionplugin` 是人格化聊天插件起步示例，展示 provider HTTP 调用、persona、短期记忆、群聊范围和服务不可用时的本地降级回复。
 
 ## 插件设计建议
 

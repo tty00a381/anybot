@@ -3,7 +3,9 @@ package sdk
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +96,43 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 	}
 }
 
+func TestContextConfigWritesThroughStore(t *testing.T) {
+	store := &sdkConfigStore{}
+	app := core.New(WithConfigStore(store))
+	ctx := NewContext(app, Manifest{Name: "minecraft"})
+	if !ctx.Config().Available() {
+		t.Fatal("config handle should be available")
+	}
+	if err := ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(store.assignments, []ConfigAssignment{
+		{Path: []string{"bridge", "group_to_game"}, Value: "prefix"},
+	}) || store.plugin != "minecraft" {
+		t.Fatalf("store plugin=%q assignments=%#v", store.plugin, store.assignments)
+	}
+	if err := ctx.Config().Reset(context.Background(), "bridge.group_to_game"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(store.resets, [][]string{{"bridge", "group_to_game"}}) {
+		t.Fatalf("resets = %#v", store.resets)
+	}
+	if err := ctx.Config().SetAll(context.Background(), ConfigAssignment{Path: []string{"-bad"}, Value: true}); err == nil {
+		t.Fatal("invalid SetAll path should be rejected")
+	}
+}
+
+func TestContextConfigUnavailableWithoutHostStore(t *testing.T) {
+	ctx := NewContext(core.New(), Manifest{Name: "minecraft"})
+	if ctx.Config().Available() {
+		t.Fatal("config handle should be unavailable")
+	}
+	err := ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
+	if !errors.Is(err, ErrConfigStoreUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 type sdkTestAdapter struct {
 	client ActionClient
 }
@@ -115,4 +154,21 @@ func (c *sdkTestClient) Send(_ context.Context, target ReplyTarget, chain corems
 	c.target = target
 	c.chain = chain
 	return MessageReceipt{ID: "sent"}, nil
+}
+
+type sdkConfigStore struct {
+	plugin      string
+	assignments []ConfigAssignment
+	resets      [][]string
+}
+
+func (s *sdkConfigStore) SetPluginConfig(_ context.Context, plugin string, assignments []ConfigAssignment) error {
+	s.plugin = plugin
+	s.assignments = append([]ConfigAssignment(nil), assignments...)
+	return nil
+}
+
+func (s *sdkConfigStore) ResetPluginConfig(_ context.Context, _ string, paths [][]string) error {
+	s.resets = append([][]string(nil), paths...)
+	return nil
 }

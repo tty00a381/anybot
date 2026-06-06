@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/modfile"
 )
 
 func TestInitProjectAndPlugin(t *testing.T) {
@@ -38,8 +40,12 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if !strings.Contains(string(readmeData), "NapCat") || !strings.Contains(string(readmeData), "运行") {
 		t.Fatalf("README.md 内容不符合预期:\n%s", readmeData)
 	}
-	if err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"}); err != nil {
+	result, err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result.Name != "hello_world" || result.Package != "hello_world" || result.Standalone {
+		t.Fatalf("plugin result = %#v", result)
 	}
 	pluginPath := filepath.Join(dir, "plugins", "hello_world", "hello_world.go")
 	if _, err := os.Stat(pluginPath); err != nil {
@@ -93,7 +99,7 @@ func TestGeneratedProjectSmoke(t *testing.T) {
 	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"}); err != nil {
+	if _, err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"}); err != nil {
 		t.Fatal(err)
 	}
 	root := repoRoot(t)
@@ -114,6 +120,134 @@ func TestGeneratedProjectSmoke(t *testing.T) {
 	}
 }
 
+func TestGeneratedStandalonePluginSmoke(t *testing.T) {
+	dir := t.TempDir()
+	root := repoRoot(t)
+	result, err := NewPlugin(PluginOptions{
+		Dir:           dir,
+		Name:          "hello-world",
+		Module:        "example.com/hello-world",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Standalone || result.Name != "hello_world" || result.Module != "example.com/hello-world" {
+		t.Fatalf("plugin result = %#v", result)
+	}
+	if !result.TestReady {
+		t.Fatalf("plugin should be test-ready with local replace: %#v", result)
+	}
+	for _, name := range []string{"go.mod", "go.sum", "hello_world.go", "hello_world_test.go", "README.md"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s was not generated: %v", name, err)
+		}
+	}
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "module example.com/hello-world") ||
+		!strings.Contains(goMod, "replace github.com/tty00a381/anybot => "+root) ||
+		!strings.Contains(goMod, "gopkg.in/yaml.v3 v3.0.1 // indirect") {
+		t.Fatalf("go.mod:\n%s", goMod)
+	}
+	goSum := readFile(t, filepath.Join(dir, "go.sum"))
+	if !strings.Contains(goSum, "gopkg.in/yaml.v3 v3.0.1 h1:") {
+		t.Fatalf("go.sum:\n%s", goSum)
+	}
+	plugin := readFile(t, filepath.Join(dir, "hello_world.go"))
+	if strings.Contains(plugin, "github.com/tty00a381/anybot/core") ||
+		!strings.Contains(plugin, "absdk.Define") {
+		t.Fatalf("plugin scaffold:\n%s", plugin)
+	}
+	testFile := readFile(t, filepath.Join(dir, "hello_world_test.go"))
+	if strings.Contains(testFile, "github.com/tty00a381/anybot/core") ||
+		!strings.Contains(testFile, "absdk.NewApp") ||
+		!strings.Contains(testFile, "recordClient") {
+		t.Fatalf("plugin test scaffold:\n%s", testFile)
+	}
+	runGo(t, dir, "test", "./...")
+}
+
+func TestGeneratedStandalonePluginWithReleaseVersionRequiresTidy(t *testing.T) {
+	dir := t.TempDir()
+	result, err := NewPlugin(PluginOptions{
+		Dir:           dir,
+		Name:          "release-plugin",
+		Module:        "example.com/release-plugin",
+		AnyBotVersion: "v1.2.3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TestReady {
+		t.Fatalf("release-version scaffold should require tidy: %#v", result)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "go.sum")); !os.IsNotExist(err) {
+		t.Fatalf("go.sum should not be generated without local replace: %v", err)
+	}
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "require github.com/tty00a381/anybot v1.2.3") ||
+		strings.Contains(goMod, "replace github.com/tty00a381/anybot") {
+		t.Fatalf("go.mod:\n%s", goMod)
+	}
+}
+
+func TestGeneratedStandalonePluginRejectsUnknownFrameworkVersion(t *testing.T) {
+	_, err := NewPlugin(PluginOptions{
+		Dir:    t.TempDir(),
+		Name:   "broken-plugin",
+		Module: "example.com/broken-plugin",
+	})
+	if err == nil || !strings.Contains(err.Error(), "独立插件需要有效 AnyBot 版本") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestGeneratedStandalonePluginSanitizesDisplayName(t *testing.T) {
+	dir := t.TempDir()
+	root := repoRoot(t)
+	if _, err := NewPlugin(PluginOptions{
+		Dir:           dir,
+		Name:          `hello-"world"`,
+		Module:        "example.com/quoted-plugin",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: root,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plugin := readFile(t, filepath.Join(dir, "hello_world.go"))
+	if strings.Contains(plugin, `"world"`) {
+		t.Fatalf("plugin should use sanitized display text:\n%s", plugin)
+	}
+	runGo(t, dir, "test", "./...")
+}
+
+func TestGeneratedStandalonePluginQuotesReplaceWithSpaces(t *testing.T) {
+	root := t.TempDir()
+	replaceDir := filepath.Join(root, "AnyBot Source")
+	if err := os.MkdirAll(replaceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "plugin")
+	if _, err := NewPlugin(PluginOptions{
+		Dir:           dir,
+		Name:          "space-path",
+		Module:        "example.com/space-path",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: replaceDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if _, err := modfile.Parse("go.mod", []byte(goMod), nil); err != nil {
+		t.Fatalf("go.mod should be parseable: %v\n%s", err, goMod)
+	}
+	if !strings.Contains(goMod, `replace github.com/tty00a381/anybot => "`) ||
+		!strings.Contains(goMod, `AnyBot Source"`) {
+		t.Fatalf("go.mod should quote replace path containing spaces:\n%s", goMod)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -125,6 +259,15 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func runGo(t *testing.T, dir string, args ...string) string {

@@ -164,7 +164,7 @@ func runHost(args []string) error {
 	if err != nil {
 		return err
 	}
-	app, err := host.NewApp(cfg, host.DefaultRegistry(), logger)
+	app, err := host.NewApp(cfg, host.DefaultRegistry(), logger, host.WithConfigPath(*configPath))
 	if err != nil {
 		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
 	}

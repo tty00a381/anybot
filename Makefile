@@ -16,8 +16,15 @@ RELEASE_FILES := \
 	.github/workflows/ci.yaml \
 	core/app.go \
 	app/host/app.go \
+	app/host/config_store.go \
 	cmd/anybot/main.go \
 	cmd/anybot/dev.go \
+	internal/scaffold/templates/plugin/README.md.tmpl \
+	internal/scaffold/templates/plugin/go.mod.tmpl \
+	internal/scaffold/templates/plugin/go.sum.tmpl \
+	internal/scaffold/templates/plugin/plugin.go.tmpl \
+	internal/scaffold/templates/plugin/plugin_test.go.tmpl \
+	sdk/config.go \
 	sdk/doc.go \
 	sdk/spec.go \
 	sdk/runtime.go \
@@ -28,6 +35,7 @@ RELEASE_FILES := \
 	examples/httpaction/main.go \
 	examples/proactive/main.go \
 	examples/dialogueplugin/dialogueplugin.go \
+	examples/companionplugin/companionplugin.go \
 	examples/pluginbot/main.go \
 	examples/permission/main.go \
 	examples/session/main.go \

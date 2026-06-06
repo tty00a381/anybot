@@ -39,8 +39,29 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slogLevel})), nil
 }
 
+// AppOptions 描述宿主运行时的附加参数。
+type AppOptions struct {
+	ConfigPath string
+}
+
+// AppOption 调整宿主运行时装配。
+type AppOption func(*AppOptions)
+
+// WithConfigPath 注入当前宿主配置文件路径，供插件运行期写回自身配置。
+func WithConfigPath(path string) AppOption {
+	return func(opts *AppOptions) {
+		opts.ConfigPath = path
+	}
+}
+
 // NewApp 根据宿主配置和插件注册表创建 AnyBot 运行时。
-func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger) (*core.App, error) {
+func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions ...AppOption) (*core.App, error) {
+	var hostOpts AppOptions
+	for _, opt := range appOptions {
+		if opt != nil {
+			opt(&hostOpts)
+		}
+	}
 	cfg.applyDefaults()
 	if logger == nil {
 		logger = slog.Default()
@@ -54,6 +75,9 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger) (*core.App
 		core.WithLogger(logger),
 		core.WithBuffer(cfg.Runtime.Buffer),
 		core.WithSuperUsers(cfg.Security.SuperUsers...),
+	}
+	if hostOpts.ConfigPath != "" {
+		opts = append(opts, absdk.WithConfigStore(newPluginConfigStore(hostOpts.ConfigPath)))
 	}
 	if workers, ok, err := parseWorkers(cfg.Runtime.Workers); err != nil {
 		return nil, err

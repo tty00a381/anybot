@@ -1,12 +1,17 @@
 package host
 
 import (
+	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/tty00a381/anybot/adapters/onebot11"
+	absdk "github.com/tty00a381/anybot/sdk"
 )
 
 func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
@@ -57,6 +62,46 @@ func TestNewAppInjectsSuperUsers(t *testing.T) {
 	}
 	if !app.IsSuperUser("42") || app.IsSuperUser("7") {
 		t.Fatalf("superusers = %#v", app.SuperUsers())
+	}
+}
+
+func TestNewAppInjectsPluginConfigStore(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(configPath, []byte(`adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+plugin_config_dir: plugins.d
+plugins: {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pluginPath := filepath.Join(dir, "plugins.d", "minecraft.yaml")
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Manifest{Name: "minecraft"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
+		return ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
+	})
+	if err := registry.Register(module.Factory()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default(), WithConfigPath(configPath)); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, pluginPath)
+	if !strings.Contains(out, "bridge:") || !strings.Contains(out, "group_to_game: prefix") {
+		t.Fatalf("plugin config:\n%s", out)
 	}
 }
 
