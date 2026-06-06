@@ -4,7 +4,16 @@
 
 ## 开发
 
+如果 `go.mod` 中带有本地 AnyBot `replace`，可以直接测试：
+
 ```sh
+go test ./...
+```
+
+如果依赖的是远端 AnyBot 版本，先补齐模块校验和：
+
+```sh
+go mod tidy
 go test ./...
 ```
 

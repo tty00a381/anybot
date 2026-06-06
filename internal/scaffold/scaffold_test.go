@@ -202,6 +202,10 @@ func TestGeneratedStandalonePluginTemplatesSmoke(t *testing.T) {
 			if !strings.Contains(plugin, tt.wantCode) {
 				t.Fatalf("plugin scaffold:\n%s", plugin)
 			}
+			readme := readFile(t, filepath.Join(dir, "README.md"))
+			if !strings.Contains(readme, "go mod tidy") {
+				t.Fatalf("README should mention remote-version tidy flow:\n%s", readme)
+			}
 			runGo(t, dir, "test", "./...")
 		})
 	}
