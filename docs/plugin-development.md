@@ -178,13 +178,15 @@ ctx.Command("reload").
 SDK 暴露了对话插件常用的规则组合能力，插件不需要直接导入 `core`：
 
 - `Private()`、`Group()`：区分私聊和群聊。
-- `FromUser()`、`InGroup()`、`Mentioned()`、`ToMe()`：限定来源和提及。
+- `FromUser()`、`InGroup()`、`AllowedGroups()`、`Mentioned()`、`ToMe()`：限定来源、配置中的群范围和提及。
 - `FromSelf()`、`NotFromSelf()`：处理协议端回显或自发消息。
 - `All()`、`AnyOf()`、`Not()`：组合规则。
 - `Prefix()`、`Contains()`、`RegexRule()`、`RegexpRule()`：匹配自然语言入口。
 - `RuleFunc`、`Match`：编写配置驱动或状态驱动的自定义规则。
 
 SDK 也导出了插件作者常用的错误、回执和会话类型：`MessageReceipt`、`ActionResponse`、`ActionError`、`PanicError`、`ErrPass`、`ErrStop`、`ErrUnauthorized`、`ErrRateLimited`、`Session`、`MemoryStore`。常规插件不需要导入 `core`。
+
+配置里常见的群和管理员列表可以直接接入 SDK helper：`absdk.AllowedGroups(cfg.AllowedGroups...)` 在列表为空时不限制群聊，`absdk.RequireAdmin(cfg.Admins...)` 在列表为空时回退到宿主 `security.superusers`，列表非空时只允许插件配置的管理员。
 
 ## 会话状态
 

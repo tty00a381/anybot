@@ -24,6 +24,7 @@ RELEASE_FILES := \
 	internal/scaffold/templates/plugin/go.sum.tmpl \
 	internal/scaffold/templates/plugin/plugin.go.tmpl \
 	internal/scaffold/templates/plugin/plugin_test.go.tmpl \
+	sdk/access.go \
 	sdk/config.go \
 	sdk/doc.go \
 	sdk/spec.go \

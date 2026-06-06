@@ -77,3 +77,83 @@ func TestRuntimeExposesCustomRuleBuildingBlocks(t *testing.T) {
 		t.Fatal("custom sdk rule did not run")
 	}
 }
+
+func TestAllowedGroupsSupportsConfigSlices(t *testing.T) {
+	app := NewApp()
+	var hits []string
+	app.OnMessage(AllowedGroups("100", " 200 ", "100", "")).Handle(func(c *EventContext) error {
+		hits = append(hits, c.GroupID())
+		return nil
+	})
+	for _, group := range []string{"100", "200", "300", ""} {
+		if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "u", GroupID: group, Text: "hi"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(hits) != 2 || hits[0] != "100" || hits[1] != "200" {
+		t.Fatalf("hits = %#v", hits)
+	}
+
+	app = NewApp()
+	hits = nil
+	app.OnMessage(AllowedGroups()).Handle(func(c *EventContext) error {
+		hits = append(hits, c.GroupID())
+		return nil
+	})
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "u", GroupID: "300", Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0] != "300" {
+		t.Fatalf("empty allow list should pass, hits = %#v", hits)
+	}
+}
+
+func TestRequireAdminFallsBackToHostSuperUsers(t *testing.T) {
+	app := NewApp(WithSuperUsers("root"))
+	var hits int
+	var denied error
+	app.OnError(func(_ *EventContext, err error) {
+		denied = err
+	})
+	app.Command("admin").Use(RequireAdmin()).Handle(func(*EventContext) error {
+		hits++
+		return nil
+	})
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "root", Text: "/admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 || denied != nil {
+		t.Fatalf("hits=%d denied=%v", hits, denied)
+	}
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "guest", Text: "/admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 || denied == nil {
+		t.Fatalf("plugin should deny guest: hits=%d denied=%v", hits, denied)
+	}
+}
+
+func TestRequireAdminUsesConfiguredAdmins(t *testing.T) {
+	app := NewApp(WithSuperUsers("root"))
+	var hits int
+	var denied error
+	app.OnError(func(_ *EventContext, err error) {
+		denied = err
+	})
+	app.Command("admin").Use(RequireAdmin("plugin-admin")).Handle(func(*EventContext) error {
+		hits++
+		return nil
+	})
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "root", Text: "/admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 0 || denied == nil {
+		t.Fatalf("host superuser should not bypass explicit plugin admins: hits=%d denied=%v", hits, denied)
+	}
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "plugin-admin", Text: "/admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 {
+		t.Fatalf("hits = %d", hits)
+	}
+}

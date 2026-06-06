@@ -186,19 +186,4 @@ func trimForReply(text string) string {
 	return string(runes[:80]) + "..."
 }
 
-func allowedGroups(cfg Config) absdk.Rule {
-	allowed := map[string]struct{}{}
-	for _, id := range cfg.AllowedGroups {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			allowed[id] = struct{}{}
-		}
-	}
-	return absdk.RuleFunc(func(_ context.Context, c *absdk.EventContext) (absdk.Match, bool) {
-		if len(allowed) == 0 || c.GroupID() == "" {
-			return absdk.Match{Reason: "companion.group:all", Score: 1}, true
-		}
-		_, ok := allowed[c.GroupID()]
-		return absdk.Match{Reason: "companion.group", Score: 1}, ok
-	})
-}
+func allowedGroups(cfg Config) absdk.Rule { return absdk.AllowedGroups(cfg.AllowedGroups...) }
