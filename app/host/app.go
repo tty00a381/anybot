@@ -41,7 +41,8 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 
 // AppOptions 描述宿主运行时的附加参数。
 type AppOptions struct {
-	ConfigPath string
+	ConfigPath   string
+	RuntimeState bool
 }
 
 // AppOption 调整宿主运行时装配。
@@ -54,6 +55,13 @@ func WithConfigPath(path string) AppOption {
 	}
 }
 
+// WithRuntimeState 启用宿主托管的运行时状态资源，包括 Store 和插件数据目录。
+func WithRuntimeState() AppOption {
+	return func(opts *AppOptions) {
+		opts.RuntimeState = true
+	}
+}
+
 // NewApp 根据宿主配置和插件注册表创建 AnyBot 运行时。
 func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions ...AppOption) (*core.App, error) {
 	var hostOpts AppOptions
@@ -61,6 +69,11 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 		if opt != nil {
 			opt(&hostOpts)
 		}
+	}
+	rawRuntime := cfg.Runtime
+	configPath := hostOpts.ConfigPath
+	if configPath == "" {
+		configPath = cfg.configPath
 	}
 	cfg.applyDefaults()
 	if logger == nil {
@@ -75,6 +88,18 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 		core.WithLogger(logger),
 		core.WithBuffer(cfg.Runtime.Buffer),
 		core.WithSuperUsers(cfg.Security.SuperUsers...),
+	}
+	if hostOpts.RuntimeState {
+		if store, err := newRuntimeStore(cfg.Runtime, rawRuntime, configPath); err != nil {
+			return nil, err
+		} else if store != nil {
+			opts = append(opts, core.WithStore(store))
+		}
+		if dataDir, ok, err := runtimeDataDir(cfg.Runtime, rawRuntime, configPath); err != nil {
+			return nil, err
+		} else if ok {
+			opts = append(opts, absdk.WithDataDir(dataDir))
+		}
 	}
 	if hostOpts.ConfigPath != "" {
 		opts = append(opts, absdk.WithConfigStore(newPluginConfigStore(hostOpts.ConfigPath)))
@@ -98,6 +123,44 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 		return nil, err
 	}
 	return app, nil
+}
+
+// ValidateConfig 静态校验宿主配置，不执行插件安装逻辑。
+func ValidateConfig(cfg Config, registry absdk.Registry) error {
+	rawRuntime := cfg.Runtime
+	configPath := cfg.configPath
+	cfg.applyDefaults()
+	if _, err := onebot11.AdapterFromConfig(cfg.onebotConfig()); err != nil {
+		return err
+	}
+	if _, _, err := parseWorkers(cfg.Runtime.Workers); err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Runtime.Serial)) {
+	case "", "none", "off", "false", "conversation":
+	default:
+		return fmt.Errorf("runtime.serial 不支持 %q", cfg.Runtime.Serial)
+	}
+	if _, err := newRuntimeStore(cfg.Runtime, rawRuntime, configPath); err != nil {
+		return err
+	}
+	if _, _, err := runtimeDataDir(cfg.Runtime, rawRuntime, configPath); err != nil {
+		return err
+	}
+	for _, name := range configuredPluginNames(cfg) {
+		entry := cfg.Plugins[name]
+		if !pluginEnabled(entry) {
+			continue
+		}
+		factory, ok := registry.Factory(name)
+		if !ok {
+			return UnknownPluginError{Name: name}
+		}
+		if _, err := factory.Build(entry.Config); err != nil {
+			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // InstallPlugins 按配置启用插件。

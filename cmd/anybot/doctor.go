@@ -30,11 +30,10 @@ func runDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
-	if err != nil {
+	if _, err := host.NewLogger(cfg.Runtime.LogLevel, stderr); err != nil {
 		return err
 	}
-	if _, err := host.NewApp(cfg, host.DefaultRegistry(), logger); err != nil {
+	if err := host.ValidateConfig(cfg, host.DefaultRegistry()); err != nil {
 		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
 	}
 	adapterCfg := cfgAdapter(cfg)

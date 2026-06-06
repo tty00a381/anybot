@@ -17,6 +17,10 @@ runtime:
   workers: auto
   buffer: 256
   serial: conversation
+  data_dir: .anybot
+  store:
+    type: file
+    path: store.json
 
 adapter:
   protocol: onebot11
@@ -51,12 +55,20 @@ runtime:
   workers: auto
   buffer: 256
   serial: conversation
+  data_dir: .anybot
+  store:
+    type: file
+    path: store.json
 ```
 
 - `log_level`：宿主日志级别。
 - `workers`：事件处理 worker 数；`auto` 使用运行时默认值。
 - `buffer`：事件队列大小。
 - `serial`：事件串行策略。`conversation` 表示同一会话内串行处理。
+- `data_dir`：宿主运行时数据目录，相对路径按 `anybot.yaml` 所在目录解析。
+- `store`：宿主托管的会话状态存储。默认 `file` 会写入 `runtime.data_dir/store.json`；相对 `path` 必须留在 `runtime.data_dir` 内，绝对 `path` 会按原样使用；需要完全进程内状态时可设为 `memory`。
+
+标准宿主会把 `runtime.data_dir/plugins/<插件名>/` 作为插件私有数据目录暴露给 SDK。小型状态优先用 SDK 会话存储；需要自管文件、缓存、索引或数据库时再使用插件数据目录。
 
 ## adapter
 

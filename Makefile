@@ -15,8 +15,10 @@ RELEASE_FILES := \
 	LICENSE \
 	.github/workflows/ci.yaml \
 	core/app.go \
+	core/file_store.go \
 	app/host/app.go \
 	app/host/config_store.go \
+	app/host/store.go \
 	cmd/anybot/main.go \
 	cmd/anybot/dev.go \
 	internal/scaffold/templates/plugin/README.md.tmpl \
@@ -26,6 +28,7 @@ RELEASE_FILES := \
 	internal/scaffold/templates/plugin/plugin_test.go.tmpl \
 	sdk/access.go \
 	sdk/config.go \
+	sdk/data_dir.go \
 	sdk/doc.go \
 	sdk/spec.go \
 	sdk/runtime.go \

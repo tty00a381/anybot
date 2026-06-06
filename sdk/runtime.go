@@ -65,6 +65,9 @@ type Session = core.Session
 // MemoryStore 是 goroutine 安全的进程内 Store。
 type MemoryStore = core.MemoryStore
 
+// FileStore 是 goroutine 安全的文件持久化 Store。
+type FileStore = core.FileStore
+
 // ActionClient 是协议无关的动作调用接口。
 type ActionClient = core.ActionClient
 
@@ -119,11 +122,17 @@ var (
 // NewMemoryStore 创建默认内存存储。
 func NewMemoryStore() *MemoryStore { return core.NewMemoryStore() }
 
+// NewFileStore 打开或创建一个 JSON 文件存储。
+func NewFileStore(path string) (*FileStore, error) { return core.NewFileStore(path) }
+
 // NewApp 创建测试或嵌入式运行时。常规插件安装逻辑应使用 Context 上的窄接口。
 func NewApp(opts ...Option) *App { return core.New(opts...) }
 
 // WithAdapter 配置运行时使用的协议适配器。
 func WithAdapter(adapter Adapter) Option { return core.WithAdapter(adapter) }
+
+// WithStore 配置测试或嵌入式运行时使用的会话存储。
+func WithStore(store Store) Option { return core.WithStore(store) }
 
 // WithSuperUsers 配置测试或嵌入式运行时的超级用户 ID。
 func WithSuperUsers(ids ...string) Option { return core.WithSuperUsers(ids...) }

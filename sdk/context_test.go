@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -130,6 +132,40 @@ func TestContextConfigUnavailableWithoutHostStore(t *testing.T) {
 	err := ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
 	if !errors.Is(err, ErrConfigStoreUnavailable) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestContextDataDirUsesPluginNamespace(t *testing.T) {
+	root := t.TempDir()
+	ctx := NewContext(core.New(WithDataDir(root)), Manifest{Name: "weather"})
+	dir, err := ctx.DataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "plugins", "weather")
+	if dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("%s is not a directory", dir)
+	}
+}
+
+func TestContextDataDirUnavailable(t *testing.T) {
+	ctx := NewContext(core.New(), Manifest{Name: "weather"})
+	if _, err := ctx.DataDir(); !errors.Is(err, ErrDataDirUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestContextDataDirRejectsUnsafePluginName(t *testing.T) {
+	ctx := NewContext(core.New(WithDataDir(t.TempDir())), Manifest{Name: "../weather"})
+	if _, err := ctx.DataDir(); err == nil {
+		t.Fatal("unsafe plugin name should be rejected")
 	}
 }
 

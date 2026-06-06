@@ -689,7 +689,7 @@ func main() {
 		}
 		return
 	}
-	app, err := host.NewApp(cfg, registry, logger, host.WithConfigPath("anybot.yaml"))
+	app, err := host.NewApp(cfg, registry, logger, host.WithConfigPath("anybot.yaml"), host.WithRuntimeState())
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -132,6 +132,7 @@ config:
 - `Logger()`：带 `plugin=<name>` 字段的日志器。
 - `Store()`：宿主会话存储。
 - `Session()`、`UserSession()`、`GroupSession()`、`SessionBy()`：带插件命名空间的会话存储。
+- `DataDir()`：当前插件的私有数据目录。
 - `Client()`：动作客户端。
 - `Send()`、`SendText()`：主动发送消息。
 - `Use()`：注册插件级中间件。
@@ -184,7 +185,7 @@ SDK 暴露了对话插件常用的规则组合能力，插件不需要直接导�
 - `Prefix()`、`Contains()`、`RegexRule()`、`RegexpRule()`：匹配自然语言入口。
 - `RuleFunc`、`Match`：编写配置驱动或状态驱动的自定义规则。
 
-SDK 也导出了插件作者常用的错误、回执和会话类型：`MessageReceipt`、`ActionResponse`、`ActionError`、`PanicError`、`ErrPass`、`ErrStop`、`ErrUnauthorized`、`ErrRateLimited`、`Session`、`MemoryStore`。常规插件不需要导入 `core`。
+SDK 也导出了插件作者常用的错误、回执和会话类型：`MessageReceipt`、`ActionResponse`、`ActionError`、`PanicError`、`ErrPass`、`ErrStop`、`ErrUnauthorized`、`ErrRateLimited`、`Session`、`MemoryStore`、`FileStore`。常规插件不需要导入 `core`。
 
 配置里常见的群和管理员列表可以直接接入 SDK helper：`absdk.AllowedGroups(cfg.AllowedGroups...)` 在列表为空时不限制群聊，`absdk.RequireAdmin(cfg.Admins...)` 在列表为空时回退到宿主 `security.superusers`，列表非空时只允许插件配置的管理员。
 
@@ -204,6 +205,22 @@ ctx.Command("remember").Handle(func(c *absdk.EventContext) error {
 ```
 
 `c.Session()`、`c.UserSession()` 和 `c.GroupSession()` 是 core 级会话视图，不带插件命名空间；SDK 插件只有在明确需要共享状态时才应直接使用。
+
+标准 `anybot` 宿主默认把会话状态持久化到 `runtime.data_dir/store.json`，重启后仍可读取。直接使用 `core.New()` 时默认仍是进程内 `MemoryStore`；测试或嵌入式宿主可用 `absdk.NewMemoryStore()` 或 `core.NewFileStore()` 显式注入。
+
+## 数据目录
+
+需要自管文件、缓存、索引或数据库的插件可以使用私有数据目录：
+
+```go
+dir, err := ctx.DataDir()
+if err != nil {
+	return err
+}
+path := filepath.Join(dir, "bindings.json")
+```
+
+目录由宿主创建，标准路径是 `runtime.data_dir/plugins/<插件名>/`。轻量键值状态优先用 `SessionBy()`；只有当插件确实需要控制文件格式或外部存储时才使用 `DataDir()`。
 
 ## Observer
 

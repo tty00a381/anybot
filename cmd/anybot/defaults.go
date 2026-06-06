@@ -34,6 +34,10 @@ const defaultConfig = `runtime:
   workers: auto
   buffer: 256
   serial: conversation
+  data_dir: .anybot
+  store:
+    type: file
+    path: store.json
 
 adapter:
   protocol: onebot11
@@ -73,7 +77,7 @@ anybot up
 
 默认使用 OneBot v11 反向 WebSocket，请让协议端连接 ` + "`ws://127.0.0.1:6700/`" + `。
 
-` + "`anybot init`" + ` 已生成 ` + "`anybot.plugins.yaml`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主 ` + "`main.go`" + ` 由 anybot 管理，日常主要编辑 ` + "`anybot.yaml`" + ` 和 ` + "`plugins.d/*.yaml`" + `。
+` + "`anybot init`" + ` 已生成 ` + "`anybot.plugins.yaml`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主 ` + "`main.go`" + ` 由 anybot 管理，日常主要编辑 ` + "`anybot.yaml`" + ` 和 ` + "`plugins.d/*.yaml`" + `。运行时状态默认保存到 ` + "`.anybot/`" + `，包括宿主托管的会话存储和插件私有数据目录。
 
 ## 外部插件
 

@@ -171,7 +171,7 @@ _, err := c.Reply(chain)
 
 ## 会话存储
 
-默认 `MemoryStore` 是进程内存储，支持 TTL，适合短期状态。
+直接使用 `core.New()` 时默认 `MemoryStore` 是进程内存储，支持 TTL，适合测试和短期状态。标准 `anybot` 插件宿主会额外注入文件持久化 Store。
 
 ```go
 app.Command("count").Handle(func(c *core.Context) error {
@@ -185,6 +185,16 @@ app.Command("count").Handle(func(c *core.Context) error {
 	_, err := c.ReplyText(fmt.Sprintf("当前会话计数：%d", count))
 	return err
 })
+```
+
+需要文件持久化时可直接使用 `FileStore`；它面向单个进程内的 goroutine 并发，不提供多宿主进程之间的文件锁：
+
+```go
+store, err := core.NewFileStore(".anybot/store.json")
+if err != nil {
+	log.Fatal(err)
+}
+app := core.New(core.WithStore(store))
 ```
 
 需要数据库时，实现 `Store`：

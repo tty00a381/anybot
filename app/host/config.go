@@ -18,14 +18,24 @@ type Config struct {
 	Security        SecurityConfig         `yaml:"security"`
 	PluginConfigDir string                 `yaml:"plugin_config_dir"`
 	Plugins         map[string]PluginEntry `yaml:"plugins"`
+
+	configPath string
 }
 
 // RuntimeConfig 描述宿主运行时参数。
 type RuntimeConfig struct {
-	LogLevel string `yaml:"log_level"`
-	Workers  string `yaml:"workers"`
-	Buffer   int    `yaml:"buffer"`
-	Serial   string `yaml:"serial"`
+	LogLevel string      `yaml:"log_level"`
+	Workers  string      `yaml:"workers"`
+	Buffer   int         `yaml:"buffer"`
+	Serial   string      `yaml:"serial"`
+	DataDir  string      `yaml:"data_dir"`
+	Store    StoreConfig `yaml:"store"`
+}
+
+// StoreConfig 描述宿主会话状态存储。
+type StoreConfig struct {
+	Type string `yaml:"type"`
+	Path string `yaml:"path"`
 }
 
 // AdapterConfig 描述宿主使用的协议适配器。
@@ -61,6 +71,7 @@ func LoadConfig(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, err
 	}
+	cfg.configPath = path
 	cfg.applyDefaults()
 	if err := cfg.loadPluginConfigDir(path); err != nil {
 		return Config{}, err
@@ -80,6 +91,15 @@ func (cfg *Config) applyDefaults() {
 	}
 	if cfg.Runtime.Serial == "" {
 		cfg.Runtime.Serial = "conversation"
+	}
+	if cfg.Runtime.DataDir == "" {
+		cfg.Runtime.DataDir = ".anybot"
+	}
+	if cfg.Runtime.Store.Type == "" {
+		cfg.Runtime.Store.Type = "file"
+	}
+	if cfg.Runtime.Store.Path == "" && strings.ToLower(strings.TrimSpace(cfg.Runtime.Store.Type)) == "file" {
+		cfg.Runtime.Store.Path = "store.json"
 	}
 	if cfg.Adapter.Protocol == "" {
 		cfg.Adapter.Protocol = "onebot11"
