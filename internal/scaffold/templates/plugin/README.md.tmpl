@@ -25,9 +25,10 @@ go test ./...
 anybot plugin add {{.Module}} -name {{.Manifest}} -replace <插件目录>
 anybot plugin enable {{.Manifest}}
 anybot plugin config {{.Manifest}} command={{.Command}}
-anybot plugin check
 anybot up
 ```
+
+`anybot up` 会构建带外部插件的生成宿主、同步默认配置并检查插件配置。停止机器人后，也可以运行 `./anybot-bot plugin check` 复查。
 
 ## 配置
 
