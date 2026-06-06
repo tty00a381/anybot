@@ -378,13 +378,22 @@ plugins: {}
 	if !strings.Contains(pluginConfig, "command: forecast") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
+	out = runCommand(t, botDir, filepath.Join(botDir, "anybot-bot"), "plugin", "config", "daily_weather", "-reset", "command")
+	if !strings.Contains(out, "插件配置已重置：daily_weather（1 项）") ||
+		!strings.Contains(out, "默认配置已同步：1 项更新") {
+		t.Fatalf("plugin config reset:\n%s", out)
+	}
+	pluginConfig = readFile(t, filepath.Join(botDir, "plugins.d", "daily_weather.yaml"))
+	if !strings.Contains(pluginConfig, "command: weather") || strings.Contains(pluginConfig, "command: forecast") {
+		t.Fatalf("plugin config:\n%s", pluginConfig)
+	}
 	out = runCommand(t, botDir, filepath.Join(botDir, "anybot-bot"), "plugin", "disable", "daily_weather")
 	if !strings.Contains(out, "插件已禁用：daily_weather") {
 		t.Fatalf("plugin disable:\n%s", out)
 	}
 	pluginConfig = readFile(t, filepath.Join(botDir, "plugins.d", "daily_weather.yaml"))
 	if !strings.Contains(pluginConfig, "enabled: false") ||
-		!strings.Contains(pluginConfig, "command: forecast") {
+		!strings.Contains(pluginConfig, "command: weather") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
 	out, err = runCommandErr(t, botDir, filepath.Join(botDir, "anybot-bot"), "plugin", "config", "weathre", "command=bad")

@@ -59,7 +59,7 @@ anybot build
 ./anybot-bot
 ```
 
-生成宿主的 `plugin sync/status/inspect/config/check/enable/disable` 使用完整插件注册表。外部插件构建进宿主后，可以直接用 `./anybot-bot plugin enable <name>` 启用并同步 typed config 默认值，也可以用 `./anybot-bot plugin config <name> key=value` 调整配置。
+生成宿主的 `plugin sync/status/inspect/config/check/enable/disable` 使用完整插件注册表。外部插件构建进宿主后，可以直接用 `./anybot-bot plugin enable <name>` 启用并同步 typed config 默认值，也可以用 `./anybot-bot plugin config <name> key=value` 调整配置，用 `./anybot-bot plugin config <name> -reset key` 撤回字段覆盖并同步回插件默认值。
 
 ## 内置插件
 
@@ -190,6 +190,15 @@ anybot plugin inspect help
 
 构建后也可以使用 `./anybot-bot plugin enable <name>` 和 `./anybot-bot plugin config <name> key=value` 管理外部插件配置。生成宿主会拒绝不存在的插件名，避免把拼写错误写进 `plugins.d/`。
 
+## 修改插件配置
+
+```sh
+anybot plugin config help command=docs
+anybot plugin config help -reset command
+```
+
+`plugin config` 写入的是 `plugins.<name>.config` 下的字段，值按 YAML 语义解析；点分路径会写入嵌套 mapping。`-reset` 会删除指定字段的本地覆盖，然后同步当前可加载插件的 typed config 默认值。对还没有构建进基础 CLI 的外部插件，基础 CLI 会提示待构建；运行 `anybot up` 后，生成宿主可以用外部插件自己的默认配置完成同步。
+
 ## 检查插件配置
 
 ```sh
@@ -235,6 +244,8 @@ anybot plugin remove <name> [-dir 目录] [-config anybot.yaml]
 anybot plugin list [-dir 目录]
 anybot plugin status [-dir 目录] [-config anybot.yaml]
 anybot plugin inspect <name> [-dir 目录] [-config anybot.yaml]
+anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]
+anybot plugin config <name> -reset <key>... [-dir 目录] [-config anybot.yaml]
 anybot plugin check [-dir 目录] [-config anybot.yaml]
 anybot plugin sync [-dir 目录] [-config anybot.yaml]
 anybot plugin enable <name> [-dir 目录] [-config anybot.yaml]

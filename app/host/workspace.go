@@ -610,25 +610,36 @@ func main() {
 			}
 		case "config":
 			if len(os.Args) < 5 {
-				log.Fatal("用法：plugin config <name> <key=value>...")
+				log.Fatal("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
 			}
 			if err := host.EnsureKnownPluginTarget(cfg, registry, workspace, os.Args[3], true); err != nil {
 				log.Fatal(err)
 			}
-			assignments := make([]host.PluginConfigAssignment, 0, len(os.Args)-4)
-			for _, arg := range os.Args[4:] {
-				assignment, err := host.ParsePluginConfigAssignment(arg)
-				if err != nil {
-					log.Fatal(err)
-				}
-				assignments = append(assignments, assignment)
-			}
-			changed, err := host.SetPluginConfigValues("anybot.yaml", os.Args[3], assignments)
+			change, err := host.ParsePluginConfigChanges(os.Args[4:])
 			if err != nil {
 				log.Fatal(err)
 			}
-			if changed {
-				fmt.Fprintf(os.Stdout, "插件配置已更新：%s（%d 项）\n", os.Args[3], len(assignments))
+			result, err := host.ApplyPluginConfigChange("anybot.yaml", os.Args[3], change)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if result.Reset {
+				if result.Changed {
+					fmt.Fprintf(os.Stdout, "插件配置已重置：%s（%d 项）\n", os.Args[3], result.Count)
+				} else {
+					fmt.Fprintf(os.Stdout, "插件配置未变化：%s\n", os.Args[3])
+				}
+				sync, err := host.SyncPluginConfigEntry("anybot.yaml", registry, os.Args[3])
+				if err != nil {
+					log.Fatal(err)
+				}
+				if sync.Changed {
+					fmt.Fprintln(os.Stdout, "默认配置已同步：1 项更新")
+				} else if !sync.Available {
+					fmt.Fprintf(os.Stdout, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", os.Args[3])
+				}
+			} else if result.Changed {
+				fmt.Fprintf(os.Stdout, "插件配置已更新：%s（%d 项）\n", os.Args[3], result.Count)
 			} else {
 				fmt.Fprintf(os.Stdout, "插件配置未变化：%s\n", os.Args[3])
 			}

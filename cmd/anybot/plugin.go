@@ -68,6 +68,7 @@ func pluginUsage() {
   anybot plugin status [-dir 目录] [-config anybot.yaml]
   anybot plugin inspect <name> [-dir 目录] [-config anybot.yaml]
   anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]
+  anybot plugin config <name> -reset <key>... [-dir 目录] [-config anybot.yaml]
   anybot plugin check [-dir 目录] [-config anybot.yaml]
   anybot plugin sync [-dir 目录] [-config anybot.yaml]
   anybot plugin enable <name> [-dir 目录] [-config anybot.yaml]
@@ -552,15 +553,15 @@ func runPluginConfig(args []string) error {
 	fs := flag.NewFlagSet("plugin config", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	config := fs.String("config", "", "配置文件")
-	name, assignmentArgs, flagArgs, err := splitPluginConfigSetArgs(args)
+	name, changeArgs, flagArgs, err := splitPluginConfigSetArgs(args)
 	if err != nil {
 		return err
 	}
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	if name == "" || len(assignmentArgs) == 0 {
-		return fmt.Errorf("用法：anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]")
+	if name == "" || len(changeArgs) == 0 {
+		return fmt.Errorf("用法：anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]，或 anybot plugin config <name> -reset <key>...")
 	}
 	configPath := *config
 	if configPath == "" {
@@ -569,20 +570,28 @@ func runPluginConfig(args []string) error {
 	if err := ensureKnownPluginTarget(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name, true); err != nil {
 		return err
 	}
-	assignments := make([]host.PluginConfigAssignment, 0, len(assignmentArgs))
-	for _, arg := range assignmentArgs {
-		assignment, err := host.ParsePluginConfigAssignment(arg)
-		if err != nil {
-			return err
-		}
-		assignments = append(assignments, assignment)
-	}
-	changed, err := host.SetPluginConfigValues(configPath, name, assignments)
+	change, err := host.ParsePluginConfigChanges(changeArgs)
 	if err != nil {
 		return err
 	}
-	if changed {
-		fmt.Fprintf(stdout, "插件配置已更新：%s（%d 项）\n", name, len(assignments))
+	if len(change.ResetPaths) > 0 {
+		result, err := host.ApplyPluginConfigChange(configPath, name, change)
+		if err != nil {
+			return err
+		}
+		if result.Changed {
+			fmt.Fprintf(stdout, "插件配置已重置：%s（%d 项）\n", name, result.Count)
+		} else {
+			fmt.Fprintf(stdout, "插件配置未变化：%s\n", name)
+		}
+		return syncPluginDefaults(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name)
+	}
+	result, err := host.ApplyPluginConfigChange(configPath, name, change)
+	if err != nil {
+		return err
+	}
+	if result.Changed {
+		fmt.Fprintf(stdout, "插件配置已更新：%s（%d 项）\n", name, result.Count)
 	} else {
 		fmt.Fprintf(stdout, "插件配置未变化：%s\n", name)
 	}
@@ -679,14 +688,14 @@ func runPluginSetEnabled(args []string, enabled bool) error {
 		fmt.Fprintf(stdout, "插件已处于%s状态：%s\n", action, name)
 	}
 	if enabled {
-		if err := syncEnabledPluginDefaults(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name); err != nil {
+		if err := syncPluginDefaults(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func syncEnabledPluginDefaults(configPath, workspacePath, name string) error {
+func syncPluginDefaults(configPath, workspacePath, name string) error {
 	result, err := host.SyncPluginConfigEntry(configPath, host.DefaultRegistry(), name)
 	if err != nil {
 		return err
@@ -763,7 +772,7 @@ func splitPluginConfigArgs(args []string) (string, []string, error) {
 
 func splitPluginConfigSetArgs(args []string) (string, []string, []string, error) {
 	var name string
-	var assignments []string
+	var changeArgs []string
 	var flagArgs []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -774,16 +783,33 @@ func splitPluginConfigSetArgs(args []string) (string, []string, []string, error)
 			}
 			flagArgs = append(flagArgs, arg, args[i+1])
 			i++
+		case arg == "-reset" || arg == "--reset":
+			if name == "" {
+				return "", nil, nil, fmt.Errorf("%s 必须写在插件名之后", arg)
+			}
+			if i+1 >= len(args) {
+				return "", nil, nil, fmt.Errorf("%s 需要值", arg)
+			}
+			changeArgs = append(changeArgs, arg, args[i+1])
+			i++
 		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
 			strings.HasPrefix(arg, "-config=") || strings.HasPrefix(arg, "--config="):
+			flagArgs = append(flagArgs, arg)
+		case strings.HasPrefix(arg, "-reset=") || strings.HasPrefix(arg, "--reset="):
+			if name == "" {
+				key, _, _ := strings.Cut(arg, "=")
+				return "", nil, nil, fmt.Errorf("%s 必须写在插件名之后", key)
+			}
+			changeArgs = append(changeArgs, arg)
+		case strings.HasPrefix(arg, "-"):
 			flagArgs = append(flagArgs, arg)
 		default:
 			if name == "" {
 				name = arg
 				continue
 			}
-			assignments = append(assignments, arg)
+			changeArgs = append(changeArgs, arg)
 		}
 	}
-	return name, assignments, flagArgs, nil
+	return name, changeArgs, flagArgs, nil
 }

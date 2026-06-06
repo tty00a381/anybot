@@ -162,6 +162,131 @@ func TestSetPluginEnabledNormalizesNullEntry(t *testing.T) {
 	}
 }
 
+func TestParsePluginConfigChanges(t *testing.T) {
+	change, err := ParsePluginConfigChanges([]string{"-reset", "provider.model", "history.enabled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(change.Assignments) != 0 ||
+		len(change.ResetPaths) != 2 ||
+		strings.Join(change.ResetPaths[0], ".") != "provider.model" ||
+		strings.Join(change.ResetPaths[1], ".") != "history.enabled" {
+		t.Fatalf("change = %#v", change)
+	}
+
+	change, err = ParsePluginConfigChanges([]string{"-reset=command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(change.ResetPaths) != 1 || strings.Join(change.ResetPaths[0], ".") != "command" {
+		t.Fatalf("change = %#v", change)
+	}
+
+	change, err = ParsePluginConfigChanges([]string{"command=docs", "limit=3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(change.Assignments) != 2 || len(change.ResetPaths) != 0 {
+		t.Fatalf("change = %#v", change)
+	}
+}
+
+func TestParsePluginConfigChangesRejectsMixedSetAndReset(t *testing.T) {
+	_, err := ParsePluginConfigChanges([]string{"-reset", "command", "limit=3"})
+	if err == nil || !strings.Contains(err.Error(), "不能同时设置和重置插件配置") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRemovePluginConfigValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(path, []byte(`plugins:
+  ai:
+    enabled: true
+    config:
+      provider:
+        model: custom
+        timeout: 30s
+      history:
+        enabled: true
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := RemovePluginConfigValues(path, "ai", [][]string{{"provider", "model"}, {"history", "enabled"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("reset should remove configured values")
+	}
+	out := readFile(t, path)
+	if strings.Contains(out, "model: custom") ||
+		strings.Contains(out, "history:") ||
+		!strings.Contains(out, "timeout: 30s") {
+		t.Fatalf("config:\n%s", out)
+	}
+	changed, err = RemovePluginConfigValues(path, "ai", [][]string{{"provider", "model"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("missing config path should be unchanged")
+	}
+}
+
+func TestRemovePluginConfigValuesUsesPluginConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anybot.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", "help.yaml")
+	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte(`enabled: true
+config:
+  command: docs
+  lines:
+    - custom
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := RemovePluginConfigValues(path, "help", [][]string{{"command"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("split plugin config should be changed")
+	}
+	out := readFile(t, pluginPath)
+	if strings.Contains(out, "command: docs") || !strings.Contains(out, "custom") {
+		t.Fatalf("plugin config:\n%s", out)
+	}
+	main := readFile(t, path)
+	if strings.Contains(main, "command:") {
+		t.Fatalf("main config should not be changed:\n%s", main)
+	}
+}
+
+func TestRemovePluginConfigValuesRejectsScalarParent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(path, []byte(`plugins:
+  help:
+    enabled: true
+    config:
+      command: docs
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := RemovePluginConfigValues(path, "help", [][]string{{"command", "name"}})
+	if err == nil || !strings.Contains(err.Error(), "command must be a YAML mapping") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestRemovePluginConfigEntryUsesPluginConfigDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")

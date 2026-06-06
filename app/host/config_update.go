@@ -31,13 +31,96 @@ type PluginConfigAssignment struct {
 	Value yaml.Node
 }
 
+// PluginConfigChange 描述一次插件配置命令中的写入或重置。
+type PluginConfigChange struct {
+	Assignments []PluginConfigAssignment
+	ResetPaths  [][]string
+}
+
+// PluginConfigChangeResult 描述一次插件配置变更的执行结果。
+type PluginConfigChangeResult struct {
+	Reset   bool
+	Changed bool
+	Count   int
+}
+
+// Empty 判断配置命令是否没有实际变更。
+func (change PluginConfigChange) Empty() bool {
+	return len(change.Assignments) == 0 && len(change.ResetPaths) == 0
+}
+
+// ParsePluginConfigChanges 解析 plugin config 的变更参数。
+func ParsePluginConfigChanges(args []string) (PluginConfigChange, error) {
+	var change PluginConfigChange
+	resetMode := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-reset" || arg == "--reset":
+			if i+1 >= len(args) {
+				return PluginConfigChange{}, fmt.Errorf("%s 需要值", arg)
+			}
+			path, err := ParsePluginConfigPath(args[i+1])
+			if err != nil {
+				return PluginConfigChange{}, err
+			}
+			change.ResetPaths = append(change.ResetPaths, path)
+			resetMode = true
+			i++
+		case strings.HasPrefix(arg, "-reset=") || strings.HasPrefix(arg, "--reset="):
+			_, value, _ := strings.Cut(arg, "=")
+			path, err := ParsePluginConfigPath(value)
+			if err != nil {
+				return PluginConfigChange{}, err
+			}
+			change.ResetPaths = append(change.ResetPaths, path)
+			resetMode = true
+		case resetMode:
+			if strings.Contains(arg, "=") {
+				return PluginConfigChange{}, fmt.Errorf("不能同时设置和重置插件配置")
+			}
+			path, err := ParsePluginConfigPath(arg)
+			if err != nil {
+				return PluginConfigChange{}, err
+			}
+			change.ResetPaths = append(change.ResetPaths, path)
+		default:
+			assignment, err := ParsePluginConfigAssignment(arg)
+			if err != nil {
+				return PluginConfigChange{}, err
+			}
+			change.Assignments = append(change.Assignments, assignment)
+		}
+	}
+	if len(change.Assignments) > 0 && len(change.ResetPaths) > 0 {
+		return PluginConfigChange{}, fmt.Errorf("不能同时设置和重置插件配置")
+	}
+	return change, nil
+}
+
+// ApplyPluginConfigChange 执行一次插件配置写入或重置。
+func ApplyPluginConfigChange(path, name string, change PluginConfigChange) (PluginConfigChangeResult, error) {
+	if len(change.Assignments) > 0 && len(change.ResetPaths) > 0 {
+		return PluginConfigChangeResult{}, fmt.Errorf("不能同时设置和重置插件配置")
+	}
+	if len(change.ResetPaths) > 0 {
+		count, err := removePluginConfigValues(path, name, change.ResetPaths)
+		return PluginConfigChangeResult{Reset: true, Changed: count > 0, Count: count}, err
+	}
+	if len(change.Assignments) > 0 {
+		changed, err := SetPluginConfigValues(path, name, change.Assignments)
+		return PluginConfigChangeResult{Changed: changed, Count: len(change.Assignments)}, err
+	}
+	return PluginConfigChangeResult{}, fmt.Errorf("plugin config change is required")
+}
+
 // ParsePluginConfigAssignment 解析 key=value 形式的插件配置写入项。value 使用 YAML 语义解析。
 func ParsePluginConfigAssignment(input string) (PluginConfigAssignment, error) {
 	key, value, ok := strings.Cut(input, "=")
 	if !ok {
 		return PluginConfigAssignment{}, fmt.Errorf("plugin config assignment %q must be key=value", input)
 	}
-	path, err := parsePluginConfigPath(key)
+	path, err := ParsePluginConfigPath(key)
 	if err != nil {
 		return PluginConfigAssignment{}, err
 	}
@@ -46,6 +129,21 @@ func ParsePluginConfigAssignment(input string) (PluginConfigAssignment, error) {
 		return PluginConfigAssignment{}, fmt.Errorf("plugin config %s: %w", strings.Join(path, "."), err)
 	}
 	return PluginConfigAssignment{Path: path, Value: *node}, nil
+}
+
+// ParsePluginConfigPath 解析 plugins.<name>.config 下的点分路径。
+func ParsePluginConfigPath(input string) ([]string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, fmt.Errorf("plugin config key is required")
+	}
+	parts := strings.Split(input, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) != part || part == "" || strings.Contains(part, "=") || strings.HasPrefix(part, "-") {
+			return nil, fmt.Errorf("plugin config key %q is invalid", input)
+		}
+	}
+	return parts, nil
 }
 
 // EnsurePluginConfigEntry 确保 anybot 配置里存在 plugins.<name> 占位项。
@@ -211,6 +309,65 @@ func SetPluginConfigValues(path, name string, assignments []PluginConfigAssignme
 		return changed, err
 	}
 	return true, saveYAMLDocument(path, doc)
+}
+
+// RemovePluginConfigValues 删除 anybot 配置里 plugins.<name>.config 的字段覆盖。
+func RemovePluginConfigValues(path, name string, paths [][]string) (bool, error) {
+	count, err := removePluginConfigValues(path, name, paths)
+	return count > 0, err
+}
+
+func removePluginConfigValues(path, name string, paths [][]string) (int, error) {
+	if path == "" {
+		path = "anybot.yaml"
+	}
+	if name == "" {
+		return 0, fmt.Errorf("plugin name is required")
+	}
+	if len(paths) == 0 {
+		return 0, fmt.Errorf("plugin config path is required")
+	}
+	doc, err := loadYAMLDocument(path)
+	if err != nil {
+		return 0, err
+	}
+	root := documentRoot(&doc)
+	if root.Kind == 0 {
+		return 0, nil
+	}
+	if root.Kind != yaml.MappingNode {
+		return 0, fmt.Errorf("%s root must be a YAML mapping", path)
+	}
+	plugins, err := ensureMapping(root, "plugins")
+	if err != nil {
+		return 0, err
+	}
+	entry := mappingValue(plugins, name)
+	if entry == nil {
+		if dir, ok, err := pluginConfigDir(root, path); err != nil {
+			return 0, err
+		} else if ok {
+			entryPath, err := pluginConfigEntryPath(dir, name)
+			if err != nil {
+				return 0, err
+			}
+			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
+			if err != nil {
+				return 0, err
+			}
+			count, err := removePluginConfigPaths(name, entryRoot, paths)
+			if err != nil || count == 0 {
+				return count, err
+			}
+			return count, saveYAMLDocument(entryPath, entryDoc)
+		}
+		return 0, nil
+	}
+	count, err := removePluginConfigPaths(name, entry, paths)
+	if err != nil || count == 0 {
+		return count, err
+	}
+	return count, saveYAMLDocument(path, doc)
 }
 
 // RemovePluginConfigEntry 删除 anybot 配置里的 plugins.<name>。
@@ -635,6 +792,31 @@ func setPluginConfigAssignments(name string, entry *yaml.Node, assignments []Plu
 	return changed, nil
 }
 
+func removePluginConfigPaths(name string, entry *yaml.Node, paths [][]string) (int, error) {
+	if err := ensurePluginEntryMapping(entry); err != nil {
+		return 0, fmt.Errorf("plugin %s entry must be a YAML mapping", name)
+	}
+	config := mappingValue(entry, "config")
+	if emptyYAMLNode(config) {
+		return 0, nil
+	}
+	if config.Kind != yaml.MappingNode {
+		return 0, fmt.Errorf("plugin %s config must be a YAML mapping", name)
+	}
+	var count int
+	for _, path := range paths {
+		if len(path) == 0 {
+			return 0, fmt.Errorf("plugin config path is required")
+		}
+		if removed, err := removeMappingPath(config, path); err != nil {
+			return 0, fmt.Errorf("plugin %s config.%s: %w", name, strings.Join(path, "."), err)
+		} else if removed {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func setMappingPath(mapping *yaml.Node, path []string, value *yaml.Node) (bool, error) {
 	if mapping.Kind != yaml.MappingNode {
 		return false, fmt.Errorf("parent must be a YAML mapping")
@@ -665,6 +847,31 @@ func setMappingPath(mapping *yaml.Node, path []string, value *yaml.Node) (bool, 
 		return false, fmt.Errorf("%s must be a YAML mapping", key)
 	}
 	return setMappingPath(existing, path[1:], value)
+}
+
+func removeMappingPath(mapping *yaml.Node, path []string) (bool, error) {
+	if mapping.Kind != yaml.MappingNode {
+		return false, fmt.Errorf("parent must be a YAML mapping")
+	}
+	key := path[0]
+	if len(path) == 1 {
+		return removeMappingKey(mapping, key), nil
+	}
+	existing := mappingValue(mapping, key)
+	if emptyYAMLNode(existing) {
+		return false, nil
+	}
+	if existing.Kind != yaml.MappingNode {
+		return false, fmt.Errorf("%s must be a YAML mapping", key)
+	}
+	removed, err := removeMappingPath(existing, path[1:])
+	if err != nil || !removed {
+		return removed, err
+	}
+	if len(existing.Content) == 0 {
+		removeMappingKey(mapping, key)
+	}
+	return true, nil
 }
 
 func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
@@ -768,20 +975,6 @@ func boolValue(value bool) string {
 
 func emptyConfigNode() *yaml.Node {
 	return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-}
-
-func parsePluginConfigPath(input string) ([]string, error) {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return nil, fmt.Errorf("plugin config key is required")
-	}
-	parts := strings.Split(input, ".")
-	for _, part := range parts {
-		if strings.TrimSpace(part) != part || part == "" {
-			return nil, fmt.Errorf("plugin config key %q is invalid", input)
-		}
-	}
-	return parts, nil
 }
 
 func parseYAMLValue(input string) (*yaml.Node, error) {

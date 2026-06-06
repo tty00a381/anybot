@@ -16,6 +16,8 @@ func usage() {
   anybot plugin list [-dir 目录]
   anybot plugin status [-dir 目录] [-config anybot.yaml]
   anybot plugin inspect <name> [-dir 目录] [-config anybot.yaml]
+  anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]
+  anybot plugin config <name> -reset <key>... [-dir 目录] [-config anybot.yaml]
   anybot plugin check [-dir 目录] [-config anybot.yaml]
   anybot plugin sync [-dir 目录] [-config anybot.yaml]
   anybot plugin enable <name> [-dir 目录] [-config anybot.yaml]
@@ -86,5 +88,5 @@ anybot plugin check
 anybot up
 ` + "```" + `
 
-命令会更新外部插件注册代码，并在 ` + "`plugins.d/<name>.yaml`" + ` 中加入默认禁用的插件配置项；可用 ` + "`module@version`" + ` 或 ` + "`-version`" + ` 固定版本，省略版本或使用 ` + "`latest`" + ` 时会解析并记录具体版本。本地开发时可加 ` + "`-replace ../path/to/plugin`" + `，它按当前命令目录解析并写成相对宿主目录的路径，不解析远端版本；没有版本时生成宿主会按模块主版本写入占位 ` + "`require`" + `，例如普通模块使用 ` + "`v0.0.0`" + `，` + "`/v2`" + ` 模块使用 ` + "`v2.0.0`" + `。确认配置后用 ` + "`anybot plugin enable`" + ` 启用插件，` + "`anybot plugin inspect`" + ` 查看当前配置和默认配置，` + "`anybot plugin check`" + ` 检查可加载插件配置，` + "`anybot up`" + ` 会构建宿主、同步并检查插件配置，然后运行。要调整外部插件版本、导出符号或本地替换路径，可使用 ` + "`anybot plugin update <name>`" + `，它不会改写插件配置。` + "`anybot build/up`" + ` 也会固定生成宿主对 AnyBot 自身的依赖，避免追随不确定的 ` + "`latest`" + `。移除外部插件可使用 ` + "`anybot plugin remove <name>`" + `。
+命令会更新外部插件注册代码，并在 ` + "`plugins.d/<name>.yaml`" + ` 中加入默认禁用的插件配置项；可用 ` + "`module@version`" + ` 或 ` + "`-version`" + ` 固定版本，省略版本或使用 ` + "`latest`" + ` 时会解析并记录具体版本。本地开发时可加 ` + "`-replace ../path/to/plugin`" + `，它按当前命令目录解析并写成相对宿主目录的路径，不解析远端版本；没有版本时生成宿主会按模块主版本写入占位 ` + "`require`" + `，例如普通模块使用 ` + "`v0.0.0`" + `，` + "`/v2`" + ` 模块使用 ` + "`v2.0.0`" + `。确认配置后用 ` + "`anybot plugin enable`" + ` 启用插件，` + "`anybot plugin config <name> key=value`" + ` 调整配置；要撤回某个字段的本地覆盖并回到 typed config 默认值，用 ` + "`anybot plugin config <name> -reset key`" + `。` + "`anybot plugin inspect`" + ` 查看当前配置和默认配置，` + "`anybot plugin check`" + ` 检查可加载插件配置，` + "`anybot up`" + ` 会构建宿主、同步并检查插件配置，然后运行。要调整外部插件版本、导出符号或本地替换路径，可使用 ` + "`anybot plugin update <name>`" + `，它不会改写插件配置。` + "`anybot build/up`" + ` 也会固定生成宿主对 AnyBot 自身的依赖，避免追随不确定的 ` + "`latest`" + `。移除外部插件可使用 ` + "`anybot plugin remove <name>`" + `。
 `

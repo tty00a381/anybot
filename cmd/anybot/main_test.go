@@ -901,6 +901,126 @@ func TestRunPluginSyncSkipsExternalWorkspacePlugin(t *testing.T) {
 	}
 }
 
+func TestRunPluginConfigResetSyncsBuiltinDefaults(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte(`plugins:
+  help:
+    enabled: true
+    config:
+      command: docs
+      lines:
+        - custom
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "config", "help", "-reset", "command", "lines", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "插件配置已重置：help（2 项）") ||
+		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
+		t.Fatalf("reset output:\n%s", out.String())
+	}
+	updated := readTestFile(t, config)
+	if !strings.Contains(updated, "command: help") ||
+		!strings.Contains(updated, "/help 显示帮助") ||
+		strings.Contains(updated, "command: docs") ||
+		strings.Contains(updated, "custom") {
+		t.Fatalf("config:\n%s", updated)
+	}
+}
+
+func TestRunPluginConfigResetUsesPluginConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", "help.yaml")
+	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte(`enabled: true
+config:
+  command: docs
+  lines:
+    - custom
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "config", "help", "-reset", "command", "lines", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "插件配置已重置：help（2 项）") ||
+		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
+		t.Fatalf("reset output:\n%s", out.String())
+	}
+	updated := readTestFile(t, pluginPath)
+	if !strings.Contains(updated, "command: help") ||
+		!strings.Contains(updated, "/help 显示帮助") ||
+		strings.Contains(updated, "command: docs") ||
+		strings.Contains(updated, "custom") {
+		t.Fatalf("plugin config:\n%s", updated)
+	}
+	main := readTestFile(t, config)
+	if strings.Contains(main, "command:") || strings.Contains(main, "lines:") {
+		t.Fatalf("main config should not receive split config:\n%s", main)
+	}
+}
+
+func TestRunPluginConfigResetMustFollowPluginName(t *testing.T) {
+	err := run([]string{"plugin", "config", "-reset", "command", "help"})
+	if err == nil || !strings.Contains(err.Error(), "-reset 必须写在插件名之后") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte("plugins:\n  help:\n    enabled: true\n    config: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := run([]string{"plugin", "config", "help", "-reset", "command", "command=docs", "-dir", dir})
+	if err == nil || !strings.Contains(err.Error(), "不能同时设置和重置插件配置") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRunPluginConfigResetWorkspacePluginWaitsForGeneratedHost(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte(`plugins:
+  weather:
+    enabled: true
+    config:
+      city: Hangzhou
+      unit: c
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, Name: "weather", Module: "github.com/acme/weather"}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "config", "weather", "-reset", "city", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "插件配置已重置：weather（1 项）") ||
+		!strings.Contains(out.String(), "默认配置待构建同步：weather") {
+		t.Fatalf("reset output:\n%s", out.String())
+	}
+	updated := readTestFile(t, config)
+	if strings.Contains(updated, "city: Hangzhou") || !strings.Contains(updated, "unit: c") {
+		t.Fatalf("config:\n%s", updated)
+	}
+}
+
 func TestRunPluginEnableDisable(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
