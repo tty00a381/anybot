@@ -229,7 +229,7 @@ anybot plugin check
 anybot up
 ```
 
-`-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。发布前可以用 `anybot plugin update anybot_weather -clear-replace -version v0.1.0` 切回远端版本；继续本地开发时也可以用 `anybot plugin update anybot_weather -replace ../anybot-weather` 改路径。`update` 不会改写 `plugins.d/<name>.yaml`，适合保留对话插件的复杂配置。`anybot plugin inspect` 可以查看当前配置和 typed config 默认值；`anybot plugin check` 会在不启动 adapter 的情况下验证可加载插件配置；外部插件构建进宿主后，也可以运行 `./anybot-bot plugin enable`、`./anybot-bot plugin config`、`./anybot-bot plugin inspect` 和 `./anybot-bot plugin check` 做最终校验。
+`-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。本地替换不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。发布前可以用 `anybot plugin update anybot_weather -clear-replace -version v0.1.0` 切回远端版本；继续本地开发时也可以用 `anybot plugin update anybot_weather -replace ../anybot-weather` 改路径。远端插件省略版本或使用 `latest` 时，CLI 会解析并记录具体版本，避免生成宿主构建时追随浮动 latest。`update` 不会改写 `plugins.d/<name>.yaml`，适合保留对话插件的复杂配置。`anybot plugin inspect` 可以查看当前配置和 typed config 默认值；`anybot plugin check` 会在不启动 adapter 的情况下验证可加载插件配置；外部插件构建进宿主后，也可以运行 `./anybot-bot plugin enable`、`./anybot-bot plugin config`、`./anybot-bot plugin inspect` 和 `./anybot-bot plugin check` 做最终校验。
 
 ## 生成插件骨架
 

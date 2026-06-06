@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -244,13 +245,19 @@ transport:
 }
 
 func TestRunPluginAddAndList(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
 	dir := t.TempDir()
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-symbol", "Weather", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather") ||
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3.Weather)") ||
 		!strings.Contains(out.String(), "配置已添加：weather") ||
 		!strings.Contains(out.String(), "下一步：") ||
 		!strings.Contains(out.String(), "cd "+dir) ||
@@ -269,12 +276,111 @@ func TestRunPluginAddAndList(t *testing.T) {
 	if !strings.Contains(pluginConfig, "enabled: false") || !strings.Contains(pluginConfig, "config: {}") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if !strings.Contains(manifest, "version: v1.2.3") {
+		t.Fatalf("manifest:\n%s", manifest)
+	}
 	out.Reset()
 	if err := run([]string{"plugin", "list", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "weather\tgithub.com/acme/weather\tWeather") {
+	if !strings.Contains(out.String(), "weather\tgithub.com/acme/weather@v1.2.3\tWeather") {
 		t.Fatalf("list output:\n%s", out.String())
+	}
+}
+
+func TestRunPluginAddWithReplaceDoesNotResolveLatest(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		t.Fatalf("local replace should not resolve %s@%s", module, query)
+		return "", nil
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "bot")
+	pluginDir := filepath.Join(root, "weather")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-replace", pluginDir, "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		dir + " go mod edit -require=github.com/acme/weather@v0.0.0",
+		dir + " go mod edit -replace=github.com/acme/weather=../weather",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather => ../weather.Module)") {
+		t.Fatalf("add output:\n%s", out.String())
+	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if strings.Contains(manifest, "version:") || !strings.Contains(manifest, "replace: ../weather") {
+		t.Fatalf("manifest:\n%s", manifest)
+	}
+}
+
+func TestRunPluginAddWithReplaceUsesPathMajorPlaceholder(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		t.Fatalf("local replace should not resolve %s@%s", module, query)
+		return "", nil
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "bot")
+	pluginDir := filepath.Join(root, "weather")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "add", "github.com/acme/weather/v2", "-replace", pluginDir, "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		dir + " go mod edit -require=github.com/acme/weather/v2@v2.0.0",
+		dir + " go mod edit -replace=github.com/acme/weather/v2=../weather",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather/v2 => ../weather.Module)") {
+		t.Fatalf("add output:\n%s", out.String())
+	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if !strings.Contains(manifest, "name: weather") ||
+		strings.Contains(manifest, "version:") ||
+		!strings.Contains(manifest, "module: github.com/acme/weather/v2") {
+		t.Fatalf("manifest:\n%s", manifest)
+	}
+}
+
+func TestRunPluginAddReportsVersionResolutionErrorWithoutPartialWrite(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "", errors.New("module not found")
+	})
+	dir := t.TempDir()
+	err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir})
+	if err == nil {
+		t.Fatal("version resolution failure should reject plugin add")
+	}
+	if !strings.Contains(err.Error(), "解析插件版本 github.com/acme/weather@latest 失败") ||
+		!strings.Contains(err.Error(), "module not found") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, host.PluginWorkspaceFile)); !os.IsNotExist(err) {
+		t.Fatalf("workspace should not be created, err=%v", err)
 	}
 }
 
@@ -356,6 +462,165 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	}
 }
 
+func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.4.0", nil
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	dir := t.TempDir()
+	if _, err := host.AddPluginModule(host.AddPluginOptions{
+		Dir:     dir,
+		Name:    "weather",
+		Module:  "github.com/acme/weather",
+		Version: "v1.2.3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "update", "weather", "-version", "latest", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		dir + " go mod edit -require=github.com/acme/weather@v1.4.0",
+		dir + " go mod edit -dropreplace=github.com/acme/weather",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Module)") {
+		t.Fatalf("update output:\n%s", out.String())
+	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if !strings.Contains(manifest, "version: v1.4.0") || strings.Contains(manifest, "latest") {
+		t.Fatalf("manifest:\n%s", manifest)
+	}
+}
+
+func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.4.0", nil
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	dir := t.TempDir()
+	if _, err := host.AddPluginModule(host.AddPluginOptions{
+		Dir:     dir,
+		Name:    "weather",
+		Module:  "github.com/acme/weather",
+		Replace: "../weather",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "update", "weather", "-clear-replace", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		dir + " go mod edit -require=github.com/acme/weather@v1.4.0",
+		dir + " go mod edit -dropreplace=github.com/acme/weather",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Module)") {
+		t.Fatalf("update output:\n%s", out.String())
+	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if !strings.Contains(manifest, "version: v1.4.0") ||
+		strings.Contains(manifest, "replace:") {
+		t.Fatalf("manifest:\n%s", manifest)
+	}
+}
+
+func TestRunPluginUpdateVersionResolutionErrorDoesNotWrite(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "", errors.New("module not found")
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	commandRunner = func(dir, name string, args ...string) error {
+		t.Fatalf("go command should not run after resolution failure: %s %s", name, strings.Join(args, " "))
+		return nil
+	}
+	dir := t.TempDir()
+	if _, err := host.AddPluginModule(host.AddPluginOptions{
+		Dir:     dir,
+		Name:    "weather",
+		Module:  "github.com/acme/weather",
+		Version: "v1.2.3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := run([]string{"plugin", "update", "weather", "-version", "latest", "-dir", dir})
+	if err == nil {
+		t.Fatal("version resolution failure should reject plugin update")
+	}
+	if !strings.Contains(err.Error(), "解析插件版本 github.com/acme/weather@latest 失败") ||
+		!strings.Contains(err.Error(), "module not found") {
+		t.Fatalf("err = %v", err)
+	}
+	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
+	if !strings.Contains(manifest, "version: v1.2.3") ||
+		strings.Contains(manifest, "latest") {
+		t.Fatalf("manifest should remain unchanged:\n%s", manifest)
+	}
+}
+
+func TestPluginVersionNeedsResolution(t *testing.T) {
+	tests := []struct {
+		module  string
+		version string
+		want    bool
+	}{
+		{module: "github.com/acme/weather", version: "", want: true},
+		{module: "github.com/acme/weather", version: "latest", want: true},
+		{module: "github.com/acme/weather", version: "main", want: true},
+		{module: "github.com/acme/weather", version: "abcdef123456", want: true},
+		{module: "github.com/acme/weather", version: "v1", want: true},
+		{module: "github.com/acme/weather", version: "v1.2", want: true},
+		{module: "github.com/acme/weather", version: "v1.2.x", want: true},
+		{module: "github.com/acme/weather", version: "v1.2.3foo", want: true},
+		{module: "github.com/acme/weather", version: "v1.2.3", want: false},
+		{module: "github.com/acme/weather", version: "v1.2.3-rc.1", want: false},
+		{module: "github.com/acme/weather", version: "v1.2.3+build.1", want: false},
+		{module: "github.com/acme/weather", version: "v0.0.0-20260101000000-abcdefabcdef", want: false},
+		{module: "github.com/acme/weather", version: "v2.0.0+incompatible", want: false},
+		{module: "github.com/acme/weather/v2", version: "v2.0.0", want: false},
+		{module: "github.com/acme/weather/v2", version: "v1.2.3", want: true},
+		{module: "github.com/acme/weather/v2", version: "v2", want: true},
+		{module: "github.com/acme/weather/v2", version: "v2.0", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.module+"@"+tt.version, func(t *testing.T) {
+			if got := pluginVersionNeedsResolution(tt.module, tt.version); got != tt.want {
+				t.Fatalf("pluginVersionNeedsResolution(%q, %q) = %v, want %v", tt.module, tt.version, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeReplacePath(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "bot")
@@ -385,6 +650,12 @@ func TestRunPluginAddRejectsBuiltinNameCollision(t *testing.T) {
 }
 
 func TestRunPluginAddAllowsRenamingBuiltinCollision(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/help" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
 	dir := t.TempDir()
 	out, _, restore := captureOutput(t)
 	defer restore()
@@ -483,6 +754,12 @@ func TestRunPluginCheck(t *testing.T) {
 }
 
 func TestRunPluginRemove(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
 	dir := t.TempDir()
 	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir}); err != nil {
 		t.Fatal(err)
@@ -602,6 +879,12 @@ func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 }
 
 func TestRunPluginSyncSkipsExternalWorkspacePlugin(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
 	dir := t.TempDir()
 	out, _, restore := captureOutput(t)
 	defer restore()
@@ -750,6 +1033,12 @@ func TestRunPluginEnableAllowsWorkspacePlugin(t *testing.T) {
 }
 
 func TestRunDoctorHintsExternalWorkspacePlugin(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/weather" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
 	dir := t.TempDir()
 	_, _, restore := captureOutput(t)
 	defer restore()
@@ -1039,6 +1328,15 @@ func setTestFrameworkDependencies(t *testing.T, deps []moduleDependency) {
 	}
 	t.Cleanup(func() {
 		frameworkDependencies = old
+	})
+}
+
+func setTestModuleVersionResolver(t *testing.T, resolver func(module, query string) (string, error)) {
+	t.Helper()
+	old := moduleVersionResolver
+	moduleVersionResolver = resolver
+	t.Cleanup(func() {
+		moduleVersionResolver = old
 	})
 }
 

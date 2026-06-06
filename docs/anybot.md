@@ -108,6 +108,8 @@ anybot plugin status
 anybot plugin add github.com/acme/anybot-weather@v0.1.0
 ```
 
+如果省略版本，`plugin add` 会解析当前 `latest` 并把具体版本写入 `anybot.plugins.yaml`。这样命令仍然简短，生成宿主的构建却不会随远端最新版本漂移。显式写 `@latest` 或 `-version latest` 也会被收敛成解析到的版本。
+
 指定导出变量名：
 
 ```sh
@@ -120,7 +122,7 @@ anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Weather
 anybot plugin add github.com/acme/anybot-weather -replace ../anybot-weather
 ```
 
-`-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。
+`-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。本地替换不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`；已有版本则保留版本配合 `replace`。
 
 指定宿主配置名：
 
@@ -150,7 +152,7 @@ anybot plugin update daily_weather -replace ../anybot-weather
 anybot plugin update daily_weather -clear-replace
 ```
 
-`update` 只修改 `anybot.plugins.yaml`、`plugins.gen.go` 和 `go.mod`，不会改写 `plugins.d/<name>.yaml`。它适合在不丢失对话插件复杂配置的前提下切换版本、修正导出符号或切换本地开发路径。
+`update` 只修改 `anybot.plugins.yaml`、`plugins.gen.go` 和 `go.mod`，不会改写 `plugins.d/<name>.yaml`。它适合在不丢失对话插件复杂配置的前提下切换版本、修正导出符号或切换本地开发路径。`-version latest` 会先解析成具体版本再写入；解析失败时不会改写工作区清单。
 
 ## 移除插件
 

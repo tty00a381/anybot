@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tty00a381/anybot/app/host"
+	modmodule "golang.org/x/mod/module"
 )
 
 func runPlugins(args []string) error {
@@ -111,6 +112,11 @@ func runPluginAdd(args []string) error {
 	if _, exists := host.DefaultRegistry().Factory(pluginName); exists {
 		return fmt.Errorf("插件名 %q 已被内置插件占用；请使用 -name 指定其他名称", pluginName)
 	}
+	pinnedVersion, err := pinPluginModuleVersion(modulePath, *version, replacePath)
+	if err != nil {
+		return err
+	}
+	*version = pinnedVersion
 	workspace, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     *dir,
 		Name:    *name,
@@ -187,13 +193,37 @@ func runPluginUpdate(args []string) error {
 			return err
 		}
 	}
-	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
+	target, err := previewPluginModuleUpdate(host.UpdatePluginOptions{
 		Dir:          *dir,
 		Name:         name,
 		Version:      *version,
 		Replace:      replacePath,
 		Symbol:       *symbol,
 		SetVersion:   setVersion,
+		SetReplace:   setReplace,
+		ClearReplace: *clearReplace,
+		SetSymbol:    setSymbol,
+	})
+	if err != nil {
+		return err
+	}
+	updateVersion := *version
+	updateSetVersion := setVersion
+	pinnedVersion, err := pinPluginModuleVersion(target.Module, target.Version, target.Replace)
+	if err != nil {
+		return err
+	}
+	if pinnedVersion != target.Version {
+		updateVersion = pinnedVersion
+		updateSetVersion = true
+	}
+	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
+		Dir:          *dir,
+		Name:         name,
+		Version:      updateVersion,
+		Replace:      replacePath,
+		Symbol:       *symbol,
+		SetVersion:   updateSetVersion,
 		SetReplace:   setReplace,
 		ClearReplace: *clearReplace,
 		SetSymbol:    setSymbol,
@@ -254,6 +284,91 @@ func runPluginRemove(args []string) error {
 		fmt.Fprintf(stdout, "配置已移除：%s\n", removed.Name)
 	}
 	return nil
+}
+
+func previewPluginModuleUpdate(opts host.UpdatePluginOptions) (host.PluginModule, error) {
+	if opts.Dir == "" {
+		opts.Dir = "."
+	}
+	if opts.Name == "" {
+		return host.PluginModule{}, fmt.Errorf("plugin name is required")
+	}
+	if opts.SetReplace && opts.ClearReplace {
+		return host.PluginModule{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
+	}
+	workspace, err := host.LoadPluginWorkspace(filepath.Join(opts.Dir, host.PluginWorkspaceFile))
+	if err != nil {
+		return host.PluginModule{}, err
+	}
+	var updated host.PluginModule
+	found := false
+	for _, item := range workspace.Plugins {
+		if item.Name == opts.Name {
+			updated = item
+			found = true
+			break
+		}
+	}
+	if !found {
+		return host.PluginModule{}, fmt.Errorf("plugin %s not found", opts.Name)
+	}
+	if opts.SetVersion {
+		updated.Version = strings.TrimSpace(opts.Version)
+	}
+	if opts.SetReplace {
+		updated.Replace = strings.TrimSpace(opts.Replace)
+	}
+	if opts.ClearReplace {
+		updated.Replace = ""
+	}
+	if opts.SetSymbol {
+		updated.Symbol = strings.TrimSpace(opts.Symbol)
+		if updated.Symbol == "" {
+			updated.Symbol = "Module"
+		}
+	}
+	return updated, nil
+}
+
+func pinPluginModuleVersion(module, version, replace string) (string, error) {
+	version = strings.TrimSpace(version)
+	if strings.TrimSpace(replace) != "" {
+		if pluginVersionNeedsResolution(module, version) {
+			return "", nil
+		}
+		return version, nil
+	}
+	if !pluginVersionNeedsResolution(module, version) {
+		return version, nil
+	}
+	query := version
+	if query == "" {
+		query = "latest"
+	}
+	resolved, err := moduleVersionResolver(module, query)
+	if err != nil {
+		return "", fmt.Errorf("解析插件版本 %s@%s 失败: %w", module, query, err)
+	}
+	return resolved, nil
+}
+
+func pluginVersionNeedsResolution(module, version string) bool {
+	version = strings.TrimSpace(version)
+	return !pinnedPluginVersion(module, version)
+}
+
+func pinnedPluginVersion(module, version string) bool {
+	if version == "" || version == "latest" {
+		return false
+	}
+	if err := modmodule.Check(module, version); err != nil {
+		return false
+	}
+	core := version
+	if i := strings.IndexAny(core, "-+"); i >= 0 {
+		core = core[:i]
+	}
+	return strings.Count(core, ".") == 2
 }
 
 func splitPluginAddArgs(args []string) (string, []string, error) {

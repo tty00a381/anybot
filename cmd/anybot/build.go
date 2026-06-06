@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tty00a381/anybot/app/host"
+	modmodule "golang.org/x/mod/module"
 )
 
 var managedModules = []string{
@@ -24,6 +25,7 @@ type moduleDependency struct {
 }
 
 var frameworkDependencies = detectFrameworkDependencies
+var moduleVersionResolver = resolveModuleVersion
 
 func runBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
@@ -141,6 +143,26 @@ func runExternalCommand(dir, name string, args ...string) error {
 	return cmd.Run()
 }
 
+func resolveModuleVersion(module, query string) (string, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		query = "latest"
+	}
+	spec := module + "@" + query
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Version}}", spec).CombinedOutput()
+	if err != nil {
+		if detail := strings.TrimSpace(string(out)); detail != "" {
+			return "", fmt.Errorf("%w: %s", err, detail)
+		}
+		return "", err
+	}
+	version := strings.TrimSpace(string(out))
+	if version == "" {
+		return "", fmt.Errorf("go list did not return a version for %s", spec)
+	}
+	return version, nil
+}
+
 func syncWorkspaceGoMod(dir string, workspace host.PluginWorkspace) error {
 	for _, plugin := range workspace.Plugins {
 		if err := syncPluginGoMod(dir, plugin); err != nil {
@@ -237,7 +259,7 @@ func moduleSourceRoot(module string) (string, bool) {
 func syncPluginGoMod(dir string, plugin host.PluginModule) error {
 	version := plugin.Version
 	if version == "" && plugin.Replace != "" {
-		version = "v0.0.0"
+		version = pluginReplacePlaceholderVersion(plugin.Module)
 	}
 	if version != "" {
 		if err := commandRunner(dir, "go", "mod", "edit", "-require="+plugin.Module+"@"+version); err != nil {
@@ -251,6 +273,22 @@ func syncPluginGoMod(dir string, plugin host.PluginModule) error {
 		return nil
 	}
 	return commandRunner(dir, "go", "mod", "edit", "-dropreplace="+plugin.Module)
+}
+
+func pluginReplacePlaceholderVersion(module string) string {
+	_, pathMajor, ok := modmodule.SplitPathVersion(module)
+	if !ok || pathMajor == "" {
+		return "v0.0.0"
+	}
+	major := strings.TrimLeft(pathMajor, "/.")
+	if major == "" {
+		return "v0.0.0"
+	}
+	version := major + ".0.0"
+	if err := modmodule.Check(module, version); err != nil {
+		return "v0.0.0"
+	}
+	return version
 }
 
 func dropPluginGoMod(dir string, plugin host.PluginModule) error {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"text/template"
 
+	modmodule "golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 )
 
@@ -390,7 +391,7 @@ func DefaultPluginName(module string) string {
 	if parsed, _, err := ParsePluginModuleSpec(module); err == nil {
 		module = parsed
 	}
-	base := path.Base(strings.TrimRight(module, "/"))
+	base := path.Base(strings.TrimRight(pluginNameBasePath(module), "/"))
 	base = strings.TrimSuffix(base, ".git")
 	base = strings.ToLower(base)
 	var b strings.Builder
@@ -415,6 +416,14 @@ func DefaultPluginName(module string) string {
 		return "plugin"
 	}
 	return out
+}
+
+func pluginNameBasePath(module string) string {
+	prefix, pathMajor, ok := modmodule.SplitPathVersion(module)
+	if !ok || pathMajor == "" || prefix == "" {
+		return module
+	}
+	return prefix
 }
 
 // ParsePluginModuleSpec 解析 module 或 module@version 形式的插件来源。

@@ -218,7 +218,7 @@ anybot plugin add github.com/acme/anybot-weather@v0.1.0
 anybot plugin remove weather
 ```
 
-`anybot build/up` 会同步生成宿主对 AnyBot 自身和外部插件的 `require/replace`。发布版使用当前框架版本；源码开发版使用本地 `replace`。
+远端插件省略版本时，`anybot plugin add` 会解析当前 `latest` 并把具体版本写入清单；`-version latest` 也会被收敛成具体版本。本地 `-replace` 开发不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。`anybot build/up` 会同步生成宿主对 AnyBot 自身和外部插件的 `require/replace`。发布版使用当前框架版本；源码开发版使用本地 `replace`。
 
 ## core.yaml
 

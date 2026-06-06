@@ -250,6 +250,12 @@ func TestDefaultPluginName(t *testing.T) {
 	if got := DefaultPluginName("github.com/acme/anybot-weather@v1.2.3"); got != "anybot_weather" {
 		t.Fatalf("versioned name = %q", got)
 	}
+	if got := DefaultPluginName("github.com/acme/anybot-weather/v2"); got != "anybot_weather" {
+		t.Fatalf("path-major name = %q", got)
+	}
+	if got := DefaultPluginName("gopkg.in/acme/weather.v2"); got != "weather" {
+		t.Fatalf("gopkg name = %q", got)
+	}
 	if got := DefaultPluginName("///"); got != "plugin" {
 		t.Fatalf("empty name = %q", got)
 	}
