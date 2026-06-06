@@ -129,6 +129,7 @@ func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
 		fmt.Fprintln(stdout, "在机器人工作目录中安装本地插件：")
 		fmt.Fprintf(stdout, "  anybot plugin add %s -name %s -replace %s -dir <机器人工作目录>\n", result.Module, result.Name, shellQuote(absDir))
 		fmt.Fprintf(stdout, "  anybot plugin enable %s -dir <机器人工作目录>\n", result.Name)
+		fmt.Fprintln(stdout, "  anybot plugin check -dir <机器人工作目录>")
 		fmt.Fprintln(stdout, "  anybot up -dir <机器人工作目录>")
 	}
 }

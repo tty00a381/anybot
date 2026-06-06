@@ -168,6 +168,10 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 		!strings.Contains(testFile, "recordClient") {
 		t.Fatalf("plugin test scaffold:\n%s", testFile)
 	}
+	readme := readFile(t, filepath.Join(dir, "README.md"))
+	if !strings.Contains(readme, "anybot plugin check") {
+		t.Fatalf("README should suggest plugin check:\n%s", readme)
+	}
 	runGo(t, dir, "test", "./...")
 }
 
@@ -205,6 +209,9 @@ func TestGeneratedStandalonePluginTemplatesSmoke(t *testing.T) {
 			readme := readFile(t, filepath.Join(dir, "README.md"))
 			if !strings.Contains(readme, "go mod tidy") {
 				t.Fatalf("README should mention remote-version tidy flow:\n%s", readme)
+			}
+			if !strings.Contains(readme, "anybot plugin check") {
+				t.Fatalf("README should suggest plugin check:\n%s", readme)
 			}
 			runGo(t, dir, "test", "./...")
 		})

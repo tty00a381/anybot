@@ -223,7 +223,8 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	if !strings.Contains(out.String(), "已生成独立插件模块：daily_weather (github.com/acme/anybot-weather)") ||
 		!strings.Contains(out.String(), "go test ./...") ||
 		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -name daily_weather -replace "+dir) ||
-		!strings.Contains(out.String(), "anybot plugin enable daily_weather") {
+		!strings.Contains(out.String(), "anybot plugin enable daily_weather") ||
+		!strings.Contains(out.String(), "anybot plugin check -dir <机器人工作目录>") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
