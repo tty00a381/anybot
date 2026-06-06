@@ -172,6 +172,9 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 	if !strings.Contains(readme, "./anybot-bot plugin check") {
 		t.Fatalf("README should suggest generated-host plugin check:\n%s", readme)
 	}
+	if !strings.Contains(readme, "anybot plugin add example.com/hello-world@v0.1.0 -name hello_world\nanybot plugin enable hello_world\nanybot up") {
+		t.Fatalf("README should run fixed-version installs through anybot up:\n%s", readme)
+	}
 	runGo(t, dir, "test", "./...")
 }
 

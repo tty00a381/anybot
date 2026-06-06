@@ -50,6 +50,14 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 			t.Fatalf("%s was not generated: %v", name, err)
 		}
 	}
+	readme := readTestFile(t, filepath.Join(dir, "README.md"))
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module\nanybot plugin status\nanybot plugin enable anybot_weather\nanybot up") {
+		t.Fatalf("README should run external plugins through anybot up:\n%s", readme)
+	}
+	if strings.Contains(readme, "anybot plugin enable anybot_weather\nanybot plugin inspect anybot_weather") ||
+		strings.Contains(readme, "anybot plugin check\nanybot up") {
+		t.Fatalf("README should not suggest base plugin check before generated-host build:\n%s", readme)
+	}
 
 	out.Reset()
 	if err := run([]string{"plugins"}); err != nil {
