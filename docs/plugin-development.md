@@ -32,6 +32,17 @@ go mod tidy
 go test ./...
 ```
 
+可以用 `-template` 选择内置起点：
+
+```sh
+anybot dev plugin buddy -template companion -dir ./anybot-buddy -module github.com/acme/anybot-buddy
+anybot dev plugin mc-admin -template minecraft -dir ./anybot-mc-admin -module github.com/acme/anybot-mc-admin
+```
+
+- `basic`：最小命令插件，适合从空白开始。
+- `companion`：人格化聊天插件起点，包含 `ToMe`、群范围限制和用户短期记忆。
+- `minecraft`：Minecraft 群管插件起点，包含管理员命令、玩家绑定表和 `ctx.DataDir()` 私有文件。
+
 本地调试时，在机器人工作目录安装这个插件：
 
 ```sh
@@ -306,6 +317,8 @@ anybot up
 
 ```sh
 anybot dev plugin hello
+anybot dev plugin buddy -template companion
+anybot dev plugin mc-admin -template minecraft
 ```
 
 生成的插件会写入 `plugins/hello/hello.go`，适合只在当前机器人项目中使用。要发布给别人安装，使用本页开头的 `-module` 独立插件模式。

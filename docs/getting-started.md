@@ -79,6 +79,7 @@ go test ./...
 ```
 
 上面这条路径适用于源码开发版 `anybot` 自动写入本地 `replace` 的场景；如果你显式指定了 `-anybot-version` 使用远端版本，先运行 `go mod tidy` 再测试。
+人格化聊天插件可用 `-template companion`，Minecraft 群管插件可用 `-template minecraft`。
 
 本地装进机器人工作目录：
 

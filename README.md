@@ -152,7 +152,7 @@ anybot version
 
 ```sh
 anybot dev init [-module 模块名] [-dir 目录] [-force]
-anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
 anybot dev doctor [-config core.yaml] [-connect]
 anybot dev run [go run 参数...]
 ```
@@ -166,6 +166,7 @@ go test ./...
 ```
 
 源码开发版会自动写入本仓库 `replace`，生成后可直接测试；指定远端 `-anybot-version` 时先运行 `go mod tidy`。
+`-template companion` 适合人格化聊天插件起步，`-template minecraft` 适合群管和玩家绑定类插件起步。
 
 ## 本地检查
 

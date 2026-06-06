@@ -30,6 +30,7 @@ type PluginOptions struct {
 	Dir           string
 	Name          string
 	Module        string
+	Template      string
 	Force         bool
 	AnyBotVersion string
 	AnyBotReplace string
@@ -40,6 +41,7 @@ type PluginResult struct {
 	Name       string
 	Package    string
 	Module     string
+	Template   string
 	Standalone bool
 	TestReady  bool
 	Files      []string
@@ -51,13 +53,59 @@ type scaffoldFile struct {
 }
 
 type pluginTemplateData struct {
-	Name          string
-	Package       string
-	Manifest      string
-	Command       string
-	Module        string
-	AnyBotVersion string
-	AnyBotReplace string
+	Name                string
+	Package             string
+	Manifest            string
+	Command             string
+	Module              string
+	Template            string
+	TemplateDescription string
+	AnyBotVersion       string
+	AnyBotReplace       string
+}
+
+type pluginTemplateSpec struct {
+	Name        string
+	Description string
+	Command     string
+	Source      string
+	TestSource  string
+	Readme      string
+}
+
+const DefaultPluginTemplate = "basic"
+
+var pluginTemplateOrder = []string{"basic", "companion", "minecraft"}
+
+var pluginTemplateSpecs = map[string]pluginTemplateSpec{
+	"basic": {
+		Name:        "basic",
+		Description: "最小命令插件",
+		Source:      "templates/plugin/plugin.go.tmpl",
+		TestSource:  "templates/plugin/plugin_test.go.tmpl",
+		Readme:      "templates/plugin/README.md.tmpl",
+	},
+	"companion": {
+		Name:        "companion",
+		Description: "人格化聊天插件起点",
+		Command:     "chat",
+		Source:      "templates/plugin/companion.go.tmpl",
+		TestSource:  "templates/plugin/companion_test.go.tmpl",
+		Readme:      "templates/plugin/companion_README.md.tmpl",
+	},
+	"minecraft": {
+		Name:        "minecraft",
+		Description: "Minecraft 群管插件起点",
+		Command:     "mc",
+		Source:      "templates/plugin/minecraft.go.tmpl",
+		TestSource:  "templates/plugin/minecraft_test.go.tmpl",
+		Readme:      "templates/plugin/minecraft_README.md.tmpl",
+	},
+}
+
+// PluginTemplates 返回内置插件模板名。
+func PluginTemplates() []string {
+	return append([]string(nil), pluginTemplateOrder...)
 }
 
 // InitProject 写入一个使用 OneBot v11 反向 WebSocket 的最小机器人项目。
@@ -94,29 +142,54 @@ func NewPlugin(opts PluginOptions) (PluginResult, error) {
 	if opts.Name == "" {
 		return PluginResult{}, fmt.Errorf("插件名不能为空")
 	}
+	spec, err := pluginTemplate(opts.Template)
+	if err != nil {
+		return PluginResult{}, err
+	}
 	opts.Module = strings.TrimSpace(opts.Module)
 	pkg := packageName(opts.Name)
 	data := pluginTemplateData{
-		Name:          pkg,
-		Package:       pkg,
-		Manifest:      pkg,
-		Command:       pkg,
-		Module:        opts.Module,
-		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
-		AnyBotReplace: strings.TrimSpace(opts.AnyBotReplace),
+		Name:                pkg,
+		Package:             pkg,
+		Manifest:            pkg,
+		Command:             pluginTemplateCommand(spec, pkg),
+		Module:              opts.Module,
+		Template:            spec.Name,
+		TemplateDescription: spec.Description,
+		AnyBotVersion:       anybotVersion(opts.AnyBotVersion),
+		AnyBotReplace:       strings.TrimSpace(opts.AnyBotReplace),
 	}
 	if opts.Module != "" {
-		return newStandalonePlugin(opts, data)
+		return newStandalonePlugin(opts, spec, data)
 	}
 	dir := filepath.Join(opts.Dir, "plugins", pkg)
 	path := filepath.Join(dir, pkg+".go")
-	if err := writeFile(path, mustFormat(render(pluginFile, data)), opts.Force); err != nil {
+	if err := writeFile(path, mustFormat(renderEmbedded(spec.Source, data)), opts.Force); err != nil {
 		return PluginResult{}, err
 	}
-	return PluginResult{Name: data.Manifest, Package: pkg, Files: []string{path}}, nil
+	return PluginResult{Name: data.Manifest, Package: pkg, Template: spec.Name, Files: []string{path}}, nil
 }
 
-func newStandalonePlugin(opts PluginOptions, data pluginTemplateData) (PluginResult, error) {
+func pluginTemplate(name string) (pluginTemplateSpec, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		name = DefaultPluginTemplate
+	}
+	spec, ok := pluginTemplateSpecs[name]
+	if !ok {
+		return pluginTemplateSpec{}, fmt.Errorf("未知插件模板 %q；可用模板：%s", name, strings.Join(pluginTemplateOrder, ", "))
+	}
+	return spec, nil
+}
+
+func pluginTemplateCommand(spec pluginTemplateSpec, pkg string) string {
+	if spec.Command != "" {
+		return spec.Command
+	}
+	return pkg
+}
+
+func newStandalonePlugin(opts PluginOptions, spec pluginTemplateSpec, data pluginTemplateData) (PluginResult, error) {
 	if err := modmodule.CheckPath(opts.Module); err != nil {
 		return PluginResult{}, fmt.Errorf("插件模块路径 %q 无效: %w", opts.Module, err)
 	}
@@ -126,9 +199,9 @@ func newStandalonePlugin(opts PluginOptions, data pluginTemplateData) (PluginRes
 	}
 	files := []scaffoldFile{
 		{Name: "go.mod", Content: goMod},
-		{Name: data.Package + ".go", Content: mustFormat(renderEmbedded("templates/plugin/plugin.go.tmpl", data))},
-		{Name: data.Package + "_test.go", Content: mustFormat(renderEmbedded("templates/plugin/plugin_test.go.tmpl", data))},
-		{Name: "README.md", Content: renderEmbedded("templates/plugin/README.md.tmpl", data)},
+		{Name: data.Package + ".go", Content: mustFormat(renderEmbedded(spec.Source, data))},
+		{Name: data.Package + "_test.go", Content: mustFormat(renderEmbedded(spec.TestSource, data))},
+		{Name: "README.md", Content: renderEmbedded(spec.Readme, data)},
 	}
 	testReady := data.AnyBotReplace != ""
 	if testReady {
@@ -145,7 +218,7 @@ func newStandalonePlugin(opts PluginOptions, data pluginTemplateData) (PluginRes
 		}
 		paths = append(paths, path)
 	}
-	return PluginResult{Name: data.Manifest, Package: data.Package, Module: opts.Module, Standalone: true, TestReady: testReady, Files: paths}, nil
+	return PluginResult{Name: data.Manifest, Package: data.Package, Module: opts.Module, Template: spec.Name, Standalone: true, TestReady: testReady, Files: paths}, nil
 }
 
 func insertScaffoldFile(files []scaffoldFile, index int, file scaffoldFile) []scaffoldFile {
@@ -361,6 +434,8 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 
 ` + "```sh" + `
 anybot dev plugin hello
+anybot dev plugin buddy -template companion
+anybot dev plugin mc-admin -template minecraft
 ` + "```" + `
 
 生成的插件导出 ` + "`Module`" + `，可被 ` + "`anybot plugin add`" + ` 加入插件化宿主；直接写 Go 入口时也可以显式安装：

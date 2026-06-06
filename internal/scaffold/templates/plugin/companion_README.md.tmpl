@@ -1,0 +1,39 @@
+# {{.Name}}
+
+{{.Name}} 是一个 AnyBot SDK 人格化聊天插件起点。它已经接好 `ToMe`、群范围限制和用户维度短期记忆，后续可以把 `renderCompanionReply` 替换成真实模型调用。
+
+## 开发
+
+```sh
+go test ./...
+```
+
+## 本地安装
+
+在机器人工作目录中执行：
+
+```sh
+anybot plugin add {{.Module}} -name {{.Manifest}} -replace <插件目录>
+anybot plugin enable {{.Manifest}}
+anybot up
+```
+
+## 配置
+
+```yaml
+enabled: true
+config:
+  command: {{.Command}}
+  bot_name: {{.Name}}
+  persona: 温和、敏锐、少说套话，像一个认真听人讲话的群友。
+  allowed_groups: []
+  memory_ttl: 12h
+```
+
+- `command`：状态命令，例如 `/{{.Command}}`。
+- `allowed_groups`：为空时不限制群聊；填群号后只在这些群回应。
+- `memory_ttl`：用户短期记忆保留时间。
+
+## 下一步
+
+把 `renderCompanionReply` 拆成 provider 接口，接入你选择的模型服务；需要长期记忆或索引时，使用 `ctx.DataDir()` 保存插件私有文件。

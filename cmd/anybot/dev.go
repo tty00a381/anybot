@@ -37,7 +37,7 @@ func runDev(args []string) error {
 func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
   anybot dev init [-module 模块名] [-dir 目录] [-force]
-  anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+  anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev doctor [-config core.yaml] [-connect]
   anybot dev run [go run 参数...]`)
 }
@@ -76,6 +76,7 @@ func runDevPlugin(args []string) error {
 	module := fs.String("module", "", "独立插件 Go 模块路径；为空时生成到项目 plugins/ 目录")
 	anybotVersion := fs.String("anybot-version", "", "独立插件依赖的 AnyBot 版本")
 	replace := fs.String("replace", "", "独立插件 go.mod 中的 AnyBot 本地源码替换路径")
+	templateName := fs.String("template", scaffold.DefaultPluginTemplate, "插件模板："+strings.Join(scaffold.PluginTemplates(), ", "))
 	force := fs.Bool("force", false, "覆盖已有文件")
 	name, flagArgs, err := splitDevPluginArgs(args)
 	if err != nil {
@@ -85,12 +86,13 @@ func runDevPlugin(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot dev plugin <名称> [-dir 目录] [-module 插件模块]")
+		return fmt.Errorf("用法：anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-module 插件模块]")
 	}
 	opts := scaffold.PluginOptions{
 		Dir:           *dir,
 		Name:          name,
 		Module:        *module,
+		Template:      *templateName,
 		AnyBotVersion: *anybotVersion,
 		AnyBotReplace: *replace,
 		Force:         *force,
@@ -184,7 +186,8 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 		case arg == "-dir" || arg == "--dir" ||
 			arg == "-module" || arg == "--module" ||
 			arg == "-anybot-version" || arg == "--anybot-version" ||
-			arg == "-replace" || arg == "--replace":
+			arg == "-replace" || arg == "--replace" ||
+			arg == "-template" || arg == "--template":
 			if i+1 >= len(args) {
 				return "", nil, fmt.Errorf("%s 需要值", arg)
 			}
@@ -193,7 +196,8 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
 			strings.HasPrefix(arg, "-module=") || strings.HasPrefix(arg, "--module=") ||
 			strings.HasPrefix(arg, "-anybot-version=") || strings.HasPrefix(arg, "--anybot-version=") ||
-			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
+			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace=") ||
+			strings.HasPrefix(arg, "-template=") || strings.HasPrefix(arg, "--template="):
 			flagArgs = append(flagArgs, arg)
 		case arg == "-force" || arg == "--force":
 			flagArgs = append(flagArgs, arg)

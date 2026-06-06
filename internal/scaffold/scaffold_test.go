@@ -47,6 +47,9 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if result.Name != "hello_world" || result.Package != "hello_world" || result.Standalone {
 		t.Fatalf("plugin result = %#v", result)
 	}
+	if result.Template != DefaultPluginTemplate {
+		t.Fatalf("plugin template = %q, want %q", result.Template, DefaultPluginTemplate)
+	}
 	pluginPath := filepath.Join(dir, "plugins", "hello_world", "hello_world.go")
 	if _, err := os.Stat(pluginPath); err != nil {
 		t.Fatal(err)
@@ -166,6 +169,49 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 		t.Fatalf("plugin test scaffold:\n%s", testFile)
 	}
 	runGo(t, dir, "test", "./...")
+}
+
+func TestGeneratedStandalonePluginTemplatesSmoke(t *testing.T) {
+	root := repoRoot(t)
+	tests := []struct {
+		template string
+		name     string
+		wantCode string
+	}{
+		{template: "companion", name: "friendly-chat", wantCode: "renderCompanionReply"},
+		{template: "minecraft", name: "mc-admin", wantCode: "writeFileAtomic"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.template, func(t *testing.T) {
+			dir := t.TempDir()
+			result, err := NewPlugin(PluginOptions{
+				Dir:           dir,
+				Name:          tt.name,
+				Module:        "example.com/" + tt.template,
+				Template:      tt.template,
+				AnyBotVersion: "v0.0.0",
+				AnyBotReplace: root,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Template != tt.template || !result.Standalone {
+				t.Fatalf("plugin result = %#v", result)
+			}
+			plugin := readFile(t, filepath.Join(dir, result.Package+".go"))
+			if !strings.Contains(plugin, tt.wantCode) {
+				t.Fatalf("plugin scaffold:\n%s", plugin)
+			}
+			runGo(t, dir, "test", "./...")
+		})
+	}
+}
+
+func TestGeneratedPluginRejectsUnknownTemplate(t *testing.T) {
+	_, err := NewPlugin(PluginOptions{Dir: t.TempDir(), Name: "hello", Template: "unknown"})
+	if err == nil || !strings.Contains(err.Error(), "未知插件模板") {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func TestGeneratedStandalonePluginWithReleaseVersionRequiresTidy(t *testing.T) {

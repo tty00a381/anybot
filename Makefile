@@ -22,8 +22,14 @@ RELEASE_FILES := \
 	cmd/anybot/main.go \
 	cmd/anybot/dev.go \
 	internal/scaffold/templates/plugin/README.md.tmpl \
+	internal/scaffold/templates/plugin/companion.go.tmpl \
+	internal/scaffold/templates/plugin/companion_README.md.tmpl \
+	internal/scaffold/templates/plugin/companion_test.go.tmpl \
 	internal/scaffold/templates/plugin/go.mod.tmpl \
 	internal/scaffold/templates/plugin/go.sum.tmpl \
+	internal/scaffold/templates/plugin/minecraft.go.tmpl \
+	internal/scaffold/templates/plugin/minecraft_README.md.tmpl \
+	internal/scaffold/templates/plugin/minecraft_test.go.tmpl \
 	internal/scaffold/templates/plugin/plugin.go.tmpl \
 	internal/scaffold/templates/plugin/plugin_test.go.tmpl \
 	sdk/access.go \

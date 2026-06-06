@@ -1,0 +1,218 @@
+package {{.Package}}
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+
+	absdk "github.com/tty00a381/anybot/sdk"
+)
+
+// Config 配置 {{.Name}} Minecraft 群管插件。
+type Config struct {
+	Command       string   `yaml:"command"`
+	ServerName    string   `yaml:"server_name"`
+	Admins        []string `yaml:"admins"`
+	AllowedGroups []string `yaml:"allowed_groups"`
+}
+
+// Validate 校验 {{.Name}} 插件配置。
+func (cfg Config) Validate() error {
+	if strings.TrimSpace(cfg.Command) == "" {
+		return fmt.Errorf("command 不能为空")
+	}
+	if strings.TrimSpace(cfg.ServerName) == "" {
+		return fmt.Errorf("server_name 不能为空")
+	}
+	return nil
+}
+
+// Module 是 {{.Name}} 插件导出的 anybot 模块。
+var Module = absdk.Define(
+	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} Minecraft 群管插件"},
+	Config{
+		Command:       "{{.Command}}",
+		ServerName:    "survival",
+		Admins:        nil,
+		AllowedGroups: nil,
+	},
+	func(ctx *absdk.Context, cfg Config) error {
+		store := &bindingStore{ctx: ctx}
+		ctx.OnMessage(absdk.CommandRule(cfg.Command), absdk.AllowedGroups(cfg.AllowedGroups...)).
+			Use(absdk.RequireAdmin(cfg.Admins...)).
+			Handle(func(c *absdk.EventContext) error {
+				return handleMinecraftCommand(store, cfg, c)
+			})
+		return nil
+	},
+)
+
+type playerBinding struct {
+	QQ     string `json:"qq"`
+	Player string `json:"player"`
+}
+
+type bindingStore struct {
+	ctx *absdk.Context
+	mu  sync.Mutex
+}
+
+func handleMinecraftCommand(store *bindingStore, cfg Config, c *absdk.EventContext) error {
+	args := c.Argv()
+	if len(args) == 0 {
+		_, err := c.ReplyText(fmt.Sprintf("%s：/%s bind <QQ> <玩家名>，/%s who <玩家名>，/%s list", cfg.ServerName, cfg.Command, cfg.Command, cfg.Command))
+		return err
+	}
+	switch args[0] {
+	case "bind":
+		if len(args) != 3 {
+			_, err := c.ReplyText("用法：/" + cfg.Command + " bind <QQ> <玩家名>")
+			return err
+		}
+		binding := playerBinding{QQ: args[1], Player: args[2]}
+		if err := store.put(binding); err != nil {
+			return err
+		}
+		_, err := c.ReplyText(fmt.Sprintf("已绑定 %s -> %s", binding.QQ, binding.Player))
+		return err
+	case "who":
+		if len(args) != 2 {
+			_, err := c.ReplyText("用法：/" + cfg.Command + " who <玩家名>")
+			return err
+		}
+		bindings, err := store.load()
+		if err != nil {
+			return err
+		}
+		if binding, ok := bindings[strings.ToLower(args[1])]; ok {
+			_, err := c.ReplyText(fmt.Sprintf("%s 绑定 QQ %s", binding.Player, binding.QQ))
+			return err
+		}
+		_, err = c.ReplyText(args[1] + " 还没有绑定")
+		return err
+	case "list":
+		bindings, err := store.load()
+		if err != nil {
+			return err
+		}
+		if len(bindings) == 0 {
+			_, err := c.ReplyText("还没有绑定记录")
+			return err
+		}
+		lines := make([]string, 0, len(bindings))
+		for _, binding := range bindings {
+			lines = append(lines, fmt.Sprintf("%s -> %s", binding.QQ, binding.Player))
+		}
+		sort.Strings(lines)
+		_, err = c.ReplyText(strings.Join(lines, "\n"))
+		return err
+	default:
+		_, err := c.ReplyText("未知子命令：" + args[0])
+		return err
+	}
+}
+
+func (s *bindingStore) put(binding playerBinding) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bindings, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	bindings[strings.ToLower(binding.Player)] = binding
+	return s.saveLocked(bindings)
+}
+
+func (s *bindingStore) load() (map[string]playerBinding, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadLocked()
+}
+
+func (s *bindingStore) loadLocked() (map[string]playerBinding, error) {
+	path, err := s.path()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return map[string]playerBinding{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var bindings map[string]playerBinding
+	if err := json.Unmarshal(data, &bindings); err != nil {
+		return nil, err
+	}
+	if bindings == nil {
+		bindings = map[string]playerBinding{}
+	}
+	return bindings, nil
+}
+
+func (s *bindingStore) saveLocked(bindings map[string]playerBinding) error {
+	path, err := s.path()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(bindings, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeFileAtomic(path, data, 0o600)
+}
+
+func (s *bindingStore) path() (string, error) {
+	dir, err := s.ctx.DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "bindings.json"), nil
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	removeTmp = false
+	syncDirBestEffort(dir)
+	return nil
+}
+
+func syncDirBestEffort(dir string) {
+	file, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	_ = file.Sync()
+}
