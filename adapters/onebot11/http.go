@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/tty00a381/anybot/core"
 )
 
 type httpTransport struct {
@@ -28,6 +30,13 @@ func newHTTPTransport(apiURL, listenAddr string, opts options) *httpTransport {
 }
 
 func (t *httpTransport) Start(ctx context.Context, sink func(context.Context, *Event) error) error {
+	t.opts.emitAdapterState(ctx, core.AdapterState{
+		Protocol:    core.ProtocolOneBot11,
+		Kind:        core.AdapterStateReady,
+		ActionReady: t.apiURL != "",
+		Transport:   "http",
+		Reason:      "http transport started",
+	})
 	if t.listenAddr == "" {
 		<-ctx.Done()
 		return ctx.Err()

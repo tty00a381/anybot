@@ -1,0 +1,212 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/adapters/onebot11"
+	"github.com/tty00a381/anybot/app/host"
+)
+
+func runDoctor(args []string) error {
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	configPath := fs.String("config", "anybot.yaml", "配置文件")
+	connect := fs.Bool("connect", false, "检查远端动作接口是否可连接")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := host.LoadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
+	if err != nil {
+		return err
+	}
+	if _, err := host.NewApp(cfg, host.DefaultRegistry(), logger); err != nil {
+		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
+	}
+	adapterCfg := cfgAdapter(cfg)
+	if err := checkListen(adapterCfg); err != nil {
+		return err
+	}
+	for _, warning := range doctorWarnings(adapterCfg) {
+		fmt.Fprintf(stderr, "警告：%s\n", warning)
+	}
+	if *connect {
+		if err := checkRemote(adapterCfg); err != nil {
+			return err
+		}
+	}
+	enabled, err := host.EnabledPlugins(cfg, host.DefaultRegistry())
+	if err != nil {
+		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
+	}
+	abs, _ := filepath.Abs(*configPath)
+	printSummary(abs, cfg, enabled)
+	fmt.Fprintf(stdout, "配置可用：%s\n", abs)
+	return nil
+}
+
+func cfgAdapter(cfg host.Config) onebot11.Config {
+	return onebot11.Config{Protocol: cfg.Adapter.Protocol, Transport: cfg.Adapter.Transport}
+}
+
+func checkListen(cfg onebot11.Config) error {
+	if cfg.Transport.Type != "reverse_ws" {
+		return nil
+	}
+	ln, err := net.Listen("tcp", cfg.Transport.Listen)
+	if err != nil {
+		return fmt.Errorf("无法监听 %s: %w", cfg.Transport.Listen, err)
+	}
+	return ln.Close()
+}
+
+func doctorWarnings(cfg onebot11.Config) []string {
+	var warnings []string
+	if cfg.Transport.Type == "reverse_ws" && !reverseListenIsLocal(cfg.Transport.Listen) && !accessTokenAvailable(cfg) {
+		warnings = append(warnings, "反向 WebSocket 监听非本机地址且未配置可用访问令牌")
+	}
+	if cfg.Transport.Type != "reverse_ws" && cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) == "" && cfg.Transport.AccessToken == "" {
+		warnings = append(warnings, fmt.Sprintf("环境变量 %s 未设置，出站动作连接将不携带访问令牌", cfg.Transport.AccessTokenEnv))
+	}
+	return warnings
+}
+
+func reverseListenIsLocal(listen string) bool {
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return false
+	}
+	switch host {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func accessTokenAvailable(cfg onebot11.Config) bool {
+	if cfg.Transport.AccessToken != "" {
+		return true
+	}
+	return cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) != ""
+}
+
+func checkRemote(cfg onebot11.Config) error {
+	switch cfg.Transport.Type {
+	case "http":
+		return checkHTTPAction(cfg)
+	case "websocket":
+		return checkWebSocketHandshake(cfg)
+	default:
+		return nil
+	}
+}
+
+func checkHTTPAction(cfg onebot11.Config) error {
+	url := strings.TrimRight(cfg.Transport.URL, "/") + "/get_version_info"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	addHeaders(req.Header, cfg)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("无法连接动作接口 %s: %w", cfg.Transport.URL, err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("动作接口返回 %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	var action onebot11.Response
+	if err := json.Unmarshal(data, &action); err != nil {
+		return fmt.Errorf("动作接口响应不是 OneBot 动作响应: %w", err)
+	}
+	if !action.OK() {
+		detail := action.Message
+		if detail == "" {
+			detail = action.Wording
+		}
+		return fmt.Errorf("动作接口失败: status=%s retcode=%d %s", action.Status, action.RetCode, detail)
+	}
+	return nil
+}
+
+func checkWebSocketHandshake(cfg onebot11.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, cfg.Transport.URL, &websocket.DialOptions{HTTPHeader: headers(cfg)})
+	if err != nil {
+		return fmt.Errorf("无法连接 WebSocket %s: %w", cfg.Transport.URL, err)
+	}
+	return conn.Close(websocket.StatusNormalClosure, "anybot doctor")
+}
+
+func headers(cfg onebot11.Config) http.Header {
+	header := make(http.Header, len(cfg.Transport.Headers)+1)
+	addHeaders(header, cfg)
+	return header
+}
+
+func addHeaders(header http.Header, cfg onebot11.Config) {
+	for key, value := range cfg.Transport.Headers {
+		header.Add(key, value)
+	}
+	if token := accessToken(cfg); token != "" {
+		header.Set("Authorization", "Bearer "+token)
+	}
+}
+
+func accessToken(cfg onebot11.Config) string {
+	if cfg.Transport.AccessToken != "" {
+		return cfg.Transport.AccessToken
+	}
+	if cfg.Transport.AccessTokenEnv == "" {
+		return ""
+	}
+	return os.Getenv(cfg.Transport.AccessTokenEnv)
+}
+
+func printSummary(path string, cfg host.Config, plugins []string) {
+	fmt.Fprintf(stdout, "配置文件：%s\n", path)
+	fmt.Fprintf(stdout, "协议：%s\n", cfg.Adapter.Protocol)
+	fmt.Fprintf(stdout, "传输：%s\n", cfg.Adapter.Transport.Type)
+	switch cfg.Adapter.Transport.Type {
+	case "reverse_ws":
+		fmt.Fprintf(stdout, "监听：%s\n", cfg.Adapter.Transport.Listen)
+		fmt.Fprintf(stdout, "路径：%s\n", doctorPath(cfg.Adapter.Transport.Path))
+	case "http", "websocket":
+		fmt.Fprintf(stdout, "URL：%s\n", cfg.Adapter.Transport.URL)
+	}
+	if len(plugins) == 0 {
+		fmt.Fprintln(stdout, "插件：无")
+	} else {
+		fmt.Fprintf(stdout, "插件：%s\n", strings.Join(plugins, ", "))
+	}
+}
+
+func doctorPath(path string) string {
+	if path == "" {
+		return "/"
+	}
+	return path
+}

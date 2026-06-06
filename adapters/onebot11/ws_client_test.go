@@ -3,6 +3,7 @@ package onebot11
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 func TestWebSocketClientEventAndCall(t *testing.T) {
@@ -114,6 +116,52 @@ func TestWebSocketClientEventAndCall(t *testing.T) {
 	}
 }
 
+func TestWebSocketClientReportsDisconnectedOnDialFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not a websocket", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	states := make(chan core.AdapterState, 2)
+	transport := newWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), newOptions([]Option{
+		WithReconnectInterval(time.Hour),
+	}))
+	transport.opts.state.SetSink(func(_ context.Context, state core.AdapterState) {
+		states <- state
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		errc <- transport.Start(ctx, func(context.Context, *Event) error {
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-errc:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("start err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not stop")
+		}
+	}()
+
+	select {
+	case state := <-states:
+		if state.Kind != core.AdapterStateDisconnected || state.ActionReady || state.Transport != "websocket" {
+			t.Fatalf("state = %#v", state)
+		}
+		if state.Err == nil || !strings.Contains(state.Reason, "dial failed") {
+			t.Fatalf("state = %#v", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dial failure state was not reported")
+	}
+}
+
 func TestSocketPeerAcceptsStringRetCodeProbe(t *testing.T) {
 	peer := newSocketPeer(nil)
 	ch := make(chan pendingResult, 1)
@@ -136,6 +184,14 @@ func TestSocketPeerAcceptsStringRetCodeProbe(t *testing.T) {
 	}
 	if result.response == nil || result.response.Echo != "echo-1" || result.response.RetCode != 0 {
 		t.Fatalf("response=%#v", result.response)
+	}
+}
+
+func TestSocketPeerUnavailableError(t *testing.T) {
+	peer := newSocketPeer(nil)
+	_, err := peer.callRaw(context.Background(), "get_login_info", nil)
+	if !errors.Is(err, core.ErrActionUnavailable) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

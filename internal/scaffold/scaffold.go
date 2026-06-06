@@ -41,7 +41,7 @@ func InitProject(opts ProjectOptions) error {
 	files := []scaffoldFile{
 		{Name: "go.mod", Content: render(projectGoMod, opts)},
 		{Name: "main.go", Content: mustFormat(render(projectMain, opts))},
-		{Name: "anybot.yaml", Content: render(projectConfig, opts)},
+		{Name: "core.yaml", Content: render(projectConfig, opts)},
 		{Name: ".env.example", Content: "ONEBOT_ACCESS_TOKEN=\n"},
 		{Name: "README.md", Content: render(projectReadme, opts)},
 	}
@@ -56,7 +56,7 @@ func InitProject(opts ProjectOptions) error {
 	return nil
 }
 
-// NewPlugin 在 plugins/<name> 下写入显式安装的插件骨架。
+// NewPlugin 在 plugins/<name> 下写入可被 anybot 加载的插件 SDK 骨架。
 func NewPlugin(opts PluginOptions) error {
 	if opts.Dir == "" {
 		opts.Dir = "."
@@ -66,11 +66,15 @@ func NewPlugin(opts PluginOptions) error {
 	}
 	pkg := packageName(opts.Name)
 	data := struct {
-		Name    string
-		Package string
+		Name     string
+		Package  string
+		Manifest string
+		Command  string
 	}{
-		Name:    opts.Name,
-		Package: pkg,
+		Name:     opts.Name,
+		Package:  pkg,
+		Manifest: pkg,
+		Command:  pkg,
 	}
 	dir := filepath.Join(opts.Dir, "plugins", pkg)
 	return writeFile(filepath.Join(dir, pkg+".go"), mustFormat(render(pluginFile, data)), opts.Force)
@@ -162,29 +166,29 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tty00a381/anybot"
+	"github.com/tty00a381/anybot/core"
 	"github.com/tty00a381/anybot/adapters/onebot11"
 )
 
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
 		fmt.Println("用法：go run .")
-		fmt.Println("配置：编辑 anybot.yaml，并让 OneBot v11 协议端连接反向 WebSocket")
+		fmt.Println("配置：编辑 core.yaml，并让 OneBot v11 协议端连接反向 WebSocket")
 		return
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	adapter, err := onebot11.LoadAdapter("anybot.yaml")
+	adapter, err := onebot11.LoadAdapter("core.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	app := anybot.New(anybot.WithAdapter(adapter))
-	app.Use(anybot.Recover(), anybot.Trace())
+	app := core.New(core.WithAdapter(adapter))
+	app.Use(core.Recover(), core.Trace())
 
-	app.Command("ping").Handle(func(c *anybot.Context) error {
+	app.Command("ping").Handle(func(c *core.Context) error {
 		_, err := c.ReplyText("pong")
 		return err
 	})
@@ -205,15 +209,15 @@ transport:
   action_timeout: 10s
 `
 
-const projectReadme = `# AnyBot 机器人
+const projectReadme = `# AnyBot Core 机器人
 
-本项目由 ` + "`anybot init`" + ` 生成，模块名为 ` + "`{{.Module}}`" + `。它默认使用 OneBot v11 反向 WebSocket；下面以 NapCat 为例，其他 OneBot v11 协议端也按同样方式接入。
+本项目由 ` + "`anybot dev init`" + ` 生成，模块名为 ` + "`{{.Module}}`" + `。它直接使用 core 运行时，默认通过 OneBot v11 反向 WebSocket 接入；下面以 NapCat 为例，其他 OneBot v11 协议端也按同样方式接入。
 
 ## 运行
 
 ` + "```sh" + `
 go mod tidy
-anybot doctor
+anybot dev doctor
 go run . --help
 go run .
 ` + "```" + `
@@ -235,7 +239,7 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 ## 目录
 
 - ` + "`main.go`" + `：机器人入口。
-- ` + "`anybot.yaml`" + `：本地运行配置，启动时由 ` + "`onebot11.LoadAdapter`" + ` 读取。
+- ` + "`core.yaml`" + `：本地运行配置，启动时由 ` + "`onebot11.LoadAdapter`" + ` 读取。
 - ` + "`.env.example`" + `：环境变量示例。
 - ` + "`plugins/`" + `：插件目录，按需生成。
 
@@ -244,13 +248,13 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 使用以下命令生成插件：
 
 ` + "```sh" + `
-anybot new plugin hello
+anybot dev plugin hello
 ` + "```" + `
 
-然后在 ` + "`main.go`" + ` 中显式安装插件：
+生成的插件导出 ` + "`Module`" + `，可被 ` + "`anybot plugin add`" + ` 加入插件化宿主；直接写 Go 入口时也可以显式安装：
 
 ` + "```go" + `
-if err := app.UsePlugin(hello.New()); err != nil {
+if err := app.UsePlugin(absdk.AsPlugin(hello.Module)); err != nil {
 	log.Fatal(err)
 }
 ` + "```" + `
@@ -262,36 +266,35 @@ if err := app.UsePlugin(hello.New()); err != nil {
 
 const pluginFile = `package {{.Package}}
 
-import "github.com/tty00a381/anybot"
+import (
+	"fmt"
+
+	absdk "github.com/tty00a381/anybot/sdk"
+)
 
 // Config 配置 {{.Name}} 插件。
 type Config struct {
-	Enabled bool ` + "`yaml:\"enabled\"`" + `
+	Command string ` + "`yaml:\"command\"`" + `
 }
 
-// New 创建 {{.Name}} 插件。
-func New(config ...Config) anybot.Plugin {
-	cfg := Config{Enabled: true}
-	if len(config) > 0 {
-		cfg = config[0]
+// Validate 校验 {{.Name}} 插件配置。
+func (cfg Config) Validate() error {
+	if cfg.Command == "" {
+		return fmt.Errorf("command 不能为空")
 	}
-	return anybot.PluginFunc{
-		Info: anybot.Manifest{
-			Name: "{{.Name}}",
-			Version: "0.1.0",
-			Description: "{{.Name}} 插件",
-			Config: cfg,
-		},
-		Fn: func(app *anybot.App) error {
-			if !cfg.Enabled {
-				return nil
-			}
-			app.Command("{{.Name}}").Handle(func(c *anybot.Context) error {
-				_, err := c.ReplyText("{{.Name}} 已启动")
-				return err
-			})
-			return nil
-		},
-	}
+	return nil
 }
+
+// Module 是 {{.Name}} 插件导出的 anybot 模块。
+var Module = absdk.Define(
+	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
+	Config{Command: "{{.Command}}"},
+	func(ctx *absdk.Context, cfg Config) error {
+		ctx.Command(cfg.Command).Handle(func(c *absdk.EventContext) error {
+			_, err := c.ReplyText("{{.Name}} 已启动")
+			return err
+		})
+		return nil
+	},
+)
 `

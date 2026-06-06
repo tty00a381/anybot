@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 func TestParseCQAndRender(t *testing.T) {
@@ -96,10 +96,10 @@ func TestEventUnmarshalClearsMissingFields(t *testing.T) {
 
 func TestContextHelpers(t *testing.T) {
 	raw := &Event{PostType: "message", UserID: 42}
-	ctx := anybot.New(
-		anybot.WithAdapter(New(&recordTransport{})),
+	ctx := core.New(
+		core.WithAdapter(New(&recordTransport{})),
 	)
-	c := anybot.NewTestContext(ctx, raw.Normalize())
+	c := core.NewTestContext(ctx, raw.Normalize())
 	client, ok := ClientFrom(c)
 	if !ok || client == nil {
 		t.Fatal("client not found")

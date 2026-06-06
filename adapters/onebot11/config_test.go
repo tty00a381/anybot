@@ -3,13 +3,14 @@ package onebot11
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoadAdapterFromConfig(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
+	path := filepath.Join(dir, "core.yaml")
 	t.Setenv("TOKEN_FROM_ENV", "secret")
 	data := []byte(`protocol: onebot11
 transport:
@@ -33,6 +34,18 @@ transport:
 	server := adapter.transport.(*reverseWSServer)
 	if server.opts.path != "/onebot" || server.opts.accessToken != "secret" {
 		t.Fatalf("options = %#v", server.opts)
+	}
+}
+
+func TestLoadConfigRejectsYMLExtension(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "core.yml")
+	if err := os.WriteFile(path, []byte("protocol: onebot11\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "必须使用 .yaml 扩展名") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 func TestHTTPTransportCallRaw(t *testing.T) {
@@ -31,7 +31,7 @@ func TestHTTPTransportCallRaw(t *testing.T) {
 
 	adapter := HTTP(server.URL, "")
 	client := adapter.Client()
-	receipt, err := client.Send(context.Background(), anybot.ReplyTarget{UserID: "42"}, message.New(message.Text("hi")))
+	receipt, err := client.Send(context.Background(), core.ReplyTarget{UserID: "42"}, message.New(message.Text("hi")))
 	if err != nil {
 		t.Fatal(err)
 	}

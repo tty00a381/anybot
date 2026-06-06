@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 type webSocketClient struct {
@@ -63,6 +64,15 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 		HTTPHeader: authHeaders(c.opts),
 	})
 	if err != nil {
+		if ctx.Err() == nil {
+			c.opts.emitAdapterState(ctx, core.AdapterState{
+				Protocol:  core.ProtocolOneBot11,
+				Kind:      core.AdapterStateDisconnected,
+				Transport: "websocket",
+				Reason:    "websocket dial failed",
+				Err:       err,
+			})
+		}
 		return err
 	}
 
@@ -75,7 +85,7 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 		c.opts.emitConnection(ctx, info)
 		c.peer.setConn(nil)
 		_ = conn.Close(websocket.StatusNormalClosure, "anybot reconnect")
-		c.peer.failPending(errors.New("onebot11: websocket disconnected"))
+		c.peer.failPending(actionUnavailable("onebot11: websocket disconnected"))
 	}()
 
 	for {

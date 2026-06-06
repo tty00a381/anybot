@@ -7,16 +7,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tty00a381/anybot"
+	"github.com/tty00a381/anybot/core"
 )
 
 // API 包装 NapCat 扩展动作，并保留原始调用能力。
 type API struct {
-	client anybot.ActionClient
+	client core.ActionClient
 }
 
 // New 创建 NapCat 扩展 API 客户端。
-func New(client anybot.ActionClient) *API {
+func New(client core.ActionClient) *API {
 	return &API{client: client}
 }
 
@@ -26,7 +26,7 @@ func (api *API) Call(ctx context.Context, action string, params any, out any) er
 }
 
 // CallRaw 调用 NapCat 动作，并返回协议无关的原始响应封套。
-func (api *API) CallRaw(ctx context.Context, action string, params any) (*anybot.ActionResponse, error) {
+func (api *API) CallRaw(ctx context.Context, action string, params any) (*core.ActionResponse, error) {
 	return api.client.CallRaw(ctx, action, params)
 }
 

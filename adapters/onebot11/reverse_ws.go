@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 type reverseWSServer struct {
@@ -27,6 +28,12 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 		return errors.New("onebot11: reverse websocket addr is required")
 	}
 	server := &http.Server{Addr: s.addr, Handler: s.handler(sink)}
+	s.opts.emitAdapterState(ctx, core.AdapterState{
+		Protocol:  core.ProtocolOneBot11,
+		Kind:      core.AdapterStateDisconnected,
+		Transport: "reverse_ws",
+		Reason:    "waiting for reverse websocket connection",
+	})
 	errc := make(chan error, 1)
 	go func() {
 		s.opts.logger.Info("反向WS监听中", "addr", s.addr, "path", s.opts.path)
@@ -85,7 +92,7 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 			s.peer.setConn(nil)
 		}
 		_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
-		s.peer.failPending(errors.New("onebot11: reverse websocket disconnected"))
+		s.peer.failPending(actionUnavailable("onebot11: reverse websocket disconnected"))
 	}()
 
 	for {

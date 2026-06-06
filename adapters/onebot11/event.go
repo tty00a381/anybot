@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 // Sender 描述 OneBot v11 消息发送者信息。
@@ -78,7 +78,7 @@ type Event struct {
 }
 
 // EventFrom 从 AnyBot 上下文提取 OneBot v11 原始事件。
-func EventFrom(c *anybot.Context) (*Event, bool) {
+func EventFrom(c *core.Context) (*Event, bool) {
 	if c == nil {
 		return nil, false
 	}
@@ -157,7 +157,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 }
 
 // Normalize 将 OneBot v11 事件转换为 AnyBot 标准事件封套。
-func (e *Event) Normalize() *anybot.Event {
+func (e *Event) Normalize() *core.Event {
 	if e == nil {
 		return nil
 	}
@@ -180,9 +180,9 @@ func (e *Event) Normalize() *anybot.Event {
 	if text == "" {
 		text = e.RawMessage
 	}
-	return &anybot.Event{
+	return &core.Event{
 		ID:         id,
-		Protocol:   anybot.ProtocolOneBot11,
+		Protocol:   core.ProtocolOneBot11,
 		SelfID:     idString(e.SelfID),
 		Type:       e.PostType,
 		DetailType: detail,

@@ -24,12 +24,12 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if !strings.Contains(string(mainData), "--help") {
 		t.Fatalf("main.go 缺少帮助入口:\n%s", mainData)
 	}
-	configData, err := os.ReadFile(filepath.Join(dir, "anybot.yaml"))
+	configData, err := os.ReadFile(filepath.Join(dir, "core.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(configData), "action_timeout: 10s") {
-		t.Fatalf("anybot.yaml 内容不符合预期:\n%s", configData)
+		t.Fatalf("core.yaml 内容不符合预期:\n%s", configData)
 	}
 	readmeData, err := os.ReadFile(filepath.Join(dir, "README.md"))
 	if err != nil {
@@ -49,8 +49,12 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(pluginData), "func New(config ...Config)") {
-		t.Fatalf("插件模板缺少配置入口:\n%s", pluginData)
+	if !strings.Contains(string(pluginData), "var Module = absdk.Define") ||
+		!strings.Contains(string(pluginData), "absdk.EventContext") ||
+		!strings.Contains(string(pluginData), "func (cfg Config) Validate() error") ||
+		!strings.Contains(string(pluginData), `Command string `+"`yaml:\"command\"`") ||
+		strings.Contains(string(pluginData), "github.com/tty00a381/anybot/core") {
+		t.Fatalf("插件模板缺少 SDK 模块入口:\n%s", pluginData)
 	}
 }
 
@@ -62,7 +66,7 @@ func TestInitProjectConflictDoesNotPartiallyWrite(t *testing.T) {
 	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err == nil {
 		t.Fatal("存在文件时应拒绝生成")
 	}
-	for _, name := range []string{"go.mod", "main.go", "anybot.yaml", ".env.example"} {
+	for _, name := range []string{"go.mod", "main.go", "core.yaml", ".env.example"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			t.Fatalf("%s 不应被部分写入", name)
 		}
@@ -87,6 +91,9 @@ func TestPackageName(t *testing.T) {
 func TestGeneratedProjectSmoke(t *testing.T) {
 	dir := t.TempDir()
 	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"}); err != nil {
 		t.Fatal(err)
 	}
 	root := repoRoot(t)

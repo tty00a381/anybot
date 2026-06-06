@@ -3,7 +3,7 @@ package onebot11
 import (
 	"encoding/json"
 
-	"github.com/tty00a381/anybot"
+	"github.com/tty00a381/anybot/core"
 )
 
 // Response 表示 OneBot v11 动作响应，并保留原始 JSON。
@@ -54,11 +54,11 @@ func (r *Response) Decode(out any) error {
 	return json.Unmarshal(r.Data, out)
 }
 
-func (r *Response) actionResponse() *anybot.ActionResponse {
+func (r *Response) actionResponse() *core.ActionResponse {
 	if r == nil {
 		return nil
 	}
-	return &anybot.ActionResponse{
+	return &core.ActionResponse{
 		Status:  r.Status,
 		RetCode: r.RetCode,
 		Message: r.Message,

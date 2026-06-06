@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 // Message 是 OneBot v11 消息链类型别名。

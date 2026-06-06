@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,10 +32,13 @@ type TransportConfig struct {
 	ReconnectMaxInterval string            `yaml:"reconnect_max_interval"`
 }
 
-// LoadConfig 从 YAML 文件读取 OneBot v11 配置；path 为空时读取 anybot.yaml。
+// LoadConfig 从 YAML 文件读取 OneBot v11 配置；path 为空时读取 core.yaml。
 func LoadConfig(path string) (Config, error) {
 	if path == "" {
-		path = "anybot.yaml"
+		path = "core.yaml"
+	}
+	if filepath.Ext(path) != ".yaml" {
+		return Config{}, fmt.Errorf("onebot11: 配置文件 %s 必须使用 .yaml 扩展名", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

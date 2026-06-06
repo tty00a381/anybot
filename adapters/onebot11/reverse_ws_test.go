@@ -3,12 +3,14 @@ package onebot11
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 func TestReverseWSAuthorization(t *testing.T) {
@@ -115,6 +117,84 @@ func TestReverseWSEventAndCall(t *testing.T) {
 		t.Fatal(err)
 	case <-ctx.Done():
 		t.Fatal("等待动作响应超时")
+	}
+}
+
+func TestReverseWSReportsAdapterState(t *testing.T) {
+	adapter := ReverseWS("127.0.0.1:0")
+	states := make(chan core.AdapterState, 4)
+	adapter.SetStateSink(func(_ context.Context, state core.AdapterState) {
+		states <- state
+	})
+	server := adapter.transport.(*reverseWSServer)
+	httpServer := httptest.NewServer(server.handler(func(context.Context, *Event) error {
+		return nil
+	}))
+	defer httpServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case state := <-states:
+		if state.Kind != core.AdapterStateReady || !state.ActionReady || state.Protocol != core.ProtocolOneBot11 {
+			t.Fatalf("state = %#v", state)
+		}
+	case <-ctx.Done():
+		t.Fatal("等待 ready state 超时")
+	}
+	if err := conn.Close(websocket.StatusNormalClosure, "done"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case state := <-states:
+		if state.Kind != core.AdapterStateDisconnected || state.ActionReady {
+			t.Fatalf("state = %#v", state)
+		}
+	case <-ctx.Done():
+		t.Fatal("等待 disconnected state 超时")
+	}
+}
+
+func TestReverseWSReportsWaitingStateOnStart(t *testing.T) {
+	adapter := ReverseWS("127.0.0.1:0")
+	states := make(chan core.AdapterState, 4)
+	adapter.SetStateSink(func(_ context.Context, state core.AdapterState) {
+		states <- state
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		errc <- adapter.Start(ctx, func(context.Context, *core.Event) error {
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-errc:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("start err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("reverse ws server did not stop")
+		}
+	}()
+
+	select {
+	case state := <-states:
+		if state.Kind != core.AdapterStateDisconnected || state.ActionReady || state.Transport != "reverse_ws" {
+			t.Fatalf("state = %#v", state)
+		}
+		if !strings.Contains(state.Reason, "waiting") {
+			t.Fatalf("reason = %q", state.Reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiting state was not reported")
 	}
 }
 

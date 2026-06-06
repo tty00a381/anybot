@@ -7,19 +7,19 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tty00a381/anybot"
 	"github.com/tty00a381/anybot/adapters/onebot11"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	app := anybot.New(anybot.WithAdapter(onebot11.ReverseWS("127.0.0.1:6700")))
-	app.Use(anybot.Recover(), anybot.Trace())
+	app := core.New(core.WithAdapter(onebot11.ReverseWS("127.0.0.1:6700")))
+	app.Use(core.Recover(), core.Trace())
 
-	app.Command("login").Handle(func(c *anybot.Context) error {
+	app.Command("login").Handle(func(c *core.Context) error {
 		client := onebot11.MustClient(c)
 		info, err := client.GetLoginInfo(c.Context)
 		if err != nil {
@@ -29,10 +29,10 @@ func main() {
 		return err
 	})
 
-	app.Command("image").Handle(func(c *anybot.Context) error {
+	app.Command("image").Handle(func(c *core.Context) error {
 		file := os.Getenv("IMAGE_FILE")
 		if file == "" {
-			_, err := c.ReplyText("请先设置 IMAGE_FILE，例如 https://example.com/a.png 或 file:///容器内可见路径/anybot.png")
+			_, err := c.ReplyText("请先设置 IMAGE_FILE，例如 https://example.com/a.png 或 file:///容器内可见路径/core.png")
 			return err
 		}
 		_, err := c.Reply(message.New(message.Image(file)))

@@ -18,6 +18,7 @@ type options struct {
 	actionTimeout     time.Duration
 	reconnectInterval time.Duration
 	reconnectMax      time.Duration
+	state             *adapterState
 }
 
 // ConnectionState 表示 WebSocket 传输的连接状态。
@@ -135,6 +136,7 @@ func newOptions(opts []Option) options {
 		actionTimeout:     10 * time.Second,
 		reconnectInterval: 3 * time.Second,
 		reconnectMax:      30 * time.Second,
+		state:             newAdapterState(),
 	}
 	for _, opt := range opts {
 		opt(&out)
@@ -143,6 +145,7 @@ func newOptions(opts []Option) options {
 }
 
 func (opts options) emitConnection(ctx context.Context, event ConnectionEvent) {
+	opts.emitConnectionState(ctx, event)
 	for _, hook := range opts.connectionHooks {
 		if hook != nil {
 			hook(ctx, event)
