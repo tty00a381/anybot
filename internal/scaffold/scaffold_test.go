@@ -43,8 +43,6 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	readme := string(readmeData)
 	for _, want := range []string{
 		"anybot dev plugin hello -in-project",
-		"anybot dev plugin buddy -template companion -in-project",
-		"anybot dev plugin mc-admin -template minecraft -in-project",
 		"anybot dev plugin hello -dir ../anybot-hello -module example.com/hello",
 	} {
 		if !strings.Contains(readme, want) {
@@ -57,9 +55,6 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	}
 	if result.Name != "hello_world" || result.Package != "hello_world" || result.Standalone {
 		t.Fatalf("plugin result = %#v", result)
-	}
-	if result.Template != DefaultPluginTemplate {
-		t.Fatalf("plugin template = %q, want %q", result.Template, DefaultPluginTemplate)
 	}
 	pluginPath := filepath.Join(dir, "plugins", "hello_world", "hello_world.go")
 	if _, err := os.Stat(pluginPath); err != nil {
@@ -187,56 +182,6 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 		t.Fatalf("README should run fixed-version installs through anybot up:\n%s", readme)
 	}
 	runGo(t, dir, "test", "./...")
-}
-
-func TestGeneratedStandalonePluginTemplatesSmoke(t *testing.T) {
-	root := repoRoot(t)
-	tests := []struct {
-		template string
-		name     string
-		wantCode string
-	}{
-		{template: "companion", name: "friendly-chat", wantCode: "renderCompanionReply"},
-		{template: "minecraft", name: "mc-admin", wantCode: "writeFileAtomic"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.template, func(t *testing.T) {
-			dir := t.TempDir()
-			result, err := NewPlugin(PluginOptions{
-				Dir:           dir,
-				Name:          tt.name,
-				Module:        "example.com/" + tt.template,
-				Template:      tt.template,
-				AnyBotVersion: "v0.0.0",
-				AnyBotReplace: root,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if result.Template != tt.template || !result.Standalone {
-				t.Fatalf("plugin result = %#v", result)
-			}
-			plugin := readFile(t, filepath.Join(dir, result.Package+".go"))
-			if !strings.Contains(plugin, tt.wantCode) {
-				t.Fatalf("plugin scaffold:\n%s", plugin)
-			}
-			readme := readFile(t, filepath.Join(dir, "README.md"))
-			if !strings.Contains(readme, "go mod tidy") {
-				t.Fatalf("README should mention remote-version tidy flow:\n%s", readme)
-			}
-			if !strings.Contains(readme, "./anybot-bot plugin check") {
-				t.Fatalf("README should suggest generated-host plugin check:\n%s", readme)
-			}
-			runGo(t, dir, "test", "./...")
-		})
-	}
-}
-
-func TestGeneratedPluginRejectsUnknownTemplate(t *testing.T) {
-	_, err := NewPlugin(PluginOptions{Dir: t.TempDir(), Name: "hello", Template: "unknown"})
-	if err == nil || !strings.Contains(err.Error(), "未知插件模板") {
-		t.Fatalf("err = %v", err)
-	}
 }
 
 func TestGeneratedStandalonePluginWithReleaseVersionRequiresTidy(t *testing.T) {

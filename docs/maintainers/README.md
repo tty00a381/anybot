@@ -74,9 +74,9 @@ core 不依赖 sdk、app/host、cmd
 - `sdk/message` 是给插件作者使用的别名与构造器。
 - OneBot 专属消息段构造器保留在 `adapters/onebot11`。
 
-`examples`
+`examples/plugins`
 
-- 展示核心库、适配器和 SDK 的能力。示例应跟随 API 变动及时更新。
+- 面向插件作者的可编译示例。示例教复杂能力，脚手架只生成单一 starter。
 
 ## 最终用户工作目录链路
 
@@ -342,7 +342,7 @@ go test -race -count=1 ./core ./sdk ./app/host ./cmd/anybot ./adapters/onebot11
 ```sh
 go build -o /tmp/anybot-cli ./cmd/anybot
 root=$(mktemp -d)
-/tmp/anybot-cli dev plugin buddy -template companion -dir "$root/buddy"
+/tmp/anybot-cli dev plugin buddy -dir "$root/buddy"
 (cd "$root/buddy" && go test ./...)
 /tmp/anybot-cli init -dir "$root/bot"
 /tmp/anybot-cli plugin add example.com/anybot-plugin/buddy -name buddy -replace "$root/buddy" -dir "$root/bot"

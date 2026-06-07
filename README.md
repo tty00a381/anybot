@@ -96,4 +96,4 @@ go run .
 - `core/message`：协议无关消息链。
 - `adapters/onebot11`：OneBot v11 适配器、消息段和动作客户端。
 - `internal/scaffold`：项目和插件脚手架。
-- `examples`：核心库、适配器和 SDK 用法示例。
+- `examples/plugins`：面向插件作者的可编译示例。

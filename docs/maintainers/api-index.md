@@ -714,18 +714,10 @@ NapCat 专属扩展动作辅助包。
 
 ## `internal/scaffold`
 
-内部脚手架，不是公共 API。
+内部脚手架，不是公共 API。插件生成器只保留单一 starter，不再维护场景模板。
 
-- `DefaultPluginTemplate = "basic"`
 - `ProjectOptions`：`Dir`、`Module`、`Force`。
 - `InitProject(opts ProjectOptions) error`
-- `PluginOptions`：`Dir`、`Name`、`Module`、`Template`、`AnyBotVersion`、`AnyBotReplace`、`Force`。
-- `PluginResult`：`Name`、`Package`、`Module`、`Template`、`Standalone`、`TestReady`。
+- `PluginOptions`：`Dir`、`Name`、`Module`、`AnyBotVersion`、`AnyBotReplace`、`Force`。
+- `PluginResult`：`Name`、`Package`、`Module`、`Standalone`、`TestReady`。
 - `NewPlugin(opts PluginOptions) (PluginResult, error)`
-- `PluginTemplates() []string`
-
-模板：
-
-- `basic`
-- `companion`
-- `minecraft`

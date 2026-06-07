@@ -201,15 +201,6 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}
-	out.Reset()
-
-	if err := run([]string{"dev", "plugin", "-template", "minecraft", "-in-project", "mc-admin", "-dir", dir}); err != nil {
-		t.Fatal(err)
-	}
-	mcPlugin := readTestFile(t, filepath.Join(dir, "plugins", "mc_admin", "mc_admin.go"))
-	if !strings.Contains(mcPlugin, "RequireAdmin") || !strings.Contains(mcPlugin, "ctx.DataDir()") {
-		t.Fatalf("minecraft plugin scaffold:\n%s", mcPlugin)
-	}
 }
 
 func TestRunDevPluginStandalone(t *testing.T) {
@@ -272,63 +263,6 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "hello_world", "hello_world.go")); !os.IsNotExist(err) {
 		t.Fatalf("default plugin should be standalone, project plugin err=%v", err)
-	}
-}
-
-func TestRunDevPluginTemplateFlagForms(t *testing.T) {
-	tests := []struct {
-		name     string
-		args     []string
-		path     string
-		contains string
-	}{
-		{
-			name:     "after name",
-			args:     []string{"dev", "plugin", "buddy", "-template", "companion", "-in-project"},
-			path:     filepath.Join("plugins", "buddy", "buddy.go"),
-			contains: "renderCompanionReply",
-		},
-		{
-			name:     "before name",
-			args:     []string{"dev", "plugin", "-template", "companion", "-in-project", "buddy"},
-			path:     filepath.Join("plugins", "buddy", "buddy.go"),
-			contains: "renderCompanionReply",
-		},
-		{
-			name:     "equals after name",
-			args:     []string{"dev", "plugin", "mc-admin", "--template=minecraft", "-in-project"},
-			path:     filepath.Join("plugins", "mc_admin", "mc_admin.go"),
-			contains: "writeFileAtomic",
-		},
-		{
-			name:     "equals before name",
-			args:     []string{"dev", "plugin", "--template=minecraft", "-in-project", "mc-admin"},
-			path:     filepath.Join("plugins", "mc_admin", "mc_admin.go"),
-			contains: "writeFileAtomic",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			args := append([]string{}, tt.args...)
-			args = append(args, "-dir", dir)
-			if err := run(args); err != nil {
-				t.Fatal(err)
-			}
-			plugin := readTestFile(t, filepath.Join(dir, tt.path))
-			if !strings.Contains(plugin, tt.contains) {
-				t.Fatalf("plugin scaffold:\n%s", plugin)
-			}
-		})
-	}
-}
-
-func TestRunDevPluginTemplateFlagErrors(t *testing.T) {
-	if err := run([]string{"dev", "plugin", "broken", "-dir", t.TempDir(), "-template"}); err == nil || !strings.Contains(err.Error(), "-template 需要值") {
-		t.Fatalf("missing template value err = %v", err)
-	}
-	if err := run([]string{"dev", "plugin", "broken", "-dir", t.TempDir(), "-template", "ghost"}); err == nil || !strings.Contains(err.Error(), "未知插件模板") {
-		t.Fatalf("unknown template err = %v", err)
 	}
 }
 

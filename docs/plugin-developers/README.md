@@ -25,12 +25,7 @@ cd anybot-hello
 go test ./...
 ```
 
-常用模板：
-
-```sh
-anybot dev plugin buddy -template companion -dir ./anybot-buddy -module github.com/acme/anybot-buddy
-anybot dev plugin mc-admin -template minecraft -dir ./anybot-mc-admin -module github.com/acme/anybot-mc-admin
-```
+脚手架只生成一个薄的 starter 插件。多轮对话、群配置、后台任务等能力看 `examples/plugins`，不要让生成器替你选择业务形态。
 
 本地框架源码开发时，脚手架会尽量给 `go.mod` 写入本地 `replace`。如果无法自动判断 AnyBot 版本或源码路径，显式传入：
 
@@ -187,7 +182,7 @@ ctx.Command("hello").Handle(func(c *absdk.EventContext) error {
 - `absdk.CommandRule("name")`：命令规则。
 - `absdk.RegexRule(pattern)`：正则，并写入 `matches` 和命名分组。
 - `absdk.All(...)`、`absdk.AnyOf(...)`、`absdk.Not(...)`：组合规则。
-- `absdk.AllowedGroups(cfg.AllowedGroups...)`：按配置限制群。
+- `absdk.AllowedGroups(cfg.AllowedGroups...)`：按配置限制群消息；私聊是否处理由其他规则决定。
 
 路由可以命名、设置优先级、添加局部中间件：
 
@@ -201,7 +196,7 @@ ctx.OnMessage(absdk.ToMe()).
 	})
 ```
 
-处理函数中的 `EventContext` 来自核心库，常用方法：
+处理函数中的 `EventContext` 是 SDK 暴露的事件上下文，常用方法：
 
 - `c.Text()`：当前事件文本。
 - `c.Command()`、`c.Args()`、`c.Argv()`：命令匹配结果。
@@ -373,7 +368,7 @@ if ctx.Config().Available() {
 ```go
 err := ctx.Config().SetAll(c.Context,
 	absdk.ConfigAssignment{Path: []string{"city", "default"}, Value: "Shanghai"},
-	absdk.ConfigAssignment{Path: []string{"enabled"}, Value: true},
+	absdk.ConfigAssignment{Path: []string{"reply", "suffix"}, Value: "今天也要开心。"},
 )
 ```
 
@@ -399,9 +394,9 @@ route.Use(absdk.RequireSuperUser())
 route.Use(absdk.RequireAdmin(cfg.Admins...))
 ```
 
-`RequireAdmin` 在配置为空时会回退到框架超级用户。
+`RequireAdmin` 在配置为空时会回退到框架超级用户；如果 `security.superusers` 也为空，这条管理命令就没有可授权用户。
 
-群白名单：
+群白名单只筛群消息，私聊不会因为白名单非空而被拦掉：
 
 ```go
 ctx.OnMessage(absdk.AllowedGroups(cfg.AllowedGroups...)).

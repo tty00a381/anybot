@@ -17,35 +17,25 @@ RELEASE_FILES := \
 	app/host/store.go \
 	cmd/anybot/main.go \
 	cmd/anybot/dev.go \
-	internal/scaffold/templates/plugin/README.md.tmpl \
-	internal/scaffold/templates/plugin/companion.go.tmpl \
-	internal/scaffold/templates/plugin/companion_README.md.tmpl \
-	internal/scaffold/templates/plugin/companion_test.go.tmpl \
-	internal/scaffold/templates/plugin/go.mod.tmpl \
-	internal/scaffold/templates/plugin/go.sum.tmpl \
-	internal/scaffold/templates/plugin/minecraft.go.tmpl \
-	internal/scaffold/templates/plugin/minecraft_README.md.tmpl \
-	internal/scaffold/templates/plugin/minecraft_test.go.tmpl \
-	internal/scaffold/templates/plugin/plugin.go.tmpl \
-	internal/scaffold/templates/plugin/plugin_test.go.tmpl \
+	internal/scaffold/scaffold.go \
 	sdk/access.go \
 	sdk/config.go \
 	sdk/data_dir.go \
 	sdk/doc.go \
 	sdk/spec.go \
 	sdk/runtime.go \
+	sdk/state.go \
 	sdk/message/message.go \
-	examples/ping/main.go \
-	examples/reversews/main.go \
-	examples/websocket/main.go \
-	examples/httpaction/main.go \
-	examples/proactive/main.go \
-	examples/dialogueplugin/dialogueplugin.go \
-	examples/companionplugin/companionplugin.go \
-	examples/pluginbot/main.go \
-	examples/permission/main.go \
-	examples/session/main.go \
-	examples/media/main.go
+	examples/README.md \
+	examples/plugins/hello/README.md \
+	examples/plugins/hello/hello.go \
+	examples/plugins/hello/hello_test.go \
+	examples/plugins/groupmemo/README.md \
+	examples/plugins/groupmemo/groupmemo.go \
+	examples/plugins/groupmemo/groupmemo_test.go \
+	examples/plugins/dialogue/README.md \
+	examples/plugins/dialogue/dialogue.go \
+	examples/plugins/dialogue/dialogue_test.go
 
 fmt:
 	gofmt -w $(GOFILES)

@@ -1,4 +1,4 @@
-package {{.Package}}
+package hello
 
 import (
 	"context"
@@ -14,19 +14,22 @@ func TestPluginRepliesToCommand(t *testing.T) {
 	if err := absdk.InstallDefault(app, Plugin); err != nil {
 		t.Fatal(err)
 	}
-	err := app.Dispatch(context.Background(), &absdk.Event{
+	if err := dispatch(app, "/hello"); err != nil {
+		t.Fatal(err)
+	}
+	if got := client.last.Text(); got != "你好，我是 AnyBot 插件。" {
+		t.Fatalf("reply = %q", got)
+	}
+}
+
+func dispatch(app *absdk.App, text string) error {
+	return app.Dispatch(context.Background(), &absdk.Event{
 		Protocol: "test",
 		SelfID:   "bot",
 		Type:     "message",
 		UserID:   "user",
-		Text:     "/{{.Command}}",
+		Text:     text,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := client.last.Text(); got != "{{.Name}} 已启动" {
-		t.Fatalf("reply = %q", got)
-	}
 }
 
 type recordAdapter struct {
@@ -44,6 +47,6 @@ type recordClient struct {
 }
 
 func (c *recordClient) Send(_ context.Context, _ absdk.ReplyTarget, chain message.Chain) (absdk.MessageReceipt, error) {
-	c.last = chain
+	c.last = chain.Clone()
 	return absdk.MessageReceipt{ID: "test"}, nil
 }

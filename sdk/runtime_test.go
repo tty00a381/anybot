@@ -92,7 +92,7 @@ func TestAllowedGroupsSupportsConfigSlices(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(hits) != 2 || hits[0] != "100" || hits[1] != "200" {
+	if len(hits) != 3 || hits[0] != "100" || hits[1] != "200" || hits[2] != "" {
 		t.Fatalf("hits = %#v", hits)
 	}
 

@@ -23,7 +23,7 @@ func usage() {
   anybot plugin enable <name> [-dir 目录] [-config anybot.yaml]
   anybot plugin disable <name> [-dir 目录] [-config anybot.yaml]
   anybot dev init [-module 模块名] [-dir 目录] [-force]
-  anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+  anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev doctor [-config core.yaml] [-connect]
   anybot dev run [go run 参数...]
   anybot version`)

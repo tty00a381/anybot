@@ -37,8 +37,8 @@ func runDev(args []string) error {
 func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
   anybot dev init [-module 模块名] [-dir 目录] [-force]
-  anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
-  anybot dev plugin <名称> -in-project [-template basic|companion|minecraft] [-dir 目录] [-force]
+  anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+  anybot dev plugin <名称> -in-project [-dir 目录] [-force]
   anybot dev new plugin <名称> [同 anybot dev plugin]
   anybot dev doctor [-config core.yaml] [-connect]
   anybot dev run [go run 参数...]`)
@@ -78,7 +78,6 @@ func runDevPlugin(args []string) error {
 	module := fs.String("module", "", "独立插件 Go 模块路径；为空时使用 example.com/anybot-plugin/<名称>")
 	anybotVersion := fs.String("anybot-version", "", "独立插件依赖的 AnyBot 版本")
 	replace := fs.String("replace", "", "独立插件 go.mod 中的 AnyBot 本地源码替换路径")
-	templateName := fs.String("template", scaffold.DefaultPluginTemplate, "插件模板："+strings.Join(scaffold.PluginTemplates(), ", "))
 	inProject := fs.Bool("in-project", false, "生成到现有核心库项目的 plugins/ 目录")
 	force := fs.Bool("force", false, "覆盖已有文件")
 	name, flagArgs, err := splitDevPluginArgs(args)
@@ -89,7 +88,7 @@ func runDevPlugin(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]，或 anybot dev plugin <名称> -in-project")
+		return fmt.Errorf("用法：anybot dev plugin <名称> [-dir 目录] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]，或 anybot dev plugin <名称> -in-project")
 	}
 	if *inProject && strings.TrimSpace(*module) != "" {
 		return fmt.Errorf("-in-project 不能与 -module 同时使用")
@@ -101,7 +100,6 @@ func runDevPlugin(args []string) error {
 		Dir:           *dir,
 		Name:          name,
 		Module:        *module,
-		Template:      *templateName,
 		AnyBotVersion: *anybotVersion,
 		AnyBotReplace: *replace,
 		Force:         *force,
@@ -228,8 +226,7 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 		case arg == "-dir" || arg == "--dir" ||
 			arg == "-module" || arg == "--module" ||
 			arg == "-anybot-version" || arg == "--anybot-version" ||
-			arg == "-replace" || arg == "--replace" ||
-			arg == "-template" || arg == "--template":
+			arg == "-replace" || arg == "--replace":
 			if i+1 >= len(args) {
 				return "", nil, fmt.Errorf("%s 需要值", arg)
 			}
@@ -238,8 +235,7 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
 			strings.HasPrefix(arg, "-module=") || strings.HasPrefix(arg, "--module=") ||
 			strings.HasPrefix(arg, "-anybot-version=") || strings.HasPrefix(arg, "--anybot-version=") ||
-			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace=") ||
-			strings.HasPrefix(arg, "-template=") || strings.HasPrefix(arg, "--template="):
+			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
 			flagArgs = append(flagArgs, arg)
 		case arg == "-force" || arg == "--force" ||
 			arg == "-in-project" || arg == "--in-project":

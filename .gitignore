@@ -2,4 +2,5 @@
 .local/
 .env
 *.db
+*.swp
 config.yaml
