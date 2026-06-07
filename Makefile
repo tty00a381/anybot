@@ -3,14 +3,10 @@
 GOFILES := $(shell find . -name '*.go' -not -path './.git/*')
 RELEASE_FILES := \
 	README.md \
-	docs/index.md \
-	docs/getting-started.md \
-	docs/core.md \
-	docs/anybot.md \
-	docs/plugin-development.md \
-	docs/configuration.md \
-	docs/onebot11.md \
-	docs/architecture.md \
+	docs/users/README.md \
+	docs/plugin-developers/README.md \
+	docs/maintainers/README.md \
+	docs/maintainers/api-index.md \
 	assets/waifu.png \
 	LICENSE \
 	.github/workflows/ci.yaml \
