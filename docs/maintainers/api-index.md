@@ -209,7 +209,7 @@ App option：
 - `Definition.Manifest() Manifest`
 - `Definition.Build() (Plugin, error)`：按默认配置构建插件实例。
 - `Definition.Factory() Factory`：转为运行框架可注册工厂。
-- `Environment`：`DataDir`、`ConfigStore`。
+- `Environment`：`DataDir`、`ConfigStore`、`AllowGlobalMiddleware`。
 - `Install(app *App, plugins ...Plugin) error`：把已配置插件实例安装到运行时。
 - `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件实例。
 - `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
@@ -217,8 +217,9 @@ App option：
 
 ### 注册表
 
-- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
+- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`、`AllowGlobalMiddleware`。
 - `Factory.WithName(name string) Factory`：为外部插件配置别名。
+- `Factory.WithGlobalMiddleware() Factory`：授予框架级全局中间件能力，当前只应用于内置策略插件。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
 - `Registry.Register(factory Factory) error`
@@ -236,7 +237,7 @@ App option：
 - `Context.Send(ctx, target, chain) (MessageReceipt, error)`
 - `Context.SendText(ctx, target, text) (MessageReceipt, error)`
 - `Context.Use(...)`
-- `Context.UseGlobal(...)`
+- `Context.UseGlobal(...) error`
 - `Context.On(...)`
 - `Context.OnMessage(...)`
 - `Context.Command(...)`
@@ -356,7 +357,26 @@ SDK 重新导出 `core` 的常用类型，目的是让插件测试和嵌入式�
 
 SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUsers`、`NewTestContext`、`NewSession`、`NewMemoryStore`、`NewFileStore`、`TaskCritical`、`TaskImmediate`。
 
-普通独立插件不应把这些入口当作主路径；插件运行能力优先走 `*sdk.Context`。
+普通独立插件不应把这些入口当作主路径；插件运行能力优先走 `*sdk.Context`，插件单元测试优先使用 `sdk/testkit`。
+
+## `sdk/testkit`
+
+插件作者使用的单元测试工具包。
+
+- `NewApp(opts ...Option) *App`：创建带记录客户端的测试运行时。
+- `WithSuperUsers(ids ...string) Option`
+- `App.InstallDefault(definitions ...sdk.Definition) error`
+- `App.Install(plugins ...sdk.Plugin) error`
+- `App.DispatchText(text string, opts ...EventOption) error`
+- `App.LastReplyText() string`
+- `App.Client() *Client`
+- `Message(text string, opts ...EventOption) *sdk.Event`
+- `FromUser(id string) EventOption`
+- `InGroup(id string) EventOption`
+- `WithSelfID(id string) EventOption`
+- `WithProtocol(protocol sdk.Protocol) EventOption`
+- `Client.Sent() []SentMessage`
+- `Client.LastText() string`
 
 ## `sdk/message`
 

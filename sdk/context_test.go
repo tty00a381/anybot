@@ -81,6 +81,18 @@ func TestContextUseIsPluginScoped(t *testing.T) {
 	}
 }
 
+func TestContextUseGlobalRequiresHostGrant(t *testing.T) {
+	app := core.New()
+	ctx := NewContext(app, Manifest{Name: "ratelimit"})
+	if err := ctx.UseGlobal(Timeout(time.Second)); !errors.Is(err, ErrGlobalMiddlewareUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	ctx = NewContext(app, Manifest{Name: "ratelimit"}, WithEnvironment(Environment{AllowGlobalMiddleware: true}))
+	if err := ctx.UseGlobal(Timeout(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestContextRouteNamesArePluginScoped(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
@@ -156,6 +168,33 @@ func TestTypedStateUsesEventContext(t *testing.T) {
 	}
 	if _, ok, err := state.Load(); err != nil || ok {
 		t.Fatalf("deleted load: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestTypedStateUpdateLoadsMutatesAndSaves(t *testing.T) {
+	type counter struct {
+		Count int `json:"count"`
+	}
+	app := core.New()
+	ctx := NewContext(app, Manifest{Name: "counter"})
+	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	state := UserState[counter](ctx, event, "counter")
+	value, err := state.Update(counter{}, time.Hour, func(value *counter) error {
+		value.Count++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Count != 1 {
+		t.Fatalf("updated value = %#v", value)
+	}
+	value, ok, err := state.Load()
+	if err != nil || !ok || value.Count != 1 {
+		t.Fatalf("saved value=%#v ok=%v err=%v", value, ok, err)
+	}
+	if _, err := state.Update(counter{}, 0, nil); err == nil || !strings.Contains(err.Error(), "update function is required") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

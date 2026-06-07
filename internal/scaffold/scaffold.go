@@ -374,6 +374,7 @@ const pluginFile = `package {{.Package}}
 
 import (
 	"fmt"
+	"strings"
 
 	absdk "github.com/tty00a381/anybot/sdk"
 )
@@ -385,7 +386,7 @@ type Config struct {
 
 // Validate 校验 {{.Name}} 插件配置。
 func (cfg Config) Validate() error {
-	if cfg.Command == "" {
+	if strings.TrimSpace(cfg.Command) == "" {
 		return fmt.Errorf("command 不能为空")
 	}
 	return nil
@@ -396,10 +397,12 @@ var Plugin = absdk.Define(
 	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
 	Config{Command: "{{.Command}}"},
 	func(ctx *absdk.Context, cfg Config) error {
-		ctx.Command(cfg.Command).Handle(func(c *absdk.EventContext) error {
-			_, err := c.ReplyText("{{.Name}} 已启动")
-			return err
-		})
+		ctx.Command(cfg.Command).
+			Name("command").
+			Handle(func(c *absdk.EventContext) error {
+				_, err := c.ReplyText("{{.Name}} 已启动")
+				return err
+			})
 		return nil
 	},
 )
@@ -408,51 +411,22 @@ var Plugin = absdk.Define(
 const pluginTestFile = `package {{.Package}}
 
 import (
-	"context"
 	"testing"
 
-	absdk "github.com/tty00a381/anybot/sdk"
-	"github.com/tty00a381/anybot/sdk/message"
+	"github.com/tty00a381/anybot/sdk/testkit"
 )
 
 func TestPluginRepliesToCommand(t *testing.T) {
-	client := &recordClient{}
-	app := absdk.NewApp(absdk.WithAdapter(recordAdapter{client: client}))
-	if err := absdk.InstallDefault(app, Plugin); err != nil {
+	app := testkit.NewApp()
+	if err := app.InstallDefault(Plugin); err != nil {
 		t.Fatal(err)
 	}
-	err := app.Dispatch(context.Background(), &absdk.Event{
-		Protocol: "test",
-		SelfID:   "bot",
-		Type:     "message",
-		UserID:   "user",
-		Text:     "/{{.Command}}",
-	})
-	if err != nil {
+	if err := app.DispatchText("/{{.Command}}"); err != nil {
 		t.Fatal(err)
 	}
-	if got := client.last.Text(); got != "{{.Name}} 已启动" {
+	if got := app.LastReplyText(); got != "{{.Name}} 已启动" {
 		t.Fatalf("reply = %q", got)
 	}
-}
-
-type recordAdapter struct {
-	client *recordClient
-}
-
-func (a recordAdapter) Protocol() absdk.Protocol { return "test" }
-func (a recordAdapter) Start(context.Context, absdk.EmitFunc) error {
-	return nil
-}
-func (a recordAdapter) Client() absdk.ActionClient { return a.client }
-
-type recordClient struct {
-	last message.Chain
-}
-
-func (c *recordClient) Send(_ context.Context, _ absdk.ReplyTarget, chain message.Chain) (absdk.MessageReceipt, error) {
-	c.last = chain
-	return absdk.MessageReceipt{ID: "test"}, nil
 }
 `
 

@@ -71,6 +71,19 @@ func TestDefinitionFactoryRejectsInvalidPluginName(t *testing.T) {
 	}
 }
 
+func TestValidatePluginNameRequiresStableIdentifier(t *testing.T) {
+	for _, name := range []string{"weather", "anybot_weather", "weather2"} {
+		if err := ValidatePluginName(name); err != nil {
+			t.Fatalf("ValidatePluginName(%q) = %v", name, err)
+		}
+	}
+	for _, name := range []string{"Weather", "weather-bot", "2weather", "天气", "weather.bot", "weather bot"} {
+		if err := ValidatePluginName(name); err == nil {
+			t.Fatalf("ValidatePluginName(%q) should fail", name)
+		}
+	}
+}
+
 func TestRegistryRejectsInvalidPluginName(t *testing.T) {
 	registry := NewRegistry()
 	definition := Define(Manifest{Name: "ok"}, struct{}{}, func(*Context, struct{}) error {

@@ -9,9 +9,10 @@ import (
 
 // Factory 根据框架配置创建插件实例。
 type Factory struct {
-	Info    Manifest
-	Default any
-	Build   func(yaml.Node) (Plugin, error)
+	Info                  Manifest
+	Default               any
+	Build                 func(yaml.Node) (Plugin, error)
+	AllowGlobalMiddleware bool
 }
 
 // WithName 返回使用指定注册名的工厂，适合运行框架为外部插件提供配置别名。
@@ -38,6 +39,12 @@ func (f Factory) WithName(name string) Factory {
 		}
 		return namedPlugin{plugin: plugin, name: name}, nil
 	}
+	return f
+}
+
+// WithGlobalMiddleware 授予该工厂创建的插件注册框架级全局中间件的能力。
+func (f Factory) WithGlobalMiddleware() Factory {
+	f.AllowGlobalMiddleware = true
 	return f
 }
 

@@ -39,7 +39,6 @@ var Plugin = absdk.Define(
 		if err != nil {
 			return err
 		}
-		ctx.UseGlobal(absdk.RateLimit(cfg.Limit, window))
-		return nil
+		return ctx.UseGlobal(absdk.RateLimit(cfg.Limit, window))
 	},
 )

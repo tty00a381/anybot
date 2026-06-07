@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -9,6 +10,9 @@ import (
 	"github.com/tty00a381/anybot/core"
 	"github.com/tty00a381/anybot/sdk/message"
 )
+
+// ErrGlobalMiddlewareUnavailable 表示宿主没有授予插件注册全局中间件的能力。
+var ErrGlobalMiddlewareUnavailable = errors.New("anybot: global middleware is not available to this plugin")
 
 // Context 是成熟插件的安装上下文，暴露插件应使用的运行时能力。
 type Context struct {
@@ -120,11 +124,16 @@ func (c *Context) Use(middleware ...Middleware) {
 	}
 }
 
-// UseGlobal 注册框架级全局中间件。普通插件应优先使用 Use；只有安全策略、全局限流等框架策略才应使用此方法。
-func (c *Context) UseGlobal(middleware ...Middleware) {
-	if c != nil && c.app != nil {
-		c.app.Use(middleware...)
+// UseGlobal 注册框架级全局中间件。只有运行框架显式授权的内置策略插件才应使用。
+func (c *Context) UseGlobal(middleware ...Middleware) error {
+	if c == nil || c.app == nil {
+		return ErrGlobalMiddlewareUnavailable
 	}
+	if !c.env.AllowGlobalMiddleware {
+		return ErrGlobalMiddlewareUnavailable
+	}
+	c.app.Use(middleware...)
+	return nil
 }
 
 // On 注册通用事件路由。

@@ -170,8 +170,10 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 	}
 	testFile := readFile(t, filepath.Join(dir, "hello_world_test.go"))
 	if strings.Contains(testFile, "github.com/tty00a381/anybot/core") ||
-		!strings.Contains(testFile, "absdk.NewApp") ||
-		!strings.Contains(testFile, "recordClient") {
+		strings.Contains(testFile, "absdk.NewApp") ||
+		strings.Contains(testFile, "recordClient") ||
+		!strings.Contains(testFile, "github.com/tty00a381/anybot/sdk/testkit") ||
+		!strings.Contains(testFile, "testkit.NewApp()") {
 		t.Fatalf("plugin test scaffold:\n%s", testFile)
 	}
 	readme := readFile(t, filepath.Join(dir, "README.md"))

@@ -253,8 +253,8 @@ SDK 是插件作者的主入口，不是 `core` 的简单转发。
 
 谨慎使用：
 
-- `ctx.UseGlobal()`：会影响所有插件和路由。
-- `sdk.NewApp`、`sdk.WithAdapter`、`sdk.InstallDefault`：适合测试或嵌入式程序，不是独立插件主路径。
+- `ctx.UseGlobal()`：只允许运行框架显式授权的策略插件使用，会影响所有插件和路由。
+- `sdk.NewApp`、`sdk.WithAdapter`、`sdk.InstallDefault`：适合嵌入式程序或底层测试；普通插件测试优先用 `sdk/testkit`。
 - `sdk.EventContext` 上的底层运行时访问方法：适合框架级插件或诊断代码。
 
 新增 SDK 能力时先判断：

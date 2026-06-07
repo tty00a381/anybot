@@ -26,6 +26,8 @@ RELEASE_FILES := \
 	sdk/runtime.go \
 	sdk/state.go \
 	sdk/message/message.go \
+	sdk/testkit/testkit.go \
+	sdk/testkit/testkit_test.go \
 	examples/README.md \
 	examples/plugins/hello/README.md \
 	examples/plugins/hello/hello.go \

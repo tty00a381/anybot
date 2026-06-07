@@ -14,7 +14,7 @@ func DefaultRegistry() absdk.Registry {
 	mustRegister(registry, help.Plugin.Factory())
 	mustRegister(registry, echo.Plugin.Factory())
 	mustRegister(registry, admin.Plugin.Factory())
-	mustRegister(registry, ratelimit.Plugin.Factory())
+	mustRegister(registry, ratelimit.Plugin.Factory().WithGlobalMiddleware())
 	return registry
 }
 

@@ -35,16 +35,8 @@ func pluginDataDir(root, name string) (string, error) {
 		return "", ErrDataDirUnavailable
 	}
 	name = strings.TrimSpace(name)
-	if !safePluginPathName(name) {
+	if err := ValidatePluginName(name); err != nil {
 		return "", fmt.Errorf("plugin name %q cannot be used as a data directory name", name)
 	}
 	return filepath.Join(root, "plugins", name), nil
-}
-
-func safePluginPathName(name string) bool {
-	name = strings.TrimSpace(name)
-	if name == "" || name == "." || name == ".." || filepath.IsAbs(name) {
-		return false
-	}
-	return !strings.ContainsAny(name, `/\`)
 }

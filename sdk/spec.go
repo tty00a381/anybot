@@ -35,7 +35,7 @@ func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
 	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
 }
 
-// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志和数据目录。
+// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志、路由命名空间和数据目录。
 func ValidatePluginName(name string) error {
 	if name == "" {
 		return fmt.Errorf("plugin name is required")
@@ -48,7 +48,29 @@ func ValidatePluginName(name string) error {
 		strings.HasPrefix(name, ".") {
 		return fmt.Errorf("plugin name %q is invalid", name)
 	}
+	if !validPluginIdentifier(name) {
+		return fmt.Errorf("plugin name %q is invalid: use lowercase letters, digits, and underscores; start with a letter", name)
+	}
 	return nil
+}
+
+func validPluginIdentifier(name string) bool {
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		case r == '_':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Manifest 返回插件清单。

@@ -53,6 +53,8 @@ anybot plugin enable weather
 anybot up
 ```
 
+插件配置名只能使用小写字母、数字和下划线，并且必须以字母开头。省略 `-name` 时，模块名末尾的短横线会自动转换为下划线，例如 `anybot-weather` 会得到 `anybot_weather`。
+
 ## 编写插件
 
 独立插件从脚手架开始：

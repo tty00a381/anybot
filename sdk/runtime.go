@@ -19,8 +19,9 @@ type Manifest struct {
 
 // Environment 描述运行框架授予插件的宿主能力。
 type Environment struct {
-	DataDir     string
-	ConfigStore ConfigStore
+	DataDir               string
+	ConfigStore           ConfigStore
+	AllowGlobalMiddleware bool
 }
 
 // InstallOption 调整本次插件安装使用的宿主能力。

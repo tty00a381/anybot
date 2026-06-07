@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -94,6 +95,25 @@ func (s State[T]) LoadOr(fallback T) (T, error) {
 	}
 	if !ok {
 		return fallback, nil
+	}
+	return value, nil
+}
+
+// Update 读取状态，交给 update 原地修改后再写回。
+// 状态不存在时从 fallback 开始；ttl 大于 0 时，写回后的状态会在到期后失效。
+func (s State[T]) Update(fallback T, ttl time.Duration, update func(*T) error) (T, error) {
+	value, err := s.LoadOr(fallback)
+	if err != nil {
+		return fallback, err
+	}
+	if update == nil {
+		return value, fmt.Errorf("plugin state update function is required")
+	}
+	if err := update(&value); err != nil {
+		return value, err
+	}
+	if err := s.Save(value, ttl); err != nil {
+		return value, err
 	}
 	return value, nil
 }

@@ -91,6 +91,8 @@ var Plugin = absdk.Define(
 
 插件对外导出的是 `Plugin`。最终用户添加插件时，`-symbol` 默认就是 `Plugin`。
 
+`Manifest.Name` 是插件在运行框架里的稳定名字，会用于配置键、`plugins.d/<name>.yaml`、日志、路由命名空间和插件数据目录。名字只能使用小写字母、数字和下划线，并且必须以字母开头，例如 `weather`、`group_memo`。
+
 ## 安装到本地机器人工作目录
 
 假设插件 module 是 `github.com/acme/anybot-hello`，本地插件目录是 `../anybot-hello`：
@@ -169,7 +171,6 @@ ctx.Command("hello").Handle(func(c *absdk.EventContext) error {
 - `ctx.OnMessage(rules...)`：消息事件路由。
 - `ctx.Command(names...)`：命令路由，默认识别 `/`、`!`、`.`。
 - `ctx.Use(middleware...)`：只影响当前插件后续注册的路由。
-- `ctx.UseGlobal(middleware...)`：注册框架级中间件，普通业务插件慎用。
 
 常用规则：
 
@@ -249,6 +250,15 @@ if err != nil {
 }
 state.Count++
 return absdk.UserState[State](ctx, c, "state").Save(state, time.Hour)
+```
+
+读改写可以用 `Update` 收束成一次状态操作：
+
+```go
+state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour, func(state *State) error {
+	state.Count++
+	return nil
+})
 ```
 
 常用维度：
@@ -433,7 +443,22 @@ return client.SetGroupBan(c.Context, c.GroupID(), c.UserID(), 10*time.Minute)
 - 命令路由能注册并处理消息。
 - 会话、多轮对话或配置写回这类有状态逻辑。
 
-使用 `absdk.NewApp` 和 `absdk.NewTestContext` 可以写轻量单元测试。需要端到端验证时，把插件用 `-replace` 安装到一个临时机器人工作目录，再跑：
+使用 `sdk/testkit` 可以写轻量单元测试，不需要手写假 Adapter 或假 Client：
+
+```go
+app := testkit.NewApp()
+if err := app.InstallDefault(Plugin); err != nil {
+	t.Fatal(err)
+}
+if err := app.DispatchText("/hello"); err != nil {
+	t.Fatal(err)
+}
+if got := app.LastReplyText(); got != "hello" {
+	t.Fatalf("reply = %q", got)
+}
+```
+
+需要端到端验证时，把插件用 `-replace` 安装到一个临时机器人工作目录，再跑：
 
 ```sh
 anybot build
@@ -446,7 +471,7 @@ go test ./...
 
 - `go test ./...` 通过。
 - `go vet ./...` 没有明显问题。
-- `Plugin` 的 `Manifest.Name` 稳定，不随包名或仓库名随意变化。
+- `Plugin` 的 `Manifest.Name` 稳定，只使用小写字母、数字和下划线，且不随包名或仓库名随意变化。
 - 默认配置够保守，插件安装后默认禁用，由用户显式启用。
 - 配置项能通过 `anybot plugin inspect <name>` 看懂。
 - 外部服务密钥支持 `!env`，不要鼓励用户明文写进仓库。
