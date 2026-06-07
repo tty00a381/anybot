@@ -133,17 +133,7 @@ func ParsePluginConfigAssignment(input string) (PluginConfigAssignment, error) {
 
 // ParsePluginConfigPath 解析 plugins.<name>.config 下的点分路径。
 func ParsePluginConfigPath(input string) ([]string, error) {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return nil, fmt.Errorf("plugin config key is required")
-	}
-	parts := strings.Split(input, ".")
-	for _, part := range parts {
-		if strings.TrimSpace(part) != part || part == "" || strings.Contains(part, "=") || strings.HasPrefix(part, "-") {
-			return nil, fmt.Errorf("plugin config key %q is invalid", input)
-		}
-	}
-	return parts, nil
+	return absdk.ParseConfigPath(input)
 }
 
 // EnsurePluginConfigEntry 确保 anybot 配置里存在 plugins.<name> 占位项。

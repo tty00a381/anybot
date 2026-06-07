@@ -92,8 +92,7 @@ var Plugin = absdk.Define(
 			Name("dialogue.chat").
 			Use(absdk.RateLimit(20, time.Minute)).
 			Handle(func(c *absdk.EventContext) error {
-				var p profile
-				_, _ = ctx.UserSession(c).LoadJSON(c.Context, "profile", &p)
+				p, _ := absdk.UserState[profile](ctx, c, "profile").LoadOr(profile{})
 				_, err := c.ReplyText(displayName(p) + "，我听到了：" + strings.TrimSpace(c.Text()))
 				return err
 			})
@@ -121,7 +120,7 @@ func rememberName(ctx *absdk.Context, c *absdk.EventContext, cfg Config) error {
 }
 
 func saveProfile(ctx *absdk.Context, c *absdk.EventContext, cfg Config, p profile) error {
-	return ctx.UserSession(c).SaveJSON(c.Context, "profile", p, cfg.MemoryTTL)
+	return absdk.UserState[profile](ctx, c, "profile").Save(p, cfg.MemoryTTL)
 }
 
 func displayName(p profile) string {

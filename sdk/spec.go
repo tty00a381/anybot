@@ -2,6 +2,8 @@ package sdk
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +35,22 @@ func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
 	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
 }
 
+// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志和数据目录。
+func ValidatePluginName(name string) error {
+	if name == "" {
+		return fmt.Errorf("plugin name is required")
+	}
+	if strings.TrimSpace(name) != name ||
+		strings.ContainsAny(name, `/\`) ||
+		filepath.IsAbs(name) ||
+		name == "." ||
+		name == ".." ||
+		strings.HasPrefix(name, ".") {
+		return fmt.Errorf("plugin name %q is invalid", name)
+	}
+	return nil
+}
+
 // Manifest 返回插件清单。
 func (d typedDefinition[T]) Manifest() Manifest {
 	return d.Info
@@ -40,6 +58,14 @@ func (d typedDefinition[T]) Manifest() Manifest {
 
 // Factory 返回可供运行框架注册的插件工厂。
 func (d typedDefinition[T]) Factory() Factory {
+	if err := ValidatePluginName(d.Info.Name); err != nil {
+		return Factory{
+			Info: d.Info,
+			Build: func(yaml.Node) (Plugin, error) {
+				return nil, err
+			},
+		}
+	}
 	return Factory{
 		Info:    d.Info,
 		Default: d.Default,

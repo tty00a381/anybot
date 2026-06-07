@@ -245,27 +245,29 @@ _, err := c.Reply(message.New(
 
 ## 会话存储
 
-插件应优先通过 SDK 上下文拿带插件命名空间的会话：
+插件应优先使用 SDK 的 typed state helper，让状态自动落在当前插件命名空间：
 
 ```go
-session := ctx.Session(c)
-var state State
-ok, err := session.LoadJSON(c.Context, "state", &state)
+state, err := absdk.UserState[State](ctx, c, "state").LoadOr(State{})
 if err != nil {
 	return err
 }
 state.Count++
-return session.SaveJSON(c.Context, "state", state, time.Hour)
+return absdk.UserState[State](ctx, c, "state").Save(state, time.Hour)
 ```
 
 常用维度：
 
+- `absdk.ConversationState[T](ctx, c, "key")`：自然会话 typed 状态。
+- `absdk.UserState[T](ctx, c, "key")`：用户维度 typed 状态。
+- `absdk.GroupState[T](ctx, c, "key")`：群或频道维度 typed 状态。
+- `absdk.NamedState[T](ctx, c, "key", "scope")`：插件自定义维度 typed 状态。
 - `ctx.Session(c)`：自然会话。群里按群和用户区分，私聊按用户区分。
 - `ctx.UserSession(c)`：用户维度。
 - `ctx.GroupSession(c)`：群或频道维度。
 - `ctx.SessionBy("key")`：插件自定义维度。
 
-`Store` 支持 TTL。默认运行框架使用文件存储，位置在 `runtime.data_dir/store.path`。
+底层 `Session` 仍可用于原始字节或特殊 JSON 读写。默认运行框架使用文件存储，位置在 `runtime.data_dir/store.path`。
 
 ## 多轮对话
 

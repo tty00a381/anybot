@@ -102,8 +102,8 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 			pluginEnv.DataDir = dataDir
 		}
 	}
-	if hostOpts.ConfigPath != "" {
-		pluginEnv.ConfigStore = newPluginConfigStore(hostOpts.ConfigPath)
+	if configPath != "" {
+		pluginEnv.ConfigStore = newPluginConfigStore(configPath)
 	}
 	if workers, ok, err := parseWorkers(cfg.Runtime.Workers); err != nil {
 		return nil, err

@@ -83,14 +83,14 @@ func handleCompanionMessage(ctx *absdk.Context, cfg Config, c *absdk.EventContex
 	if err != nil {
 		return err
 	}
-	session := ctx.UserSession(c)
-	var memory conversationMemory
-	if _, err := session.LoadJSON(c.Context, "conversation", &memory); err != nil {
+	state := absdk.UserState[conversationMemory](ctx, c, "conversation")
+	memory, err := state.LoadOr(conversationMemory{})
+	if err != nil {
 		return err
 	}
 	memory.Turns++
 	memory.LastUserText = text
-	if err := session.SaveJSON(c.Context, "conversation", memory, ttl); err != nil {
+	if err := state.Save(memory, ttl); err != nil {
 		return err
 	}
 	_, err = c.ReplyText(renderCompanionReply(cfg, memory, text))

@@ -133,6 +133,55 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 	}
 }
 
+func TestTypedStateUsesEventContext(t *testing.T) {
+	type profile struct {
+		Name string `json:"name"`
+	}
+	app := core.New()
+	ctx := NewContext(app, Manifest{Name: "profile"})
+	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	state := UserState[profile](ctx, event, "profile")
+	if value, ok, err := state.Load(); err != nil || ok || value.Name != "" {
+		t.Fatalf("empty load: value=%#v ok=%v err=%v", value, ok, err)
+	}
+	if err := state.Save(profile{Name: "alice"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	value, ok, err := state.Load()
+	if err != nil || !ok || value.Name != "alice" {
+		t.Fatalf("saved load: value=%#v ok=%v err=%v", value, ok, err)
+	}
+	if err := state.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := state.Load(); err != nil || ok {
+		t.Fatalf("deleted load: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestTypedStateUnavailable(t *testing.T) {
+	if _, _, err := UserState[int](nil, nil, "count").Load(); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	ctx := NewContext(nil, Manifest{Name: "counter"})
+	if err := UserState[int](ctx, nil, "count").Save(1, 0); !errors.Is(err, ErrStoreUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	ctx = NewContext(core.New(), Manifest{Name: "counter"})
+	if err := UserState[int](ctx, nil, "count").Save(1, 0); !errors.Is(err, ErrEventContextUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	app := core.New()
+	ctx = NewContext(app, Manifest{Name: "counter"})
+	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	if _, _, err := UserState[int](ctx, event, "").Load(); !errors.Is(err, ErrStateKeyRequired) {
+		t.Fatalf("err = %v", err)
+	}
+	if err := UserState[int](ctx, event, "   ").Save(1, 0); !errors.Is(err, ErrStateKeyRequired) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestContextConfigWritesThroughStore(t *testing.T) {
 	store := &sdkConfigStore{}
 	app := core.New()

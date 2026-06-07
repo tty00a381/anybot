@@ -38,19 +38,19 @@ func runPlugin(args []string) error {
 	case "list":
 		return runPluginList(args[1:])
 	case "status":
-		return runPluginStatus(args[1:])
+		return runHostPluginCommand(args)
 	case "inspect":
-		return runPluginInspect(args[1:])
+		return runHostPluginCommand(args)
 	case "config":
-		return runPluginConfig(args[1:])
+		return runHostPluginCommand(args)
 	case "check":
-		return runPluginCheck(args[1:])
+		return runHostPluginCommand(args)
 	case "sync":
-		return runPluginSync(args[1:])
+		return runHostPluginCommand(args)
 	case "enable":
-		return runPluginSetEnabled(args[1:], true)
+		return runHostPluginCommand(args)
 	case "disable":
-		return runPluginSetEnabled(args[1:], false)
+		return runHostPluginCommand(args)
 	case "help", "-h", "--help":
 		pluginUsage()
 		return nil
@@ -75,7 +75,7 @@ func pluginUsage() {
   anybot plugin disable <name> [-dir 目录] [-config anybot.yaml]`)
 }
 
-func runPluginAdd(args []string) error {
+func runPluginAdd(args []string) (err error) {
 	fs := flag.NewFlagSet("plugin add", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	name := fs.String("name", "", "插件配置名称")
@@ -127,9 +127,7 @@ func runPluginAdd(args []string) error {
 	}
 	committed := false
 	defer func() {
-		if !committed {
-			_ = rollback()
-		}
+		joinRollbackError(&err, committed, rollback)
 	}()
 	workspace, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     *dir,
@@ -177,17 +175,43 @@ func pluginAddTouchedFiles(dir, name string) []string {
 	if dir == "" {
 		dir = "."
 	}
-	files := []string{
+	return append(pluginWorkspaceTouchedFiles(dir), pluginConfigTouchedFiles(filepath.Join(dir, "anybot.yaml"), name)...)
+}
+
+func pluginWorkspaceTouchedFiles(dir string) []string {
+	if dir == "" {
+		dir = "."
+	}
+	return []string{
 		filepath.Join(dir, host.PluginWorkspaceFile),
 		filepath.Join(dir, "plugins.gen.go"),
 		filepath.Join(dir, "main.go"),
 		filepath.Join(dir, "go.mod"),
-		filepath.Join(dir, "anybot.yaml"),
-		filepath.Join(dir, "plugins.d"),
 	}
-	if name != "" {
-		files = append(files, filepath.Join(dir, "plugins.d", name+".yaml"))
+}
+
+func pluginConfigTouchedFiles(configPath, name string) []string {
+	files := []string{configPath}
+	if name == "" {
+		return files
 	}
+	base := filepath.Dir(configPath)
+	if base == "" {
+		base = "."
+	}
+	files = append(files, filepath.Join(base, "plugins.d"), filepath.Join(base, "plugins.d", name+".yaml"))
+	if _, err := os.Stat(configPath); err != nil {
+		return files
+	}
+	cfg, err := host.LoadConfig(configPath)
+	if err != nil || cfg.PluginConfigDir == "" {
+		return files
+	}
+	dir := cfg.PluginConfigDir
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(base, dir)
+	}
+	files = append(files, dir, filepath.Join(dir, name+".yaml"))
 	return files
 }
 
@@ -270,6 +294,15 @@ func snapshotFiles(paths []string) (func() error, error) {
 	}, nil
 }
 
+func joinRollbackError(result *error, committed bool, rollback func() error) {
+	if committed || rollback == nil {
+		return
+	}
+	if err := rollback(); err != nil {
+		*result = errors.Join(*result, fmt.Errorf("回滚失败: %w", err))
+	}
+}
+
 func removeCreatedPath(path string) error {
 	err := os.Remove(path)
 	if err == nil || errors.Is(err, os.ErrNotExist) {
@@ -282,7 +315,7 @@ func removeCreatedPath(path string) error {
 	return err
 }
 
-func runPluginUpdate(args []string) error {
+func runPluginUpdate(args []string) (err error) {
 	fs := flag.NewFlagSet("plugin update", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	version := fs.String("version", "", "插件模块版本")
@@ -341,6 +374,14 @@ func runPluginUpdate(args []string) error {
 		updateVersion = pinnedVersion
 		updateSetVersion = true
 	}
+	rollback, err := snapshotFiles(pluginWorkspaceTouchedFiles(*dir))
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		joinRollbackError(&err, committed, rollback)
+	}()
 	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
 		Dir:          *dir,
 		Name:         name,
@@ -363,10 +404,11 @@ func runPluginUpdate(args []string) error {
 	} else {
 		fmt.Fprintf(stdout, "插件配置未变化：%s (%s.%s)\n", updated.Name, pluginModuleRef(updated), updated.Symbol)
 	}
+	committed = true
 	return nil
 }
 
-func runPluginRemove(args []string) error {
+func runPluginRemove(args []string) (err error) {
 	fs := flag.NewFlagSet("plugin remove", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	config := fs.String("config", "", "配置文件")
@@ -383,16 +425,24 @@ func runPluginRemove(args []string) error {
 	if _, exists := host.DefaultRegistry().Factory(name); exists {
 		return fmt.Errorf("内置插件 %q 不能移除；请使用 anybot plugin disable %s", name, name)
 	}
+	configPath := *config
+	if configPath == "" {
+		configPath = filepath.Join(*dir, "anybot.yaml")
+	}
+	rollback, err := snapshotFiles(append(pluginWorkspaceTouchedFiles(*dir), pluginConfigTouchedFiles(configPath, name)...))
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		joinRollbackError(&err, committed, rollback)
+	}()
 	removed, _, err := host.RemovePluginModule(host.RemovePluginOptions{Dir: *dir, Name: name})
 	if err != nil {
 		return err
 	}
 	if err := dropPluginGoMod(*dir, removed); err != nil {
 		return err
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
 	}
 	changed := false
 	if _, err := os.Stat(configPath); err == nil {
@@ -407,6 +457,7 @@ func runPluginRemove(args []string) error {
 	if changed {
 		fmt.Fprintf(stdout, "配置已移除：%s\n", removed.Name)
 	}
+	committed = true
 	return nil
 }
 
@@ -643,250 +694,68 @@ func pluginModuleRef(item host.PluginModule) string {
 	return out
 }
 
-func runPluginStatus(args []string) error {
-	fs := flag.NewFlagSet("plugin status", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	cfg, err := host.LoadConfig(configPath)
+func runHostPluginCommand(args []string) error {
+	dir, configPath, commandArgs, err := parseHostPluginCommandArgs(args)
 	if err != nil {
 		return err
 	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(*dir, host.PluginWorkspaceFile))
-	if err != nil {
-		return err
-	}
-	statuses := host.PluginStatuses(cfg, host.DefaultRegistry(), workspace)
-	return host.WritePluginStatusTable(stdout, statuses)
+	return host.RunPluginCommand(host.PluginCommandOptions{
+		Args:          commandArgs,
+		Output:        stdout,
+		ConfigPath:    configPath,
+		WorkspacePath: filepath.Join(dir, host.PluginWorkspaceFile),
+		Registry:      host.DefaultRegistry(),
+	})
 }
 
-func runPluginInspect(args []string) error {
-	fs := flag.NewFlagSet("plugin inspect", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	name, flagArgs, err := splitPluginConfigArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-	if name == "" {
-		return fmt.Errorf("用法：anybot plugin inspect <name> [-dir 目录] [-config anybot.yaml]")
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(*dir, host.PluginWorkspaceFile))
-	if err != nil {
-		return err
-	}
-	inspect, err := host.InspectPlugin(configPath, host.DefaultRegistry(), workspace, name)
-	if err != nil {
-		return err
-	}
-	return host.WritePluginInspect(stdout, inspect)
-}
-
-func runPluginConfig(args []string) error {
-	fs := flag.NewFlagSet("plugin config", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	name, changeArgs, flagArgs, err := splitPluginConfigSetArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-	if name == "" || len(changeArgs) == 0 {
-		return fmt.Errorf("用法：anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]，或 anybot plugin config <name> -reset <key>...")
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	if err := ensureKnownPluginTarget(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name, true); err != nil {
-		return err
-	}
-	change, err := host.ParsePluginConfigChanges(changeArgs)
-	if err != nil {
-		return err
-	}
-	if len(change.ResetPaths) > 0 {
-		result, err := host.ApplyPluginConfigChange(configPath, name, change)
-		if err != nil {
-			return err
-		}
-		if result.Changed {
-			fmt.Fprintf(stdout, "插件配置已重置：%s（%d 项）\n", name, result.Count)
-		} else {
-			fmt.Fprintf(stdout, "插件配置未变化：%s\n", name)
-		}
-		return syncPluginDefaults(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name)
-	}
-	result, err := host.ApplyPluginConfigChange(configPath, name, change)
-	if err != nil {
-		return err
-	}
-	if result.Changed {
-		fmt.Fprintf(stdout, "插件配置已更新：%s（%d 项）\n", name, result.Count)
-	} else {
-		fmt.Fprintf(stdout, "插件配置未变化：%s\n", name)
-	}
-	return nil
-}
-
-func runPluginSync(args []string) error {
-	fs := flag.NewFlagSet("plugin sync", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(*dir, host.PluginWorkspaceFile))
-	if err != nil {
-		return err
-	}
-	result, err := host.SyncPluginConfigEntriesForWorkspace(configPath, host.DefaultRegistry(), workspace)
-	if err != nil {
-		return err
-	}
-	return host.WritePluginConfigSyncSummary(stdout, result)
-}
-
-func runPluginCheck(args []string) error {
-	fs := flag.NewFlagSet("plugin check", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	cfg, err := host.LoadConfig(configPath)
-	if err != nil {
-		return err
-	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(*dir, host.PluginWorkspaceFile))
-	if err != nil {
-		return err
-	}
-	checks := host.PluginConfigChecks(cfg, host.DefaultRegistry(), workspace)
-	if err := host.WritePluginConfigCheckTable(stdout, checks); err != nil {
-		return err
-	}
-	if host.PluginConfigCheckFailed(checks) {
-		return fmt.Errorf("插件配置检查失败")
-	}
-	return nil
-}
-
-func runPluginSetEnabled(args []string, enabled bool) error {
-	fs := flag.NewFlagSet("plugin enabled", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	name, flagArgs, err := splitPluginConfigArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-	if name == "" {
-		action := "enable"
-		if !enabled {
-			action = "disable"
-		}
-		return fmt.Errorf("用法：anybot plugin %s <name> [-dir 目录] [-config anybot.yaml]", action)
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	if err := ensureKnownPluginTarget(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name, !enabled); err != nil {
-		return err
-	}
-	changed, err := host.SetPluginEnabled(configPath, name, enabled)
-	if err != nil {
-		return err
-	}
-	action := "启用"
-	if !enabled {
-		action = "禁用"
-	}
-	if changed {
-		fmt.Fprintf(stdout, "插件已%s：%s\n", action, name)
-	} else {
-		fmt.Fprintf(stdout, "插件已处于%s状态：%s\n", action, name)
-	}
-	if enabled {
-		if err := syncPluginDefaults(configPath, filepath.Join(*dir, host.PluginWorkspaceFile), name); err != nil {
-			return err
+func parseHostPluginCommandArgs(args []string) (dir string, configPath string, commandArgs []string, err error) {
+	dir = "."
+	command := ""
+	seenConfigTarget := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-dir" || arg == "--dir":
+			if i+1 >= len(args) {
+				return "", "", nil, fmt.Errorf("%s 需要值", arg)
+			}
+			dir = args[i+1]
+			i++
+		case arg == "-config" || arg == "--config":
+			if i+1 >= len(args) {
+				return "", "", nil, fmt.Errorf("%s 需要值", arg)
+			}
+			configPath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "-dir="):
+			dir = strings.TrimPrefix(arg, "-dir=")
+		case strings.HasPrefix(arg, "--dir="):
+			dir = strings.TrimPrefix(arg, "--dir=")
+		case strings.HasPrefix(arg, "-config="):
+			configPath = strings.TrimPrefix(arg, "-config=")
+		case strings.HasPrefix(arg, "--config="):
+			configPath = strings.TrimPrefix(arg, "--config=")
+		case arg == "-reset" || arg == "--reset" || strings.HasPrefix(arg, "-reset=") || strings.HasPrefix(arg, "--reset="):
+			if command == "config" && !seenConfigTarget {
+				return "", "", nil, fmt.Errorf("-reset 必须写在插件名之后")
+			}
+			commandArgs = append(commandArgs, arg)
+		default:
+			if command == "" {
+				command = arg
+			} else if command == "config" && !strings.HasPrefix(arg, "-") && !seenConfigTarget {
+				seenConfigTarget = true
+			}
+			commandArgs = append(commandArgs, arg)
 		}
 	}
-	return nil
-}
-
-func syncPluginDefaults(configPath, workspacePath, name string) error {
-	result, err := host.SyncPluginConfigEntry(configPath, host.DefaultRegistry(), name)
-	if err != nil {
-		return err
+	if command == "config" && (!seenConfigTarget || len(commandArgs) < 3) {
+		return "", "", nil, fmt.Errorf("用法：anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]，或 anybot plugin config <name> -reset <key>...")
 	}
-	if result.Changed {
-		fmt.Fprintln(stdout, "默认配置已同步：1 项更新")
-		return nil
+	if configPath == "" {
+		configPath = filepath.Join(dir, "anybot.yaml")
 	}
-	if result.Available {
-		return nil
-	}
-	workspace, err := host.LoadPluginWorkspace(workspacePath)
-	if err != nil {
-		return err
-	}
-	for _, item := range workspace.Plugins {
-		if item.Name == name {
-			fmt.Fprintf(stdout, "默认配置待构建同步：%s（anybot up 会完成）\n", name)
-			break
-		}
-	}
-	return nil
-}
-
-func ensureKnownPluginTarget(configPath, workspacePath, name string, allowConfigured bool) error {
-	cfg, err := host.LoadConfig(configPath)
-	if err != nil {
-		return err
-	}
-	if _, ok := cfg.Plugins[name]; ok && allowConfigured {
-		return nil
-	}
-	if _, ok := host.DefaultRegistry().Factory(name); ok {
-		return nil
-	}
-	workspace, err := host.LoadPluginWorkspace(workspacePath)
-	if err != nil {
-		return err
-	}
-	for _, item := range workspace.Plugins {
-		if item.Name == name {
-			return nil
-		}
-	}
-	return fmt.Errorf("未知插件 %q；请先用 anybot plugins 查看内置插件，或用 anybot plugin add <module> 添加外部插件", name)
+	return dir, configPath, commandArgs, nil
 }
 
 func splitPluginConfigArgs(args []string) (string, []string, error) {
@@ -914,48 +783,4 @@ func splitPluginConfigArgs(args []string) (string, []string, error) {
 		}
 	}
 	return name, flagArgs, nil
-}
-
-func splitPluginConfigSetArgs(args []string) (string, []string, []string, error) {
-	var name string
-	var changeArgs []string
-	var flagArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-dir" || arg == "--dir" || arg == "-config" || arg == "--config":
-			if i+1 >= len(args) {
-				return "", nil, nil, fmt.Errorf("%s 需要值", arg)
-			}
-			flagArgs = append(flagArgs, arg, args[i+1])
-			i++
-		case arg == "-reset" || arg == "--reset":
-			if name == "" {
-				return "", nil, nil, fmt.Errorf("%s 必须写在插件名之后", arg)
-			}
-			if i+1 >= len(args) {
-				return "", nil, nil, fmt.Errorf("%s 需要值", arg)
-			}
-			changeArgs = append(changeArgs, arg, args[i+1])
-			i++
-		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
-			strings.HasPrefix(arg, "-config=") || strings.HasPrefix(arg, "--config="):
-			flagArgs = append(flagArgs, arg)
-		case strings.HasPrefix(arg, "-reset=") || strings.HasPrefix(arg, "--reset="):
-			if name == "" {
-				key, _, _ := strings.Cut(arg, "=")
-				return "", nil, nil, fmt.Errorf("%s 必须写在插件名之后", key)
-			}
-			changeArgs = append(changeArgs, arg)
-		case strings.HasPrefix(arg, "-"):
-			flagArgs = append(flagArgs, arg)
-		default:
-			if name == "" {
-				name = arg
-				continue
-			}
-			changeArgs = append(changeArgs, arg)
-		}
-	}
-	return name, changeArgs, flagArgs, nil
 }

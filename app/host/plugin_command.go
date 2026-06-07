@@ -22,6 +22,9 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	if len(opts.Args) == 0 {
 		return fmt.Errorf("用法：plugin <sync|status|inspect|config|check|enable|disable>")
 	}
+	if err := validatePluginCommandArgs(opts.Args); err != nil {
+		return err
+	}
 	output := opts.Output
 	if output == nil {
 		output = io.Discard
@@ -34,6 +37,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	if workspacePath == "" {
 		workspacePath = PluginWorkspaceFile
 	}
+	registry := opts.Registry
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return err
@@ -44,18 +48,15 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	}
 	switch opts.Args[0] {
 	case "sync":
-		result, err := SyncPluginConfigEntriesForWorkspace(configPath, opts.Registry, workspace)
+		result, err := SyncPluginConfigEntriesForWorkspace(configPath, registry, workspace)
 		if err != nil {
 			return err
 		}
 		return WritePluginConfigSyncSummary(output, result)
 	case "status":
-		return WritePluginStatusTable(output, PluginStatuses(cfg, opts.Registry, workspace))
+		return WritePluginStatusTable(output, PluginStatuses(cfg, registry, workspace))
 	case "inspect":
-		if len(opts.Args) < 2 {
-			return fmt.Errorf("用法：plugin inspect <name>")
-		}
-		inspect, err := InspectPlugin(configPath, opts.Registry, workspace, opts.Args[1])
+		inspect, err := InspectPlugin(configPath, registry, workspace, opts.Args[1])
 		if err != nil {
 			return err
 		}
@@ -65,7 +66,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 			return fmt.Errorf("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
 		}
 		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, opts.Registry, workspace, name, true); err != nil {
+		if err := EnsureKnownPluginTarget(cfg, registry, workspace, name, true); err != nil {
 			return err
 		}
 		change, err := ParsePluginConfigChanges(opts.Args[2:])
@@ -76,23 +77,20 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 		if err != nil {
 			return err
 		}
-		return writePluginConfigChangeResult(output, configPath, opts.Registry, name, result)
+		return writePluginConfigChangeResult(output, configPath, registry, name, result)
 	case "enable", "disable":
-		if len(opts.Args) < 2 {
-			return fmt.Errorf("用法：plugin %s <name>", opts.Args[0])
-		}
 		enabled := opts.Args[0] == "enable"
 		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, opts.Registry, workspace, name, !enabled); err != nil {
+		if err := EnsureKnownPluginTarget(cfg, registry, workspace, name, !enabled); err != nil {
 			return err
 		}
 		changed, err := SetPluginEnabled(configPath, name, enabled)
 		if err != nil {
 			return err
 		}
-		return writePluginEnabledResult(output, configPath, opts.Registry, name, enabled, changed)
+		return writePluginEnabledResult(output, configPath, registry, name, enabled, changed)
 	case "check":
-		checks := PluginConfigChecks(cfg, opts.Registry, workspace)
+		checks := PluginConfigChecks(cfg, registry, workspace)
 		if err := WritePluginConfigCheckTable(output, checks); err != nil {
 			return err
 		}
@@ -103,6 +101,26 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	default:
 		return fmt.Errorf("未知插件命令 %q", opts.Args[0])
 	}
+}
+
+func validatePluginCommandArgs(args []string) error {
+	switch args[0] {
+	case "sync", "status", "check":
+		if len(args) != 1 {
+			return fmt.Errorf("用法：plugin %s", args[0])
+		}
+	case "inspect", "enable", "disable":
+		if len(args) != 2 {
+			return fmt.Errorf("用法：plugin %s <name>", args[0])
+		}
+	case "config":
+		if len(args) < 3 {
+			return fmt.Errorf("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
+		}
+	default:
+		return fmt.Errorf("未知插件命令 %q", args[0])
+	}
+	return nil
 }
 
 func writePluginConfigChangeResult(output io.Writer, configPath string, registry absdk.Registry, name string, result PluginConfigChangeResult) error {

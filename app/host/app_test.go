@@ -126,6 +126,46 @@ plugins: {}
 	}
 }
 
+func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(configPath, []byte(`adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+plugin_config_dir: plugins.d
+plugins: {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pluginPath := filepath.Join(dir, "plugins.d", "memory.yaml")
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Manifest{Name: "memory"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
+		return ctx.Config().Set(context.Background(), "state.path", "memory.db")
+	})
+	if err := registry.Register(module.Factory()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, pluginPath)
+	if !strings.Contains(out, "state:") || !strings.Contains(out, "path: memory.db") {
+		t.Fatalf("plugin config:\n%s", out)
+	}
+}
+
 func TestNewAppUsesPersistentStoreFromConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "anybot.yaml")

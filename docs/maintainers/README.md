@@ -53,8 +53,8 @@ core 不依赖 sdk、app/host、cmd
 `sdk`
 
 - 插件公共入口。普通插件不应直接依赖 `app/host`。
-- 大量类型是 `core` 的别名，目的是让插件作者只 import `sdk`。
-- SDK 新能力应优先表现为 `*sdk.Context` 的窄接口，而不是鼓励插件拿 `ctx.App()` 操作全局。
+- 普通插件主路径是 `sdk.Define`、`*sdk.Context`、typed config、typed state、路由、消息和生命周期任务。
+- SDK 可以为测试或嵌入式程序保留必要的 core 别名，但新增能力应优先表现为插件语义的窄接口。
 
 `core`
 
@@ -248,13 +248,14 @@ SDK 是插件作者的主入口，不是 `core` 的简单转发。
 - `sdk/message`
 - `sdk.Rule`、`sdk.Middleware`
 - `sdk.Dialogue`
+- `sdk.ConversationState`、`sdk.UserState`、`sdk.GroupState`、`sdk.NamedState`
 - `sdk.ConfigHandle`
 
 谨慎使用：
 
-- `ctx.App()`：逃生口，适合框架级插件。
 - `ctx.UseGlobal()`：会影响所有插件和路由。
-- `OnError`：全局错误处理，不是插件局部错误处理。
+- `sdk.NewApp`、`sdk.WithAdapter`、`sdk.InstallDefault`：适合测试或嵌入式程序，不是独立插件主路径。
+- `sdk.EventContext` 上的底层运行时访问方法：适合框架级插件或诊断代码。
 
 新增 SDK 能力时先判断：
 

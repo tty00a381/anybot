@@ -61,6 +61,27 @@ func TestDefinitionValidatesConfig(t *testing.T) {
 	}
 }
 
+func TestDefinitionFactoryRejectsInvalidPluginName(t *testing.T) {
+	definition := Define(Manifest{Name: "../bad"}, struct{}{}, func(*Context, struct{}) error {
+		return nil
+	})
+	_, err := definition.Factory().Build(yaml.Node{})
+	if err == nil || !strings.Contains(err.Error(), `plugin name "../bad" is invalid`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRegistryRejectsInvalidPluginName(t *testing.T) {
+	registry := NewRegistry()
+	definition := Define(Manifest{Name: "ok"}, struct{}{}, func(*Context, struct{}) error {
+		return nil
+	})
+	if err := registry.Register(definition.Factory().WithName("bad/name")); err == nil ||
+		!strings.Contains(err.Error(), `plugin name "bad/name" is invalid`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestDefinitionClonesDefaultConfig(t *testing.T) {
 	type config struct {
 		Tags []string `yaml:"tags"`

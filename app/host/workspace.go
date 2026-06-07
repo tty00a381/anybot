@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	absdk "github.com/tty00a381/anybot/sdk"
 	modmodule "golang.org/x/mod/module"
 )
 
@@ -396,17 +397,7 @@ func ValidatePluginModule(item PluginModule) error {
 
 // ValidatePluginName 校验插件名能安全用于配置名、文件名和数据目录名。
 func ValidatePluginName(name string) error {
-	if name == "" {
-		return fmt.Errorf("plugin name is required")
-	}
-	if strings.TrimSpace(name) != name ||
-		strings.ContainsAny(name, `/\`) ||
-		name == "." ||
-		name == ".." ||
-		strings.HasPrefix(name, ".") {
-		return fmt.Errorf("plugin name %q is invalid", name)
-	}
-	return nil
+	return absdk.ValidatePluginName(name)
 }
 
 // ParsePluginModuleSpec 解析 module 或 module@version 形式的插件来源。

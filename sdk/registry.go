@@ -19,6 +19,13 @@ func (f Factory) WithName(name string) Factory {
 	if name == "" {
 		return f
 	}
+	if err := ValidatePluginName(name); err != nil {
+		f.Info.Name = name
+		f.Build = func(yaml.Node) (Plugin, error) {
+			return nil, err
+		}
+		return f
+	}
 	f.Info.Name = name
 	if f.Build == nil {
 		return f
@@ -49,8 +56,8 @@ func (r Registry) Register(factory Factory) error {
 	if r.factories == nil {
 		return fmt.Errorf("plugin registry is not initialized")
 	}
-	if factory.Info.Name == "" {
-		return fmt.Errorf("plugin name is required")
+	if err := ValidatePluginName(factory.Info.Name); err != nil {
+		return err
 	}
 	if factory.Build == nil {
 		return fmt.Errorf("plugin %s build function is required", factory.Info.Name)

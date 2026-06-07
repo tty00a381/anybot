@@ -598,6 +598,18 @@ func TestRunPluginAddRollsBackAfterConfigFailure(t *testing.T) {
 	}
 }
 
+func TestJoinRollbackErrorMergesRollbackFailure(t *testing.T) {
+	err := errors.New("go mod edit failed")
+	joinRollbackError(&err, false, func() error {
+		return errors.New("restore failed")
+	})
+	if !strings.Contains(err.Error(), "go mod edit failed") ||
+		!strings.Contains(err.Error(), "回滚失败") ||
+		!strings.Contains(err.Error(), "restore failed") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	oldRunner := commandRunner
 	defer func() { commandRunner = oldRunner }()
@@ -673,6 +685,50 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	}
 	if config := readTestFile(t, pluginConfig); !strings.Contains(config, "city: Hangzhou") {
 		t.Fatalf("plugin config should be preserved:\n%s", config)
+	}
+}
+
+func TestRunPluginUpdateRollsBackAfterGoModFailure(t *testing.T) {
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls int
+	commandRunner = func(dir, name string, args ...string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("go mod edit failed")
+		}
+		return nil
+	}
+	dir := t.TempDir()
+	if _, err := host.AddPluginModule(host.AddPluginOptions{
+		Dir:     dir,
+		Name:    "weather",
+		Module:  "github.com/acme/weather",
+		Version: "v1.2.3",
+		Replace: "../weather",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, host.PluginWorkspaceFile)
+	beforeManifest := readTestFile(t, manifestPath)
+	beforeGenerated := readTestFile(t, filepath.Join(dir, "plugins.gen.go"))
+	beforeMain := readTestFile(t, filepath.Join(dir, "main.go"))
+	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
+	err := run([]string{"plugin", "update", "weather", "-version", "v1.3.0", "-clear-replace", "-dir", dir})
+	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := readTestFile(t, manifestPath); got != beforeManifest {
+		t.Fatalf("manifest should roll back:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(dir, "plugins.gen.go")); got != beforeGenerated {
+		t.Fatalf("plugins.gen.go should roll back:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(dir, "main.go")); got != beforeMain {
+		t.Fatalf("main.go should roll back:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(dir, "go.mod")); got != beforeGoMod {
+		t.Fatalf("go.mod should roll back:\n%s", got)
 	}
 }
 
@@ -1072,6 +1128,50 @@ func TestRunPluginRemoveDropsVersionedGoModEntries(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls int
+	commandRunner = func(dir, name string, args ...string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("go mod edit failed")
+		}
+		return nil
+	}
+	dir := t.TempDir()
+	if _, err := host.AddPluginModule(host.AddPluginOptions{
+		Dir:     dir,
+		Name:    "weather",
+		Module:  "github.com/acme/weather",
+		Version: "v1.2.3",
+		Replace: "../weather",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(configPath, []byte("plugins:\n  weather:\n    enabled: true\n    config:\n      city: Hangzhou\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, host.PluginWorkspaceFile)
+	beforeManifest := readTestFile(t, manifestPath)
+	beforeConfig := readTestFile(t, configPath)
+	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
+	err := run([]string{"plugin", "remove", "weather", "-dir", dir})
+	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := readTestFile(t, manifestPath); got != beforeManifest {
+		t.Fatalf("manifest should roll back:\n%s", got)
+	}
+	if got := readTestFile(t, configPath); got != beforeConfig {
+		t.Fatalf("config should roll back:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(dir, "go.mod")); got != beforeGoMod {
+		t.Fatalf("go.mod should roll back:\n%s", got)
 	}
 }
 

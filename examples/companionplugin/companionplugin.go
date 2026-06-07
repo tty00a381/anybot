@@ -154,8 +154,7 @@ func completeChat(ctx context.Context, cfg Config, messages []chatMessage) (stri
 }
 
 func loadHistory(ctx *absdk.Context, c *absdk.EventContext) []chatMessage {
-	var history []chatMessage
-	_, _ = ctx.UserSession(c).LoadJSON(c.Context, "history", &history)
+	history, _ := absdk.UserState[[]chatMessage](ctx, c, "history").LoadOr(nil)
 	return history
 }
 
@@ -164,7 +163,7 @@ func saveHistory(ctx *absdk.Context, c *absdk.EventContext, cfg Config, history 
 	if ttl == 0 {
 		ttl = 24 * time.Hour
 	}
-	_ = ctx.UserSession(c).SaveJSON(c.Context, "history", history, ttl)
+	_ = absdk.UserState[[]chatMessage](ctx, c, "history").Save(history, ttl)
 }
 
 func trimHistory(history []chatMessage, max int) []chatMessage {

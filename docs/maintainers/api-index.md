@@ -21,7 +21,7 @@ CLI 入口包，不作为库导入。
 关键实现文件：
 
 - `main.go`：命令分发、`init`、`run`。
-- `plugin.go`：插件管理、失败回滚、配置命令。
+- `plugin.go`：插件工作区管理、失败回滚，并把配置类 plugin 子命令交给 `app/host`。
 - `build.go`：构建生成框架、同步 `go.mod`。
 - `dev.go`：开发者脚手架。
 - `doctor.go`：配置检查。
@@ -84,7 +84,7 @@ App option：
 - `DefaultPluginName(module string) string`：从 module 推导插件名。
 - `ValidatePluginWorkspace(workspace PluginWorkspace) error`
 - `ValidatePluginModule(item PluginModule) error`
-- `ValidatePluginName(name string) error`
+- `ValidatePluginName(name string) error`：委托 `sdk.ValidatePluginName`，保持注册名、配置名和数据目录规则一致。
 
 实现文件：
 
@@ -100,7 +100,7 @@ App option：
 
 函数：
 
-- `RunPluginCommand(opts PluginCommandOptions) error`：执行生成运行框架内置的 `plugin` 子命令。
+- `RunPluginCommand(opts PluginCommandOptions) error`：执行 `sync/status/inspect/config/check/enable/disable`。顶层 CLI 和生成运行框架共用这一套实现。
 
 ### 插件配置更新
 
@@ -255,6 +255,15 @@ App option：
 - `Context.UserSession(event *EventContext) *Session`
 - `Context.GroupSession(event *EventContext) *Session`
 - `Context.SessionBy(key string) *Session`
+- `State[T]`：typed 会话状态。
+- `ConversationState[T](ctx, event, key) State[T]`
+- `UserState[T](ctx, event, key) State[T]`
+- `GroupState[T](ctx, event, key) State[T]`
+- `NamedState[T](ctx, event, key, scope) State[T]`
+- `State.Load() (T, bool, error)`
+- `State.LoadOr(fallback T) (T, error)`
+- `State.Save(value T, ttl time.Duration) error`
+- `State.Delete() error`
 - `WithDataDir(root string) InstallOption`
 - `Context.DataDir() (string, error)`
 - `ErrDataDirUnavailable`
@@ -341,11 +350,13 @@ SDK 自有规则：
 - `RateLimit`
 - `RateLimitBy`
 
-### core 类型别名
+### core 类型别名和测试入口
 
-SDK 重新导出 `core` 的常用类型：`App`、`Option`、`Adapter`、`EmitFunc`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`ObserverHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
+SDK 重新导出 `core` 的常用类型，目的是让插件测试和嵌入式程序不必直接 import `core`：`App`、`Option`、`Adapter`、`EmitFunc`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`ObserverHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
 
 SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUsers`、`NewTestContext`、`NewSession`、`NewMemoryStore`、`NewFileStore`、`TaskCritical`、`TaskImmediate`。
+
+普通独立插件不应把这些入口当作主路径；插件运行能力优先走 `*sdk.Context`。
 
 ## `sdk/message`
 

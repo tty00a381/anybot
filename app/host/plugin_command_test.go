@@ -28,6 +28,27 @@ func TestRunPluginCommandStatus(t *testing.T) {
 	}
 }
 
+func TestRunPluginCommandUsageDoesNotRequireWorkspace(t *testing.T) {
+	var out bytes.Buffer
+	err := RunPluginCommand(PluginCommandOptions{
+		Args:   []string{"inspect"},
+		Output: &out,
+	})
+	if err == nil || !strings.Contains(err.Error(), "用法：plugin inspect <name>") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("output should be empty, got %q", out.String())
+	}
+}
+
+func TestRunPluginCommandUnknownDoesNotRequireWorkspace(t *testing.T) {
+	err := RunPluginCommand(PluginCommandOptions{Args: []string{"missing"}})
+	if err == nil || !strings.Contains(err.Error(), `未知插件命令 "missing"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestRunPluginCommandEnableSyncsDefaultConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := writePluginCommandConfig(t, dir, "plugins: {}\n")
