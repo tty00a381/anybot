@@ -34,7 +34,7 @@ type profileDraft struct {
 	Name string `json:"name"`
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "dialogue", Version: "1.0.0", Description: "SDK-only 对话插件示例"},
 	Config{Command: "chat", MemoryTTL: 24 * time.Hour},
 	func(ctx *absdk.Context, cfg Config) error {

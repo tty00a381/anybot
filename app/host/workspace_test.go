@@ -103,10 +103,10 @@ func TestLoadPluginWorkspaceValidatesManifest(t *testing.T) {
 plugins:
   - name: weather
     module: github.com/acme/weather
-    symbol: Module
+    symbol: Plugin
   - name: weather
     module: github.com/acme/other
-    symbol: Module
+    symbol: Plugin
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ type Config struct {
 	Command string `+"`yaml:\"command\"`"+`
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "weather", Version: "1.0.0", Description: "天气插件"},
 	Config{Command: "weather"},
 	func(ctx *absdk.Context, cfg Config) error {

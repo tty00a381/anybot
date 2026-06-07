@@ -81,6 +81,41 @@ func TestContextUseIsPluginScoped(t *testing.T) {
 	}
 }
 
+func TestContextRouteNamesArePluginScoped(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	app := core.New(core.WithLogger(logger))
+	app.Use(core.Trace(logger))
+	ctx := NewContext(app, Manifest{Name: "weather"})
+	ctx.Command("weather").Name("command").Handle(func(*EventContext) error {
+		return nil
+	})
+	if err := app.Dispatch(context.Background(), &core.Event{Type: "message", Text: "/weather"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "route=weather.command") {
+		t.Fatalf("route name was not scoped:\n%s", out.String())
+	}
+}
+
+func TestContextRouteNamesKeepExplicitPluginPrefix(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	app := core.New(core.WithLogger(logger))
+	app.Use(core.Trace(logger))
+	ctx := NewContext(app, Manifest{Name: "weather"})
+	ctx.Command("weather").Name("weather.command").Handle(func(*EventContext) error {
+		return nil
+	})
+	if err := app.Dispatch(context.Background(), &core.Event{Type: "message", Text: "/weather"}); err != nil {
+		t.Fatal(err)
+	}
+	log := out.String()
+	if strings.Contains(log, "route=weather.weather.command") || !strings.Contains(log, "route=weather.command") {
+		t.Fatalf("route name was double-scoped:\n%s", log)
+	}
+}
+
 func TestContextSessionsArePluginScoped(t *testing.T) {
 	app := core.New()
 	first := NewContext(app, Manifest{Name: "first"})
@@ -100,8 +135,8 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 
 func TestContextConfigWritesThroughStore(t *testing.T) {
 	store := &sdkConfigStore{}
-	app := core.New(WithConfigStore(store))
-	ctx := NewContext(app, Manifest{Name: "minecraft"})
+	app := core.New()
+	ctx := NewContext(app, Manifest{Name: "minecraft"}, WithConfigStore(store))
 	if !ctx.Config().Available() {
 		t.Fatal("config handle should be available")
 	}
@@ -137,7 +172,7 @@ func TestContextConfigUnavailableWithoutHostStore(t *testing.T) {
 
 func TestContextDataDirUsesPluginNamespace(t *testing.T) {
 	root := t.TempDir()
-	ctx := NewContext(core.New(WithDataDir(root)), Manifest{Name: "weather"})
+	ctx := NewContext(core.New(), Manifest{Name: "weather"}, WithDataDir(root))
 	dir, err := ctx.DataDir()
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +198,7 @@ func TestContextDataDirUnavailable(t *testing.T) {
 }
 
 func TestContextDataDirRejectsUnsafePluginName(t *testing.T) {
-	ctx := NewContext(core.New(WithDataDir(t.TempDir())), Manifest{Name: "../weather"})
+	ctx := NewContext(core.New(), Manifest{Name: "../weather"}, WithDataDir(t.TempDir()))
 	if _, err := ctx.DataDir(); err == nil {
 		t.Fatal("unsafe plugin name should be rejected")
 	}

@@ -9,7 +9,7 @@ import (
 	absdk "github.com/tty00a381/anybot/sdk"
 )
 
-var helloModule = absdk.Define(
+var helloPlugin = absdk.Define(
 	absdk.Manifest{Name: "hello", Version: "0.1.0"},
 	struct{}{},
 	func(ctx *absdk.Context, _ struct{}) error {
@@ -31,7 +31,7 @@ func installRoutes(app *core.App) {
 func main() {
 	app := core.New(core.WithAdapter(onebot11.ReverseWS("127.0.0.1:6700")))
 	installRoutes(app)
-	if err := absdk.Install(app, helloModule); err != nil {
+	if err := absdk.InstallDefault(app, helloPlugin); err != nil {
 		log.Fatal(err)
 	}
 	if err := app.Run(context.Background()); err != nil {

@@ -209,13 +209,13 @@ anybot plugin status
 安装外部插件：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module
+anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
 ```
 
 常用参数：
 
 - `-name weather`：指定配置名。省略时从 module 末尾推导。
-- `-symbol Module`：插件 module 导出的 `sdk.Spec` 变量名，默认 `Module`。
+- `-symbol Plugin`：插件 module 导出的 `sdk.Definition` 变量名，默认 `Plugin`。
 - `-version v0.1.0`：指定版本。也可写成 `module@version`。
 - `-replace ../plugin`：使用本地插件目录，适合本地开发和调试。
 

@@ -11,10 +11,10 @@ import (
 // DefaultRegistry 返回 anybot 首发内置插件注册表。
 func DefaultRegistry() absdk.Registry {
 	registry := absdk.NewRegistry()
-	mustRegister(registry, help.Module.Factory())
-	mustRegister(registry, echo.Module.Factory())
-	mustRegister(registry, admin.Module.Factory())
-	mustRegister(registry, ratelimit.Module.Factory())
+	mustRegister(registry, help.Plugin.Factory())
+	mustRegister(registry, echo.Plugin.Factory())
+	mustRegister(registry, admin.Plugin.Factory())
+	mustRegister(registry, ratelimit.Plugin.Factory())
 	return registry
 }
 

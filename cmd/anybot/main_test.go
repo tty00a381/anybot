@@ -51,7 +51,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 		}
 	}
 	readme := readTestFile(t, filepath.Join(dir, "README.md"))
-	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module\nanybot plugin status\nanybot plugin enable anybot_weather\nanybot up") {
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin\nanybot plugin status\nanybot plugin enable anybot_weather\nanybot up") {
 		t.Fatalf("README should run external plugins through anybot up:\n%s", readme)
 	}
 	if strings.Contains(readme, "anybot plugin enable anybot_weather\nanybot plugin inspect anybot_weather") ||
@@ -196,7 +196,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	plugin := readTestFile(t, filepath.Join(dir, "plugins", "hello_world", "hello_world.go"))
-	if !strings.Contains(plugin, "var Module = absdk.Define") ||
+	if !strings.Contains(plugin, "var Plugin = absdk.Define") ||
 		!strings.Contains(plugin, "absdk.EventContext") ||
 		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
@@ -491,7 +491,7 @@ func TestRunPluginAddWithReplaceDoesNotResolveLatest(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather => ../weather.Module)") {
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
@@ -527,7 +527,7 @@ func TestRunPluginAddWithReplaceUsesPathMajorPlaceholder(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather/v2 => ../weather.Module)") {
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather/v2 => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
@@ -621,7 +621,7 @@ func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3 => ../weather.Module)") {
+	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3 => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
@@ -711,7 +711,7 @@ func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Module)") {
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
 	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
@@ -755,7 +755,7 @@ func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Module)") {
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
 	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))

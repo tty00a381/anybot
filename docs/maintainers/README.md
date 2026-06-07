@@ -217,7 +217,7 @@ plugins:
     module: github.com/acme/anybot-weather
     version: v0.1.0
     replace: ../anybot-weather
-    symbol: Module
+    symbol: Plugin
 ```
 
 `PluginModule` 校验：
@@ -369,6 +369,6 @@ root=$(mktemp -d)
 - “运行框架”：最终用户通过 `anybot` 使用的框架层，以及生成后的 `anybot-bot`。
 - “工作区”：最终用户的机器人目录。
 - “外部插件”：通过 Go module 安装到工作区的插件。
-- “项目内 SDK 插件”：直接核心库项目里的 `plugins/` 目录插件，仍然使用 `sdk.Module`。
+- “项目内 SDK 插件”：直接核心库项目里的 `plugins/` 目录插件，仍然使用 `sdk.Plugin`。
 
 用户可见文档里统一使用“框架”或“运行框架”。内部包名 `app/host` 保留，因为它描述的是实现层职责，不是产品术语。

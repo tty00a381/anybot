@@ -9,10 +9,10 @@ import (
 	"github.com/tty00a381/anybot/sdk/message"
 )
 
-func TestModuleRepliesAndStoresHistory(t *testing.T) {
+func TestPluginRepliesAndStoresHistory(t *testing.T) {
 	client := &recordClient{}
 	app := absdk.NewApp(absdk.WithAdapter(recordAdapter{client: client}))
-	if err := absdk.Install(app, Module); err != nil {
+	if err := absdk.InstallDefault(app, Plugin); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Dispatch(context.Background(), &absdk.Event{
@@ -28,7 +28,7 @@ func TestModuleRepliesAndStoresHistory(t *testing.T) {
 	if got := client.last.Text(); !strings.Contains(got, "我听见了：今天服务器好安静") {
 		t.Fatalf("reply = %q", got)
 	}
-	ctx := absdk.NewContext(app, Module.Manifest())
+	ctx := absdk.NewContext(app, Plugin.Manifest())
 	event := absdk.NewTestContext(app, &absdk.Event{
 		Protocol: "test",
 		Type:     "message",

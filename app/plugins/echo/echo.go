@@ -11,11 +11,11 @@ type Config struct {
 	Command string `yaml:"command"`
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "echo", Version: "1.0.0", Description: "复读命令"},
 	Config{Command: "echo"},
 	func(ctx *absdk.Context, cfg Config) error {
-		ctx.Command(cfg.Command).Name("echo.command").Handle(func(c *absdk.EventContext) error {
+		ctx.Command(cfg.Command).Name("command").Handle(func(c *absdk.EventContext) error {
 			text := strings.TrimSpace(c.Args())
 			if text == "" {
 				text = "请输入要复读的内容"

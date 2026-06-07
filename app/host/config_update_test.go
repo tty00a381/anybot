@@ -495,7 +495,7 @@ func TestSyncPluginConfigEntriesMergesNestedDefaults(t *testing.T) {
 	if err := registry.Register(absdk.Factory{
 		Info:    absdk.Manifest{Name: "ai"},
 		Default: aiConfig{Provider: providerConfig{Model: "gpt", Timeout: "30s"}},
-		Build: func(yaml.Node) (absdk.Module, error) {
+		Build: func(yaml.Node) (absdk.Plugin, error) {
 			return nil, nil
 		},
 	}); err != nil {

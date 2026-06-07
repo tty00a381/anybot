@@ -11,11 +11,11 @@ type Config struct {
 	Users []string `yaml:"users"`
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "admin", Version: "1.0.0", Description: "超级用户命令"},
 	Config{},
 	func(ctx *absdk.Context, cfg Config) error {
-		route := ctx.Command("admin").Name("admin.command")
+		route := ctx.Command("admin").Name("command")
 		if len(cfg.Users) > 0 {
 			users := make([]any, len(cfg.Users))
 			for i, user := range cfg.Users {

@@ -31,7 +31,7 @@ func (cfg Config) window() (time.Duration, error) {
 	return window, nil
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "ratelimit", Version: "1.0.0", Description: "会话限速中间件"},
 	Config{Limit: 5, Window: "1m"},
 	func(ctx *absdk.Context, cfg Config) error {

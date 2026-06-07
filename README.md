@@ -38,7 +38,7 @@ anybot up
 以安装一个天气插件为例：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module
+anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
 anybot plugin status
 anybot plugin inspect anybot_weather
 anybot plugin enable anybot_weather
@@ -63,7 +63,7 @@ cd anybot-hello
 go test ./...
 ```
 
-生成的插件导出 `Module`，运行框架通过 `anybot plugin add` 安装它。模板包含 typed config、默认配置、测试和本地安装提示。
+生成的插件导出 `Plugin`，运行框架通过 `anybot plugin add` 安装它。模板包含 typed config、默认配置、测试和本地安装提示。
 
 ## 直接使用核心库
 

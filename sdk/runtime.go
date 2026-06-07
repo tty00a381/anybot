@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/tty00a381/anybot/core"
@@ -16,17 +17,82 @@ type Manifest struct {
 	Description string
 }
 
+// Environment 描述运行框架授予插件的宿主能力。
+type Environment struct {
+	DataDir     string
+	ConfigStore ConfigStore
+}
+
+// InstallOption 调整本次插件安装使用的宿主能力。
+type InstallOption func(*Environment)
+
+// WithEnvironment 注入完整宿主能力，供 host 统一安装插件时使用。
+func WithEnvironment(env Environment) InstallOption {
+	return func(target *Environment) {
+		if target == nil {
+			return
+		}
+		*target = env
+		target.DataDir = strings.TrimSpace(target.DataDir)
+	}
+}
+
+// WithDataDir 注入插件数据根目录；运行框架会在其下为每个插件创建独立目录。
+func WithDataDir(root string) InstallOption {
+	return func(env *Environment) {
+		if env != nil {
+			env.DataDir = strings.TrimSpace(root)
+		}
+	}
+}
+
+// WithConfigStore 注入插件配置写回能力；通常由框架配置文件加载层使用。
+func WithConfigStore(store ConfigStore) InstallOption {
+	return func(env *Environment) {
+		if env != nil {
+			env.ConfigStore = store
+		}
+	}
+}
+
 // Install 将 SDK 插件安装到运行时。普通插件代码不需要接触 core.App 的内部安装细节。
-func Install(app *App, modules ...Module) error {
+func Install(app *App, plugins ...Plugin) error {
+	return InstallWith(app, Environment{}, plugins...)
+}
+
+// InstallDefault 使用插件定义的默认配置安装插件，主要供插件测试和嵌入式程序使用。
+func InstallDefault(app *App, definitions ...Definition) error {
+	return InstallDefaultWith(app, Environment{}, definitions...)
+}
+
+// InstallDefaultWith 使用默认配置和显式宿主能力安装插件定义。
+func InstallDefaultWith(app *App, env Environment, definitions ...Definition) error {
+	plugins := make([]Plugin, 0, len(definitions))
+	for _, definition := range definitions {
+		if definition == nil {
+			continue
+		}
+		plugin, err := definition.Build()
+		if err != nil {
+			return err
+		}
+		plugins = append(plugins, plugin)
+	}
+	return InstallWith(app, env, plugins...)
+}
+
+// InstallWith 使用显式宿主能力安装 SDK 插件。
+func InstallWith(app *App, env Environment, plugins ...Plugin) error {
 	if app == nil {
 		return fmt.Errorf("anybot: app is nil")
 	}
-	for _, module := range modules {
-		if module == nil {
+	env.DataDir = strings.TrimSpace(env.DataDir)
+	for _, plugin := range plugins {
+		if plugin == nil {
 			continue
 		}
-		manifest := module.Manifest()
-		if err := module.Setup(NewContext(app, manifest)); err != nil {
+		manifest := plugin.Manifest()
+		if err := plugin.Setup(NewContext(app, manifest, WithEnvironment(env))); err != nil {
 			if manifest.Name != "" {
 				return fmt.Errorf("anybot: 安装插件 %s 失败: %w", manifest.Name, err)
 			}
@@ -51,12 +117,6 @@ type Adapter = core.Adapter
 // EmitFunc 是适配器向运行时投递标准化事件的函数。
 type EmitFunc = core.EmitFunc
 
-// Route 表示一条事件路由。
-type Route = core.Route
-
-// Observer 表示一个旁路事件观察者。
-type Observer = core.Observer
-
 // Event 是协议标准化后的事件。
 type Event = core.Event
 
@@ -65,6 +125,9 @@ type Handler = core.Handler
 
 // ErrorHandler 处理路由处理函数或中间件返回的错误。
 type ErrorHandler = core.ErrorHandler
+
+// ObserverHandler 异步观察事件，不参与路由控制。
+type ObserverHandler = core.ObserverHandler
 
 // Hook 是 App 生命周期钩子函数。
 type Hook = core.Hook

@@ -11,7 +11,7 @@ import (
 type Factory struct {
 	Info    Manifest
 	Default any
-	Build   func(yaml.Node) (Module, error)
+	Build   func(yaml.Node) (Plugin, error)
 }
 
 // WithName 返回使用指定注册名的工厂，适合运行框架为外部插件提供配置别名。
@@ -24,12 +24,12 @@ func (f Factory) WithName(name string) Factory {
 		return f
 	}
 	build := f.Build
-	f.Build = func(node yaml.Node) (Module, error) {
-		module, err := build(node)
+	f.Build = func(node yaml.Node) (Plugin, error) {
+		plugin, err := build(node)
 		if err != nil {
 			return nil, err
 		}
-		return namedModule{module: module, name: name}, nil
+		return namedPlugin{plugin: plugin, name: name}, nil
 	}
 	return f
 }
@@ -82,23 +82,23 @@ func (r Registry) Plugins() []Manifest {
 	return out
 }
 
-type namedModule struct {
-	module Module
+type namedPlugin struct {
+	plugin Plugin
 	name   string
 }
 
-func (m namedModule) Manifest() Manifest {
-	if m.module == nil {
-		return Manifest{Name: m.name}
+func (p namedPlugin) Manifest() Manifest {
+	if p.plugin == nil {
+		return Manifest{Name: p.name}
 	}
-	manifest := m.module.Manifest()
-	manifest.Name = m.name
+	manifest := p.plugin.Manifest()
+	manifest.Name = p.name
 	return manifest
 }
 
-func (m namedModule) Setup(ctx *Context) error {
-	if m.module == nil {
+func (p namedPlugin) Setup(ctx *Context) error {
+	if p.plugin == nil {
 		return nil
 	}
-	return m.module.Setup(ctx)
+	return p.plugin.Setup(ctx)
 }

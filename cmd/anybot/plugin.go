@@ -61,8 +61,8 @@ func runPlugin(args []string) error {
 
 func pluginUsage() {
 	fmt.Fprintln(stdout, `anybot plugin 命令：
-  anybot plugin add <module[@version]> [-name 名称] [-symbol Module] [-version 版本] [-replace 本地路径] [-dir 目录]
-  anybot plugin update <name> [-version 版本] [-symbol Module] [-replace 本地路径|-clear-replace] [-dir 目录]
+  anybot plugin add <module[@version]> [-name 名称] [-symbol Plugin] [-version 版本] [-replace 本地路径] [-dir 目录]
+  anybot plugin update <name> [-version 版本] [-symbol Plugin] [-replace 本地路径|-clear-replace] [-dir 目录]
   anybot plugin remove <name> [-dir 目录] [-config anybot.yaml]
   anybot plugin list [-dir 目录]
   anybot plugin status [-dir 目录] [-config anybot.yaml]
@@ -79,7 +79,7 @@ func runPluginAdd(args []string) error {
 	fs := flag.NewFlagSet("plugin add", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	name := fs.String("name", "", "插件配置名称")
-	symbol := fs.String("symbol", "Module", "插件模块导出的 Spec 变量名")
+	symbol := fs.String("symbol", "Plugin", "插件模块导出的 Definition 变量名")
 	version := fs.String("version", "", "插件模块版本")
 	replace := fs.String("replace", "", "本地模块替换路径")
 	module, flagArgs, err := splitPluginAddArgs(args)
@@ -90,7 +90,7 @@ func runPluginAdd(args []string) error {
 		return err
 	}
 	if module == "" {
-		return fmt.Errorf("用法：anybot plugin add <module[@version]> [-name 名称] [-symbol Module] [-version 版本] [-replace 本地路径] [-dir 目录]")
+		return fmt.Errorf("用法：anybot plugin add <module[@version]> [-name 名称] [-symbol Plugin] [-version 版本] [-replace 本地路径] [-dir 目录]")
 	}
 	modulePath, moduleVersion, err := host.ParsePluginModuleSpec(module)
 	if err != nil {
@@ -286,7 +286,7 @@ func runPluginUpdate(args []string) error {
 	fs := flag.NewFlagSet("plugin update", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
 	version := fs.String("version", "", "插件模块版本")
-	symbol := fs.String("symbol", "", "插件模块导出的 Spec 变量名")
+	symbol := fs.String("symbol", "", "插件模块导出的 Definition 变量名")
 	replace := fs.String("replace", "", "本地模块替换路径")
 	clearReplace := fs.Bool("clear-replace", false, "清除本地模块替换路径")
 	name, flagArgs, err := splitPluginUpdateArgs(args)
@@ -297,7 +297,7 @@ func runPluginUpdate(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot plugin update <name> [-version 版本] [-symbol Module] [-replace 本地路径|-clear-replace] [-dir 目录]")
+		return fmt.Errorf("用法：anybot plugin update <name> [-version 版本] [-symbol Plugin] [-replace 本地路径|-clear-replace] [-dir 目录]")
 	}
 	var setVersion, setSymbol, setReplace bool
 	fs.Visit(func(flag *flag.Flag) {
@@ -448,7 +448,7 @@ func previewPluginModuleUpdate(opts host.UpdatePluginOptions) (host.PluginModule
 	if opts.SetSymbol {
 		updated.Symbol = strings.TrimSpace(opts.Symbol)
 		if updated.Symbol == "" {
-			updated.Symbol = "Module"
+			updated.Symbol = "Plugin"
 		}
 	}
 	return updated, nil

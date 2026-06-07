@@ -41,7 +41,7 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "companion", Version: "1.0.0", Description: "人格化聊天插件起步示例"},
 	Config{
 		Command:    "chat",

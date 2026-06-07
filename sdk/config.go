@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
-
-	"github.com/tty00a381/anybot/core"
 )
 
 // ErrConfigStoreUnavailable 表示当前运行时没有配置可写的插件配置存储。
@@ -31,37 +28,12 @@ type ConfigHandle struct {
 	store  ConfigStore
 }
 
-var appConfigStores sync.Map
-
-// WithConfigStore 注入插件配置写回能力；通常由框架配置文件加载层使用。
-func WithConfigStore(store ConfigStore) Option {
-	return func(app *core.App) {
-		if app == nil {
-			return
-		}
-		if store == nil {
-			appConfigStores.Delete(app)
-			return
-		}
-		appConfigStores.Store(app, store)
-	}
-}
-
 // Config 返回当前插件的配置写回入口。
 func (c *Context) Config() ConfigHandle {
 	if c == nil || c.app == nil {
 		return ConfigHandle{}
 	}
-	store, _ := appConfigStores.Load(c.app)
-	return ConfigHandle{plugin: c.manifest.Name, store: storeAsConfigStore(store)}
-}
-
-func storeAsConfigStore(store any) ConfigStore {
-	if store == nil {
-		return nil
-	}
-	out, _ := store.(ConfigStore)
-	return out
+	return ConfigHandle{plugin: c.manifest.Name, store: c.env.ConfigStore}
 }
 
 // Available 判断当前框架是否支持运行期写回插件配置。

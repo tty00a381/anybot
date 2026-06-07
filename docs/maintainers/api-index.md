@@ -46,7 +46,7 @@ CLI 入口包，不作为库导入。
 - `ValidateConfig(cfg Config, registry sdk.Registry) error`：静态校验配置和插件配置。
 - `NewLogger(level string, out io.Writer) (*slog.Logger, error)`：创建日志器。
 - `NewApp(cfg Config, registry sdk.Registry, logger *slog.Logger, opts ...AppOption) (*core.App, error)`：装配运行时。
-- `InstallPlugins(app *core.App, cfg Config, registry sdk.Registry) error`：按配置安装插件。
+- `InstallPlugins(app *core.App, cfg Config, registry sdk.Registry, env sdk.Environment) error`：按配置安装插件。
 - `EnabledPlugins(cfg Config, registry sdk.Registry) ([]string, error)`：返回启用插件名。
 
 App option：
@@ -144,7 +144,7 @@ App option：
 
 变量：
 
-- `Module`：`sdk.Spec[Config]`，默认命令 `/help`。
+- `Plugin`：`sdk.Definition`，默认命令 `/help`。
 
 ## `app/plugins/echo`
 
@@ -154,7 +154,7 @@ App option：
 
 变量：
 
-- `Module`：复读命令插件，默认命令 `/echo`，默认禁用由工作目录配置决定。
+- `Plugin`：复读命令插件，默认命令 `/echo`，默认禁用由工作目录配置决定。
 
 ## `app/plugins/admin`
 
@@ -164,7 +164,7 @@ App option：
 
 变量：
 
-- `Module`：超级用户命令插件。`Users` 为空时使用框架 `security.superusers`。
+- `Plugin`：超级用户命令插件。`Users` 为空时使用框架 `security.superusers`。
 
 ## `app/plugins/ratelimit`
 
@@ -178,26 +178,30 @@ App option：
 
 变量：
 
-- `Module`：注册框架级 `RateLimit` 中间件。
+- `Plugin`：注册框架级 `RateLimit` 中间件。
 
 ## `sdk`
 
 插件作者主入口。
 
-### 插件规格
+### 插件定义
 
-- `Module`：插件接口，方法 `Manifest() Manifest`、`Setup(*Context) error`。
+- `Plugin`：已配置插件实例接口，方法 `Manifest() Manifest`、`Setup(*Context) error`。
+- `Definition`：插件定义接口，可转成运行框架工厂，也可用默认配置构建插件实例。
 - `SetupFunc[T]`：typed config 安装函数。
-- `Spec[T]`：typed config 插件规格，字段 `Info`、`Default`、`SetupFn`。
-- `Define`：用类型参数 `T` 创建 `Spec[T]`，参数为 `Manifest`、默认配置和 `SetupFunc[T]`。
-- `Spec.Manifest() Manifest`
-- `Spec.Setup(ctx *Context) error`：按默认配置安装。
-- `Spec.Factory() Factory`：转为运行框架可注册工厂。
-- `Install(app *App, modules ...Module) error`：把 SDK 插件安装到运行时。
+- `Define`：用类型参数 `T` 创建 `Definition`，参数为 `Manifest`、默认配置和 `SetupFunc[T]`。
+- `Definition.Manifest() Manifest`
+- `Definition.Build() (Plugin, error)`：按默认配置构建插件实例。
+- `Definition.Factory() Factory`：转为运行框架可注册工厂。
+- `Environment`：`DataDir`、`ConfigStore`。
+- `Install(app *App, plugins ...Plugin) error`：把已配置插件实例安装到运行时。
+- `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件实例。
+- `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
+- `InstallDefaultWith(app *App, env Environment, definitions ...Definition) error`：按默认配置和显式宿主能力安装插件定义。
 
 ### 注册表
 
-- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Module, error)`。
+- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
 - `Factory.WithName(name string) Factory`：为外部插件配置别名。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
@@ -208,8 +212,7 @@ App option：
 ### 安装上下文
 
 - `Context`：插件安装上下文。
-- `NewContext(app *App, manifest Manifest) *Context`
-- `Context.App() *App`
+- `NewContext(app *App, manifest Manifest, opts ...InstallOption) *Context`
 - `Context.Manifest() Manifest`
 - `Context.Logger() *slog.Logger`
 - `Context.Store() Store`
@@ -226,7 +229,6 @@ App option：
 - `Context.Every(...)`
 - `Context.OnStart(...)`
 - `Context.OnReady(...)`
-- `Context.OnError(...)`
 - `Context.OnShutdown(...)`
 - `Context.WaitActionReady(ctx) error`
 - `Context.OnAdapterState(hook)`
@@ -237,7 +239,7 @@ App option：
 - `Context.UserSession(event *EventContext) *Session`
 - `Context.GroupSession(event *EventContext) *Session`
 - `Context.SessionBy(key string) *Session`
-- `WithDataDir(root string) Option`
+- `WithDataDir(root string) InstallOption`
 - `Context.DataDir() (string, error)`
 - `ErrDataDirUnavailable`
 
@@ -246,7 +248,7 @@ App option：
 - `ConfigAssignment`：`Path`、`Value`。
 - `ConfigStore`：`SetPluginConfig`、`ResetPluginConfig`。
 - `ConfigHandle`：当前插件配置写回入口。
-- `WithConfigStore(store ConfigStore) Option`
+- `WithConfigStore(store ConfigStore) InstallOption`
 - `Context.Config() ConfigHandle`
 - `ConfigHandle.Available() bool`
 - `ConfigHandle.Set(ctx, key, value) error`
@@ -325,7 +327,7 @@ SDK 自有规则：
 
 ### core 类型别名
 
-SDK 重新导出 `core` 的常用类型：`App`、`Option`、`Adapter`、`EmitFunc`、`Route`、`Observer`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
+SDK 重新导出 `core` 的常用类型：`App`、`Option`、`Adapter`、`EmitFunc`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`ObserverHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
 
 SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUsers`、`NewTestContext`、`NewSession`、`NewMemoryStore`、`NewFileStore`、`TaskCritical`、`TaskImmediate`。
 

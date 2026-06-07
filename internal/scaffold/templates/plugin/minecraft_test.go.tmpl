@@ -9,14 +9,13 @@ import (
 	"github.com/tty00a381/anybot/sdk/message"
 )
 
-func TestModuleStoresPlayerBinding(t *testing.T) {
+func TestPluginStoresPlayerBinding(t *testing.T) {
 	client := &recordClient{}
 	app := absdk.NewApp(
 		absdk.WithAdapter(recordAdapter{client: client}),
-		absdk.WithDataDir(t.TempDir()),
 		absdk.WithSuperUsers("admin"),
 	)
-	if err := absdk.Install(app, Module); err != nil {
+	if err := absdk.InstallDefaultWith(app, absdk.Environment{DataDir: t.TempDir()}, Plugin); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Dispatch(context.Background(), &absdk.Event{

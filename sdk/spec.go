@@ -6,54 +6,45 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Module 是面向插件化运行框架的成熟插件接口。
-type Module interface {
+// Plugin 是运行框架已经完成配置解析后可安装的插件实例。
+type Plugin interface {
 	Manifest() Manifest
 	Setup(*Context) error
+}
+
+// Definition 是插件定义，可转成运行框架工厂，也可用默认配置构建插件实例。
+type Definition interface {
+	Manifest() Manifest
+	Build() (Plugin, error)
+	Factory() Factory
 }
 
 // SetupFunc 是 typed config 插件的安装函数。
 type SetupFunc[T any] func(*Context, T) error
 
-// Spec 用 typed config 声明一个插件模块。
-type Spec[T any] struct {
+type typedDefinition[T any] struct {
 	Info    Manifest
 	Default T
 	SetupFn SetupFunc[T]
 }
 
-// Define 创建 typed config 插件规格。
-func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Spec[T] {
-	return Spec[T]{Info: info, Default: defaults, SetupFn: setup}
+// Define 创建 typed config 插件定义。
+func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
+	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
 }
 
 // Manifest 返回插件清单。
-func (s Spec[T]) Manifest() Manifest {
-	return s.Info
-}
-
-// Setup 使用默认配置安装插件。
-func (s Spec[T]) Setup(ctx *Context) error {
-	if s.SetupFn == nil {
-		return fmt.Errorf("plugin %s setup function is required", s.Info.Name)
-	}
-	cfg, err := cloneTypedConfig(s.Default)
-	if err != nil {
-		return fmt.Errorf("plugin %s default config: %w", s.Info.Name, err)
-	}
-	if err := validateTypedConfig(cfg); err != nil {
-		return err
-	}
-	return s.SetupFn(ctx, cfg)
+func (d typedDefinition[T]) Manifest() Manifest {
+	return d.Info
 }
 
 // Factory 返回可供运行框架注册的插件工厂。
-func (s Spec[T]) Factory() Factory {
+func (d typedDefinition[T]) Factory() Factory {
 	return Factory{
-		Info:    s.Info,
-		Default: s.Default,
-		Build: func(node yaml.Node) (Module, error) {
-			cfg, err := cloneTypedConfig(s.Default)
+		Info:    d.Info,
+		Default: d.Default,
+		Build: func(node yaml.Node) (Plugin, error) {
+			cfg, err := cloneTypedConfig(d.Default)
 			if err != nil {
 				return nil, fmt.Errorf("default config: %w", err)
 			}
@@ -69,25 +60,30 @@ func (s Spec[T]) Factory() Factory {
 			if err := validateTypedConfig(cfg); err != nil {
 				return nil, err
 			}
-			return configuredSpec[T]{spec: s, config: cfg}, nil
+			return configuredPlugin[T]{definition: d, config: cfg}, nil
 		},
 	}
 }
 
-type configuredSpec[T any] struct {
-	spec   Spec[T]
-	config T
+// Build 使用默认配置创建插件实例，主要供嵌入式程序和插件测试使用。
+func (d typedDefinition[T]) Build() (Plugin, error) {
+	return d.Factory().Build(yaml.Node{})
 }
 
-func (s configuredSpec[T]) Manifest() Manifest {
-	return s.spec.Info
+type configuredPlugin[T any] struct {
+	definition typedDefinition[T]
+	config     T
 }
 
-func (s configuredSpec[T]) Setup(ctx *Context) error {
-	if s.spec.SetupFn == nil {
-		return fmt.Errorf("plugin %s setup function is required", s.spec.Info.Name)
+func (p configuredPlugin[T]) Manifest() Manifest {
+	return p.definition.Info
+}
+
+func (p configuredPlugin[T]) Setup(ctx *Context) error {
+	if p.definition.SetupFn == nil {
+		return fmt.Errorf("plugin %s setup function is required", p.definition.Info.Name)
 	}
-	return s.spec.SetupFn(ctx, s.config)
+	return p.definition.SetupFn(ctx, p.config)
 }
 
 func validateTypedConfig[T any](config T) error {

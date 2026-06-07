@@ -19,8 +19,8 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-// Module 是 {{.Name}} 插件导出的 anybot 模块。
-var Module = absdk.Define(
+// Plugin 是 {{.Name}} 插件导出的 AnyBot 插件定义。
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
 	Config{Command: "{{.Command}}"},
 	func(ctx *absdk.Context, cfg Config) error {

@@ -8,10 +8,10 @@ import (
 	"github.com/tty00a381/anybot/sdk/message"
 )
 
-func TestModuleRepliesToCommand(t *testing.T) {
+func TestPluginRepliesToCommand(t *testing.T) {
 	client := &recordClient{}
 	app := absdk.NewApp(absdk.WithAdapter(recordAdapter{client: client}))
-	if err := absdk.Install(app, Module); err != nil {
+	if err := absdk.InstallDefault(app, Plugin); err != nil {
 		t.Fatal(err)
 	}
 	err := app.Dispatch(context.Background(), &absdk.Event{

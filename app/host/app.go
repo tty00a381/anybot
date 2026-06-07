@@ -89,6 +89,7 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 		core.WithBuffer(cfg.Runtime.Buffer),
 		core.WithSuperUsers(cfg.Security.SuperUsers...),
 	}
+	pluginEnv := absdk.Environment{}
 	if hostOpts.RuntimeState {
 		if store, err := newRuntimeStore(cfg.Runtime, rawRuntime, configPath); err != nil {
 			return nil, err
@@ -98,11 +99,11 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 		if dataDir, ok, err := runtimeDataDir(cfg.Runtime, rawRuntime, configPath); err != nil {
 			return nil, err
 		} else if ok {
-			opts = append(opts, absdk.WithDataDir(dataDir))
+			pluginEnv.DataDir = dataDir
 		}
 	}
 	if hostOpts.ConfigPath != "" {
-		opts = append(opts, absdk.WithConfigStore(newPluginConfigStore(hostOpts.ConfigPath)))
+		pluginEnv.ConfigStore = newPluginConfigStore(hostOpts.ConfigPath)
 	}
 	if workers, ok, err := parseWorkers(cfg.Runtime.Workers); err != nil {
 		return nil, err
@@ -119,7 +120,7 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 
 	app := core.New(opts...)
 	app.Use(core.Recover(logger), core.Trace(logger))
-	if err := InstallPlugins(app, cfg, registry); err != nil {
+	if err := InstallPlugins(app, cfg, registry, pluginEnv); err != nil {
 		return nil, err
 	}
 	return app, nil
@@ -164,7 +165,7 @@ func ValidateConfig(cfg Config, registry absdk.Registry) error {
 }
 
 // InstallPlugins 按配置启用插件。
-func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry) error {
+func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absdk.Environment) error {
 	names := configuredPluginNames(cfg)
 	for _, name := range names {
 		entry := cfg.Plugins[name]
@@ -175,11 +176,11 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry) error {
 		if !ok {
 			return UnknownPluginError{Name: name}
 		}
-		module, err := factory.Build(entry.Config)
+		plugin, err := factory.Build(entry.Config)
 		if err != nil {
 			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
 		}
-		if err := absdk.Install(app, module); err != nil {
+		if err := absdk.InstallWith(app, env, plugin); err != nil {
 			return err
 		}
 	}

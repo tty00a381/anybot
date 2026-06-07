@@ -75,7 +75,7 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-var Module = absdk.Define(
+var Plugin = absdk.Define(
 	absdk.Manifest{
 		Name:        "hello",
 		Version:     "0.1.0",
@@ -84,7 +84,7 @@ var Module = absdk.Define(
 	Config{Command: "hello"},
 	func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).
-			Name("hello.command").
+			Name("command").
 			Handle(func(c *absdk.EventContext) error {
 				_, err := c.ReplyText("hello")
 				return err
@@ -94,7 +94,7 @@ var Module = absdk.Define(
 )
 ```
 
-插件对外导出的是 `Module`。最终用户添加插件时，`-symbol` 默认就是 `Module`。
+插件对外导出的是 `Plugin`。最终用户添加插件时，`-symbol` 默认就是 `Plugin`。
 
 ## 安装到本地机器人工作目录
 
@@ -449,7 +449,7 @@ go test ./...
 
 - `go test ./...` 通过。
 - `go vet ./...` 没有明显问题。
-- `Module` 的 `Manifest.Name` 稳定，不随包名或仓库名随意变化。
+- `Plugin` 的 `Manifest.Name` 稳定，不随包名或仓库名随意变化。
 - 默认配置够保守，插件安装后默认禁用，由用户显式启用。
 - 配置项能通过 `anybot plugin inspect <name>` 看懂。
 - 外部服务密钥支持 `!env`，不要鼓励用户明文写进仓库。

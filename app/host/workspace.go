@@ -32,7 +32,7 @@ type PluginWorkspace struct {
 	Plugins []PluginModule `yaml:"plugins"`
 }
 
-// PluginModule 描述一个外部插件模块及其导出的 sdk.Spec 变量。
+// PluginModule 描述一个外部插件模块及其导出的 sdk.Definition 变量。
 type PluginModule struct {
 	Name    string `yaml:"name"`
 	Module  string `yaml:"module"`
@@ -131,7 +131,7 @@ func AddPluginModule(opts AddPluginOptions) (PluginWorkspace, error) {
 		return PluginWorkspace{}, err
 	}
 	if opts.Symbol == "" {
-		opts.Symbol = "Module"
+		opts.Symbol = "Plugin"
 	}
 	if !validExportedIdentifier(opts.Symbol) {
 		return PluginWorkspace{}, fmt.Errorf("plugin symbol %q must be an exported Go identifier", opts.Symbol)
@@ -171,7 +171,7 @@ func UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginWorkspace
 	if opts.SetSymbol {
 		opts.Symbol = strings.TrimSpace(opts.Symbol)
 		if opts.Symbol == "" {
-			opts.Symbol = "Module"
+			opts.Symbol = "Plugin"
 		}
 		if !validExportedIdentifier(opts.Symbol) {
 			return PluginModule{}, PluginWorkspace{}, false, fmt.Errorf("plugin symbol %q must be an exported Go identifier", opts.Symbol)
@@ -391,7 +391,7 @@ func (workspace *PluginWorkspace) applyDefaults() {
 			workspace.Plugins[i].Name = DefaultPluginName(workspace.Plugins[i].Module)
 		}
 		if workspace.Plugins[i].Symbol == "" {
-			workspace.Plugins[i].Symbol = "Module"
+			workspace.Plugins[i].Symbol = "Plugin"
 		}
 		workspace.Plugins[i].Replace = strings.TrimSpace(workspace.Plugins[i].Replace)
 	}

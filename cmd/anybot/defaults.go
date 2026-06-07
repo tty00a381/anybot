@@ -10,8 +10,8 @@ func usage() {
   anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]
   anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]
   anybot plugins
-  anybot plugin add <module[@version]> [-name 名称] [-symbol Module] [-version 版本] [-replace 本地路径] [-dir 目录]
-  anybot plugin update <name> [-version 版本] [-symbol Module] [-replace 本地路径|-clear-replace] [-dir 目录]
+  anybot plugin add <module[@version]> [-name 名称] [-symbol Plugin] [-version 版本] [-replace 本地路径] [-dir 目录]
+  anybot plugin update <name> [-version 版本] [-symbol Plugin] [-replace 本地路径|-clear-replace] [-dir 目录]
   anybot plugin remove <name> [-dir 目录] [-config anybot.yaml]
   anybot plugin list [-dir 目录]
   anybot plugin status [-dir 目录] [-config anybot.yaml]
@@ -84,7 +84,7 @@ anybot up
 安装第三方插件：
 
 ` + "```sh" + `
-anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module
+anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
 anybot plugin status
 anybot plugin enable anybot_weather
 anybot up

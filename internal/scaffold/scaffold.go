@@ -428,26 +428,26 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 - ` + "`.env.example`" + `：环境变量示例。
 - ` + "`plugins/`" + `：插件目录，按需生成。
 
-	## 插件
+## 插件
 
-	当前核心库项目里直接使用的插件，用 ` + "`-in-project`" + ` 生成到 ` + "`plugins/`" + `：
+当前核心库项目里直接使用的插件，用 ` + "`-in-project`" + ` 生成到 ` + "`plugins/`" + `：
 
-	` + "```sh" + `
-	anybot dev plugin hello -in-project
-	anybot dev plugin buddy -template companion -in-project
-	anybot dev plugin mc-admin -template minecraft -in-project
-	` + "```" + `
+` + "```sh" + `
+anybot dev plugin hello -in-project
+anybot dev plugin buddy -template companion -in-project
+anybot dev plugin mc-admin -template minecraft -in-project
+` + "```" + `
 
-	默认推荐把要发布给别人使用的插件生成成独立模块：
+默认推荐把要发布给别人使用的插件生成成独立模块：
 
-	` + "```sh" + `
-	anybot dev plugin hello -dir ../anybot-hello -module example.com/hello
-	` + "```" + `
+` + "```sh" + `
+anybot dev plugin hello -dir ../anybot-hello -module example.com/hello
+` + "```" + `
 
-项目内插件导出 ` + "`Module`" + `，适合直接写 Go 入口时显式安装：
+项目内插件导出 ` + "`Plugin`" + `，适合直接写 Go 入口时显式安装：
 
 ` + "```go" + `
-if err := absdk.Install(app, hello.Module); err != nil {
+if err := absdk.InstallDefault(app, hello.Plugin); err != nil {
 	log.Fatal(err)
 }
 ` + "```" + `
@@ -478,8 +478,8 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-// Module 是 {{.Name}} 插件导出的 anybot 模块。
-var Module = absdk.Define(
+// Plugin 是 {{.Name}} 插件导出的 AnyBot 插件定义。
+var Plugin = absdk.Define(
 	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
 	Config{Command: "{{.Command}}"},
 	func(ctx *absdk.Context, cfg Config) error {

@@ -69,7 +69,7 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(pluginData), "var Module = absdk.Define") ||
+	if !strings.Contains(string(pluginData), "var Plugin = absdk.Define") ||
 		!strings.Contains(string(pluginData), "absdk.EventContext") ||
 		!strings.Contains(string(pluginData), "func (cfg Config) Validate() error") ||
 		!strings.Contains(string(pluginData), `Command string `+"`yaml:\"command\"`") ||
