@@ -44,8 +44,8 @@ cd ./mybot
 - `plugins.d/`：插件拆分配置目录。
 - `anybot.plugins.yaml`：外部插件工作区清单。
 - `plugins.gen.go`：外部插件注册代码，由 anybot 管理。
-- `main.go`：生成宿主入口，由 anybot 管理。
-- `go.mod`：生成宿主的 Go 模块文件。
+- `main.go`：生成框架入口，由 anybot 管理。
+- `go.mod`：生成框架的 Go 模块文件。
 - `README.md`：当前目录的使用说明。
 
 检查配置：
@@ -54,19 +54,19 @@ cd ./mybot
 anybot doctor
 ```
 
-直接使用基础宿主运行：
+直接使用基础运行框架运行：
 
 ```sh
 anybot run
 ```
 
-使用可构建宿主运行：
+使用可构建运行框架运行：
 
 ```sh
 anybot up
 ```
 
-`up` 会在需要时补齐生成文件、同步 Go module 依赖、构建宿主、同步插件默认配置，然后启动生成的二进制。
+`up` 会在需要时补齐生成文件、同步 Go module 依赖、构建运行框架、同步插件默认配置，然后启动生成的二进制。
 
 ## 第一个可安装插件
 
@@ -164,5 +164,5 @@ app.Command("echo").Handle(func(c *core.Context) error {
 ## 下一步
 
 - 想继续写 Go 业务代码，看 [核心库](core.md)。
-- 想使用配置和插件运行，看 [anybot 宿主](anybot.md)。
+- 想使用配置和插件运行，看 [anybot 运行框架](anybot.md)。
 - 想写可复用插件，看 [插件开发](plugin-development.md)。

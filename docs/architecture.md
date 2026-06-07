@@ -3,7 +3,7 @@
 AnyBot 是单 Go module 下的三个项目目录：
 
 1. 核心库：`core/`，导入路径 `github.com/tty00a381/anybot/core`。
-2. 应用宿主：`app/` 与统一 CLI `cmd/anybot`。
+2. 应用运行框架：`app/` 与统一 CLI `cmd/anybot`。
 3. 插件 SDK：`sdk/`。
 
 这个分层让 AnyBot 同时服务三类人：直接写 Go 的开发者、只想配置机器人和插件的最终用户、发布可复用插件的插件作者。它们放在同一个 module 里，避免多模块版本同步和 workspace 复杂度；目录边界负责清晰，发布单元保持简单。
@@ -42,9 +42,9 @@ Middleware 是核心库里的横切机制，主要服务框架作者和插件作
 
 协议端扩展能力应放在适配器的子包里。例如 NapCat 扩展位于 `adapters/onebot11/napcat`，避免污染标准 OneBot v11 API。
 
-## 应用宿主
+## 应用框架
 
-`app/host/` 是 `anybot` 的可复用宿主层，负责：
+`app/host/` 是 `anybot` 的可复用框架层，负责：
 
 - 读取 `anybot.yaml`。
 - 合并 `plugins.d/`。
@@ -59,8 +59,8 @@ Middleware 是核心库里的横切机制，主要服务框架作者和插件作
 
 - 初始化目录。
 - 诊断配置。
-- 运行宿主。
-- 构建生成宿主。
+- 运行框架。
+- 构建生成框架。
 - 添加、移除、启用、禁用、同步、查看插件。
 
 ## 插件 SDK
@@ -75,11 +75,11 @@ Middleware 是核心库里的横切机制，主要服务框架作者和插件作
 - 配置校验。
 - 安装逻辑。
 
-宿主把 YAML 解码成插件的 typed config，再把插件装进核心 `App`。插件作者不需要自己设计配置加载、默认值、环境变量和校验流程。
+框架把 YAML 解码成插件的 typed config，再把插件装进核心 `App`。插件作者不需要自己设计配置加载、默认值、环境变量和校验流程。
 
 ## 外部插件工作区
 
-生成出来的 AnyBot 工作目录是宿主应用项目，不是独立框架源码目录。外部插件通过 `anybot.plugins.yaml` 记录：
+生成出来的 AnyBot 工作目录是框架应用项目，不是独立框架源码目录。外部插件通过 `anybot.plugins.yaml` 记录：
 
 ```yaml
 module: anybot.local/bot
@@ -90,13 +90,13 @@ plugins:
     symbol: Module
 ```
 
-`anybot plugin add/remove` 重写 `plugins.gen.go`。`anybot build/up` 会同步生成宿主对 AnyBot 根模块和外部插件的 `require/replace`。
+`anybot plugin add/remove` 重写 `plugins.gen.go`。`anybot build/up` 会同步生成框架对 AnyBot 根模块和外部插件的 `require/replace`。
 
-源码开发版会把 AnyBot 自身替换到当前源码目录；发布版会固定到当前框架版本。这样生成宿主不会追随不确定的 `latest`。
+源码开发版会把 AnyBot 自身替换到当前源码目录；发布版会固定到当前框架版本。这样生成框架不会追随不确定的 `latest`。
 
 ## 配置边界
 
-主 `anybot.yaml` 保存宿主级配置：
+主 `anybot.yaml` 保存框架级配置：
 
 - runtime
 - adapter
@@ -114,7 +114,7 @@ flowchart TD
   Core["核心库\ncore"]
   Adapters["协议适配器\nadapters/*"]
   PluginSDK["插件 SDK\nsdk"]
-  Host["宿主层\napp/host"]
+  Host["框架层\napp/host"]
   CLI["统一 CLI\ncmd/anybot"]
   Plugins["插件\napp/plugins/* 或第三方模块"]
 
@@ -129,4 +129,4 @@ flowchart TD
   CLI --> Adapters
 ```
 
-核心库不反向依赖宿主或插件 SDK。插件 SDK 依赖核心库，但核心库不知道 SDK。宿主层组合核心库、适配器和插件 SDK。这个方向必须保持清晰。
+核心库不反向依赖运行框架或插件 SDK。插件 SDK 依赖核心库，但核心库不知道 SDK。框架层组合核心库、适配器和插件 SDK。这个方向必须保持清晰。

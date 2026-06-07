@@ -38,6 +38,8 @@ func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
   anybot dev init [-module 模块名] [-dir 目录] [-force]
   anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+  anybot dev plugin <名称> -in-project [-template basic|companion|minecraft] [-dir 目录] [-force]
+  anybot dev new plugin <名称> [同 anybot dev plugin]
   anybot dev doctor [-config core.yaml] [-connect]
   anybot dev run [go run 参数...]`)
 }
@@ -53,7 +55,7 @@ func runDevInit(args []string) error {
 	if err := scaffold.InitProject(scaffold.ProjectOptions{Dir: *dir, Module: *module, Force: *force}); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "已生成 core 项目：%s\n", cleanDisplayDir(*dir))
+	fmt.Fprintf(stdout, "已生成核心库项目：%s\n", cleanDisplayDir(*dir))
 	printNextSteps(*dir, "go mod tidy", "anybot dev doctor", "go run .")
 	return nil
 }
@@ -73,10 +75,11 @@ func runDevNew(args []string) error {
 func runDevPlugin(args []string) error {
 	fs := flag.NewFlagSet("dev plugin", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标项目目录")
-	module := fs.String("module", "", "独立插件 Go 模块路径；为空时生成到项目 plugins/ 目录")
+	module := fs.String("module", "", "独立插件 Go 模块路径；为空时使用 example.com/anybot-plugin/<名称>")
 	anybotVersion := fs.String("anybot-version", "", "独立插件依赖的 AnyBot 版本")
 	replace := fs.String("replace", "", "独立插件 go.mod 中的 AnyBot 本地源码替换路径")
 	templateName := fs.String("template", scaffold.DefaultPluginTemplate, "插件模板："+strings.Join(scaffold.PluginTemplates(), ", "))
+	inProject := fs.Bool("in-project", false, "生成到现有核心库项目的 plugins/ 目录")
 	force := fs.Bool("force", false, "覆盖已有文件")
 	name, flagArgs, err := splitDevPluginArgs(args)
 	if err != nil {
@@ -86,7 +89,13 @@ func runDevPlugin(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-module 插件模块]")
+		return fmt.Errorf("用法：anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]，或 anybot dev plugin <名称> -in-project")
+	}
+	if *inProject && strings.TrimSpace(*module) != "" {
+		return fmt.Errorf("-in-project 不能与 -module 同时使用")
+	}
+	if !*inProject && strings.TrimSpace(*module) == "" {
+		*module = defaultPluginModule(name)
 	}
 	opts := scaffold.PluginOptions{
 		Dir:           *dir,
@@ -110,8 +119,41 @@ func runDevPlugin(args []string) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "已生成插件骨架：%s\n", result.Name)
-	printNextSteps(*dir, "go test ./...")
+	printNextSteps(*dir, "在 Go 入口中 import ./plugins/"+result.Package+" 并使用 absdk.AsPlugin("+result.Package+".Module)", "go test ./...")
 	return nil
+}
+
+func defaultPluginModule(name string) string {
+	suffix := modulePathName(name)
+	if suffix == "" {
+		suffix = "plugin"
+	}
+	return "example.com/anybot-plugin/" + suffix
+}
+
+func modulePathName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	lastSep := false
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+			lastSep = false
+		case r >= '0' && r <= '9':
+			if b.Len() == 0 {
+				b.WriteString("plugin-")
+			}
+			b.WriteRune(r)
+			lastSep = false
+		default:
+			if b.Len() > 0 && !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
@@ -199,7 +241,8 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace=") ||
 			strings.HasPrefix(arg, "-template=") || strings.HasPrefix(arg, "--template="):
 			flagArgs = append(flagArgs, arg)
-		case arg == "-force" || arg == "--force":
+		case arg == "-force" || arg == "--force" ||
+			arg == "-in-project" || arg == "--in-project":
 			flagArgs = append(flagArgs, arg)
 		case strings.HasPrefix(arg, "-"):
 			flagArgs = append(flagArgs, arg)

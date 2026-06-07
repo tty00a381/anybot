@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config 是 anybot 的宿主配置。
+// Config 是 anybot 的框架配置。
 type Config struct {
 	Runtime         RuntimeConfig          `yaml:"runtime"`
 	Adapter         AdapterConfig          `yaml:"adapter"`
@@ -22,7 +22,7 @@ type Config struct {
 	configPath string
 }
 
-// RuntimeConfig 描述宿主运行时参数。
+// RuntimeConfig 描述框架运行时参数。
 type RuntimeConfig struct {
 	LogLevel string      `yaml:"log_level"`
 	Workers  string      `yaml:"workers"`
@@ -32,19 +32,19 @@ type RuntimeConfig struct {
 	Store    StoreConfig `yaml:"store"`
 }
 
-// StoreConfig 描述宿主会话状态存储。
+// StoreConfig 描述框架会话状态存储。
 type StoreConfig struct {
 	Type string `yaml:"type"`
 	Path string `yaml:"path"`
 }
 
-// AdapterConfig 描述宿主使用的协议适配器。
+// AdapterConfig 描述框架使用的协议适配器。
 type AdapterConfig struct {
 	Protocol  string                   `yaml:"protocol"`
 	Transport onebot11.TransportConfig `yaml:"transport"`
 }
 
-// SecurityConfig 描述宿主级安全策略。
+// SecurityConfig 描述框架级安全策略。
 type SecurityConfig struct {
 	SuperUsers []string `yaml:"superusers"`
 }

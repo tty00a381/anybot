@@ -46,7 +46,7 @@ func PluginConfigChecks(cfg Config, registry absdk.Registry, workspace PluginWor
 		if !ok {
 			if _, ok := external[name]; ok {
 				check.State = pluginCheckUnavailable
-				check.Detail = "外部插件尚未构建到当前宿主"
+				check.Detail = "外部插件尚未构建到当前框架"
 			} else {
 				check.State = pluginCheckUnknown
 				check.Detail = "注册表中没有该插件"

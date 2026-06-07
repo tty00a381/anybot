@@ -39,30 +39,30 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slogLevel})), nil
 }
 
-// AppOptions 描述宿主运行时的附加参数。
+// AppOptions 描述框架运行时的附加参数。
 type AppOptions struct {
 	ConfigPath   string
 	RuntimeState bool
 }
 
-// AppOption 调整宿主运行时装配。
+// AppOption 调整框架运行时装配。
 type AppOption func(*AppOptions)
 
-// WithConfigPath 注入当前宿主配置文件路径，供插件运行期写回自身配置。
+// WithConfigPath 注入当前框架配置文件路径，供插件运行期写回自身配置。
 func WithConfigPath(path string) AppOption {
 	return func(opts *AppOptions) {
 		opts.ConfigPath = path
 	}
 }
 
-// WithRuntimeState 启用宿主托管的运行时状态资源，包括 Store 和插件数据目录。
+// WithRuntimeState 启用框架托管的运行时状态资源，包括 Store 和插件数据目录。
 func WithRuntimeState() AppOption {
 	return func(opts *AppOptions) {
 		opts.RuntimeState = true
 	}
 }
 
-// NewApp 根据宿主配置和插件注册表创建 AnyBot 运行时。
+// NewApp 根据框架配置和插件注册表创建 AnyBot 运行时。
 func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions ...AppOption) (*core.App, error) {
 	var hostOpts AppOptions
 	for _, opt := range appOptions {
@@ -125,7 +125,7 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 	return app, nil
 }
 
-// ValidateConfig 静态校验宿主配置，不执行插件安装逻辑。
+// ValidateConfig 静态校验框架配置，不执行插件安装逻辑。
 func ValidateConfig(cfg Config, registry absdk.Registry) error {
 	rawRuntime := cfg.Runtime
 	configPath := cfg.configPath

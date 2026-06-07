@@ -20,7 +20,7 @@ func AllowedGroups(ids ...string) Rule {
 	})
 }
 
-// RequireAdmin 使用插件配置中的管理员列表鉴权；列表为空时回退到宿主超级用户。
+// RequireAdmin 使用插件配置中的管理员列表鉴权；列表为空时回退到框架超级用户。
 func RequireAdmin(ids ...string) Middleware {
 	allowed := cleanStringSet(ids...)
 	if len(allowed) == 0 {

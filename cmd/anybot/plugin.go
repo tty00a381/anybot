@@ -113,14 +113,27 @@ func runPluginAdd(args []string) error {
 	if _, exists := host.DefaultRegistry().Factory(pluginName); exists {
 		return fmt.Errorf("插件名 %q 已被内置插件占用；请使用 -name 指定其他名称", pluginName)
 	}
+	if err := host.ValidatePluginName(pluginName); err != nil {
+		return err
+	}
 	pinnedVersion, err := pinPluginModuleVersion(modulePath, *version, replacePath)
 	if err != nil {
 		return err
 	}
 	*version = pinnedVersion
+	rollback, err := snapshotFiles(pluginAddTouchedFiles(*dir, pluginName))
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = rollback()
+		}
+	}()
 	workspace, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     *dir,
-		Name:    *name,
+		Name:    pluginName,
 		Module:  modulePath,
 		Version: *version,
 		Replace: replacePath,
@@ -156,7 +169,117 @@ func runPluginAdd(args []string) error {
 		fmt.Fprintf(stdout, "配置已添加：%s（默认禁用）\n", item.Name)
 	}
 	printNextSteps(*dir, "anybot plugin enable "+item.Name, "anybot up")
+	committed = true
 	return nil
+}
+
+func pluginAddTouchedFiles(dir, name string) []string {
+	if dir == "" {
+		dir = "."
+	}
+	files := []string{
+		filepath.Join(dir, host.PluginWorkspaceFile),
+		filepath.Join(dir, "plugins.gen.go"),
+		filepath.Join(dir, "main.go"),
+		filepath.Join(dir, "go.mod"),
+		filepath.Join(dir, "anybot.yaml"),
+		filepath.Join(dir, "plugins.d"),
+	}
+	if name != "" {
+		files = append(files, filepath.Join(dir, "plugins.d", name+".yaml"))
+	}
+	return files
+}
+
+func snapshotFiles(paths []string) (func() error, error) {
+	type snapshot struct {
+		path   string
+		data   []byte
+		mode   os.FileMode
+		exists bool
+		dir    bool
+	}
+	snapshots := make([]snapshot, 0, len(paths))
+	seen := map[string]struct{}{}
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		clean := filepath.Clean(path)
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		item := snapshot{path: clean}
+		info, err := os.Stat(clean)
+		if errors.Is(err, os.ErrNotExist) {
+			snapshots = append(snapshots, item)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if info.IsDir() {
+			item.exists = true
+			item.dir = true
+			item.mode = info.Mode().Perm()
+			snapshots = append(snapshots, item)
+			continue
+		}
+		item.exists = true
+		item.mode = info.Mode().Perm()
+		item.data, err = os.ReadFile(clean)
+		if err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, item)
+	}
+	return func() error {
+		var first error
+		for i := len(snapshots) - 1; i >= 0; i-- {
+			item := snapshots[i]
+			if !item.exists {
+				if err := removeCreatedPath(item.path); err != nil && first == nil {
+					first = err
+				}
+				continue
+			}
+			if item.dir {
+				if err := os.MkdirAll(item.path, item.mode); err != nil {
+					if first == nil {
+						first = err
+					}
+					continue
+				}
+				if err := os.Chmod(item.path, item.mode); err != nil && first == nil {
+					first = err
+				}
+				continue
+			}
+			if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+				if first == nil {
+					first = err
+				}
+				continue
+			}
+			if err := os.WriteFile(item.path, item.data, item.mode); err != nil && first == nil {
+				first = err
+			}
+		}
+		return first
+	}, nil
+}
+
+func removeCreatedPath(path string) error {
+	err := os.Remove(path)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	info, statErr := os.Stat(path)
+	if statErr == nil && info.IsDir() {
+		return nil
+	}
+	return err
 }
 
 func runPluginUpdate(args []string) error {
@@ -448,22 +571,45 @@ func normalizeReplacePath(dir, replace string) (string, error) {
 	if dir == "" {
 		dir = "."
 	}
-	targetDir, err := filepath.Abs(dir)
+	targetDir, err := stablePath(dir)
 	if err != nil {
 		return "", err
 	}
-	replacePath := replace
-	if !filepath.IsAbs(replacePath) {
-		replacePath, err = filepath.Abs(replacePath)
-		if err != nil {
-			return "", err
-		}
+	replacePath, err := stablePath(replace)
+	if err != nil {
+		return "", err
 	}
 	rel, err := filepath.Rel(targetDir, replacePath)
 	if err != nil {
-		return replace, nil
+		return filepath.ToSlash(replacePath), nil
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+func stablePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved, nil
+	}
+	clean := filepath.Clean(abs)
+	var rest []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+			for i := len(rest) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, rest[i])
+			}
+			return resolved, nil
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return abs, nil
+		}
+		rest = append(rest, filepath.Base(clean))
+		clean = parent
+	}
 }
 
 func runPluginList(args []string) error {

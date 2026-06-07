@@ -1,6 +1,6 @@
 # 插件开发
 
-成熟插件应使用 `github.com/tty00a381/anybot/sdk` SDK。它让插件声明清单、typed config、默认配置、校验和安装逻辑，宿主负责解码配置并装进 `App`。
+成熟插件应使用 `github.com/tty00a381/anybot/sdk` SDK。它让插件声明清单、typed config、默认配置、校验和安装逻辑，运行框架负责解码配置并装进 `App`。
 
 ## 生成独立插件
 
@@ -112,7 +112,7 @@ type Config struct {
 
 `sdk.Spec[T]` 会先深拷贝默认配置，再叠加用户 YAML。这样插件拿到的是独立实例，不会因为修改 slice、map 或指针字段污染后续构建。
 
-如果配置类型实现 `Validate() error`，宿主会在安装前调用：
+如果配置类型实现 `Validate() error`，运行框架会在安装前调用：
 
 ```go
 func (c Config) Validate() error {
@@ -141,13 +141,13 @@ config:
 
 - `Manifest()`：当前插件清单。
 - `Logger()`：带 `plugin=<name>` 字段的日志器。
-- `Store()`：宿主会话存储。
+- `Store()`：框架会话存储。
 - `Session()`、`UserSession()`、`GroupSession()`、`SessionBy()`：带插件命名空间的会话存储。
 - `DataDir()`：当前插件的私有数据目录。
 - `Client()`：动作客户端。
 - `Send()`、`SendText()`：主动发送消息。
 - `Use()`：注册插件级中间件。
-- `UseGlobal()`：注册宿主级全局中间件，仅适合安全策略、全局限流等宿主策略。
+- `UseGlobal()`：注册框架级全局中间件，仅适合安全策略、全局限流等框架策略。
 - `On()`、`OnMessage()`、`Command()`：注册路由。
 - `Observe()`：注册旁路观察者。
 - `Go()`、`Every()`：注册生命周期托管任务。
@@ -172,9 +172,9 @@ ctx.Command(cfg.Command).
 	})
 ```
 
-`ctx.Use()` 只作用于当前插件通过 `ctx.On`、`ctx.OnMessage`、`ctx.Command` 注册的后续路由，不会影响其他插件。需要影响整个宿主的能力应显式使用 `ctx.UseGlobal()`；普通对话插件通常不应该使用它。
+`ctx.Use()` 只作用于当前插件通过 `ctx.On`、`ctx.OnMessage`、`ctx.Command` 注册的后续路由，不会影响其他插件。需要影响整个运行框架的能力应显式使用 `ctx.UseGlobal()`；普通对话插件通常不应该使用它。
 
-需要管理员权限时，优先使用宿主级超级用户：
+需要管理员权限时，优先使用框架级超级用户：
 
 ```go
 ctx.Command("reload").
@@ -198,7 +198,7 @@ SDK 暴露了对话插件常用的规则组合能力，插件不需要直接导�
 
 SDK 也导出了插件作者常用的错误、回执和会话类型：`MessageReceipt`、`ActionResponse`、`ActionError`、`PanicError`、`ErrPass`、`ErrStop`、`ErrUnauthorized`、`ErrRateLimited`、`Session`、`MemoryStore`、`FileStore`。常规插件不需要导入 `core`。
 
-配置里常见的群和管理员列表可以直接接入 SDK helper：`absdk.AllowedGroups(cfg.AllowedGroups...)` 在列表为空时不限制群聊，`absdk.RequireAdmin(cfg.Admins...)` 在列表为空时回退到宿主 `security.superusers`，列表非空时只允许插件配置的管理员。
+配置里常见的群和管理员列表可以直接接入 SDK helper：`absdk.AllowedGroups(cfg.AllowedGroups...)` 在列表为空时不限制群聊，`absdk.RequireAdmin(cfg.Admins...)` 在列表为空时回退到框架 `security.superusers`，列表非空时只允许插件配置的管理员。
 
 ## 会话状态
 
@@ -217,7 +217,7 @@ ctx.Command("remember").Handle(func(c *absdk.EventContext) error {
 
 `c.Session()`、`c.UserSession()` 和 `c.GroupSession()` 是 core 级会话视图，不带插件命名空间；SDK 插件只有在明确需要共享状态时才应直接使用。
 
-标准 `anybot` 宿主默认把会话状态持久化到 `runtime.data_dir/store.json`，重启后仍可读取。直接使用 `core.New()` 时默认仍是进程内 `MemoryStore`；测试或嵌入式宿主可用 `absdk.NewMemoryStore()` 或 `core.NewFileStore()` 显式注入。
+标准 `anybot` 运行框架默认把会话状态持久化到 `runtime.data_dir/store.json`，重启后仍可读取。直接使用 `core.New()` 时默认仍是进程内 `MemoryStore`；测试或嵌入式运行框架可用 `absdk.NewMemoryStore()` 或 `core.NewFileStore()` 显式注入。
 
 ## 数据目录
 
@@ -231,7 +231,7 @@ if err != nil {
 path := filepath.Join(dir, "bindings.json")
 ```
 
-目录由宿主创建，标准路径是 `runtime.data_dir/plugins/<插件名>/`。轻量键值状态优先用 `SessionBy()`；只有当插件确实需要控制文件格式或外部存储时才使用 `DataDir()`。
+目录由运行框架创建，标准路径是 `runtime.data_dir/plugins/<插件名>/`。轻量键值状态优先用 `SessionBy()`；只有当插件确实需要控制文件格式或外部存储时才使用 `DataDir()`。
 
 ## Observer
 
@@ -278,9 +278,9 @@ ctx.Go("startup-message", func(taskCtx context.Context) error {
 
 不要通过第一次发送失败来猜测连接状态。目标不存在、权限不足、token 错误和连接未建立是不同问题，应由不同层处理。
 
-## 注册到宿主
+## 注册到运行框架
 
-直接写 Go 宿主时：
+直接写 Go 入口时：
 
 ```go
 registry := absdk.NewRegistry()
@@ -289,7 +289,7 @@ if err := registry.Register(hello.Module.Factory()); err != nil {
 }
 ```
 
-如果要把同一个插件注册成宿主中的另一个运行名：
+如果要把同一个插件注册成框架中的另一个运行名：
 
 ```go
 registry.Register(hello.Module.Factory().WithName("daily_hello"))
@@ -305,20 +305,20 @@ anybot plugin enable anybot_weather
 anybot up
 ```
 
-`anybot up` 会构建带外部插件的生成宿主、同步默认配置并检查插件配置，然后启动机器人。停止机器人后，也可以运行 `./anybot-bot plugin inspect anybot_weather` 和 `./anybot-bot plugin check` 复查。
+`anybot up` 会构建带外部插件的生成框架、同步默认配置并检查插件配置，然后启动机器人。停止机器人后，也可以运行 `./anybot-bot plugin inspect anybot_weather` 和 `./anybot-bot plugin check` 复查。
 
-`-replace` 按执行命令的当前目录解析，然后写成相对宿主目录的路径。本地替换不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。发布前可以用 `anybot plugin update anybot_weather -clear-replace -version v0.1.0` 切回远端版本；继续本地开发时也可以用 `anybot plugin update anybot_weather -replace ../anybot-weather` 改路径。远端插件省略版本或使用 `latest` 时，CLI 会解析并记录具体版本，避免生成宿主构建时追随浮动 latest。`update` 不会改写 `plugins.d/<name>.yaml`，适合保留对话插件的复杂配置。基础 `anybot plugin inspect` 和 `anybot plugin check` 可以发现外部插件待构建；外部插件构建进宿主后，`./anybot-bot plugin enable`、`./anybot-bot plugin config`、`./anybot-bot plugin inspect` 和 `./anybot-bot plugin check` 会使用完整插件注册表做最终校验。
+`-replace` 按执行命令的当前目录解析，然后写成相对机器人目录的路径。本地替换不会解析远端版本；没有版本时生成框架会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。发布前可以用 `anybot plugin update anybot_weather -clear-replace -version v0.1.0` 切回远端版本；继续本地开发时也可以用 `anybot plugin update anybot_weather -replace ../anybot-weather` 改路径。远端插件省略版本或使用 `latest` 时，CLI 会解析并记录具体版本，避免生成框架构建时追随浮动 latest。`update` 不会改写 `plugins.d/<name>.yaml`，适合保留对话插件的复杂配置。基础 `anybot plugin inspect` 和 `anybot plugin check` 可以发现外部插件待构建；外部插件构建进运行框架后，`./anybot-bot plugin enable`、`./anybot-bot plugin config`、`./anybot-bot plugin inspect` 和 `./anybot-bot plugin check` 会使用完整插件注册表做最终校验。
 
 插件可以通过 `ctx.Config().Set`、`SetAll` 和 `Reset` 写回自己的 `config` 字段。写回会立即落盘到 `anybot.yaml` 或对应的 `plugins.d/<name>.yaml`，适合由管理员命令保存插件偏好；当前已经完成解码的运行中配置不会因此自动热刷新，通常应在事件处理或显式迁移命令里使用，而不是在 `Setup` 中做隐式迁移。
 
 ## 生成插件骨架
 
-在直接写 Go 的 core 项目里，可以生成项目内插件：
+在直接写 Go 的核心库项目里，可以生成项目内插件：
 
 ```sh
-anybot dev plugin hello
-anybot dev plugin buddy -template companion
-anybot dev plugin mc-admin -template minecraft
+anybot dev plugin hello -in-project
+anybot dev plugin buddy -template companion -in-project
+anybot dev plugin mc-admin -template minecraft -in-project
 ```
 
 生成的插件会写入 `plugins/hello/hello.go`，适合只在当前机器人项目中使用。要发布给别人安装，使用本页开头的 `-module` 独立插件模式。

@@ -208,7 +208,7 @@ func RegexRule(pattern string) Rule { return core.RegexRule(pattern) }
 // RegexpRule 使用已编译的正则表达式匹配事件文本。
 func RegexpRule(re *regexp.Regexp) Rule { return core.RegexpRule(re) }
 
-// RequireSuperUser 只允许宿主级超级用户继续执行。
+// RequireSuperUser 只允许框架级超级用户继续执行。
 func RequireSuperUser() Middleware { return core.RequireSuperUser() }
 
 // Recover 捕获处理链中的 panic。

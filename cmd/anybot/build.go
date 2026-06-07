@@ -206,13 +206,13 @@ func detectFrameworkDependency(module string) moduleDependency {
 	if v := normalizedVersion(version); v != "" {
 		return moduleDependency{Module: module, Version: v}
 	}
+	if root, ok := moduleSourceRoot(module); ok {
+		return moduleDependency{Module: module, Version: "v0.0.0", Replace: root}
+	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		if v := normalizedVersion(info.Main.Version); v != "" {
 			return moduleDependency{Module: module, Version: v}
 		}
-	}
-	if root, ok := moduleSourceRoot(module); ok {
-		return moduleDependency{Module: module, Version: "v0.0.0", Replace: root}
 	}
 	return moduleDependency{Module: module, Version: "v0.0.0"}
 }
@@ -257,6 +257,9 @@ func moduleSourceRoot(module string) (string, bool) {
 }
 
 func syncPluginGoMod(dir string, plugin host.PluginModule) error {
+	if err := host.ValidatePluginModule(plugin); err != nil {
+		return err
+	}
 	version := plugin.Version
 	if version == "" && plugin.Replace != "" {
 		version = pluginReplacePlaceholderVersion(plugin.Module)

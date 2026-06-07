@@ -159,13 +159,13 @@ history, err := api.GetGroupMessageHistory(c.Context, c.GroupID(), 0, 20)
 
 ## doctor
 
-直接 core 项目：
+直接核心库项目：
 
 ```sh
 anybot dev doctor -config core.yaml
 ```
 
-插件化宿主项目：
+插件化运行框架项目：
 
 ```sh
 anybot doctor -config anybot.yaml

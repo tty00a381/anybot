@@ -25,7 +25,7 @@ anybot up
 
 生成的配置默认使用 OneBot v11 反向 WebSocket，监听 `ws://127.0.0.1:6700/`。让 NapCat 或其他 OneBot v11 协议端连到这个地址即可。
 
-如果你要写一个直接使用 core 的 Go 程序，可以走开发者子命令：
+如果你要写一个直接使用核心库的 Go 程序，可以走开发者子命令：
 
 ```sh
 anybot dev init -module example.com/bot -dir ./mybot
@@ -76,7 +76,7 @@ func main() {
 ## 框架里有什么
 
 - `anybot`：统一 CLI 和产品门面，负责初始化、诊断、运行、构建和插件管理。
-- `app/host`：插件化宿主，负责配置、内置插件、外部插件工作区和运行时装配。
+- `app/host`：插件化运行框架，负责配置、内置插件、外部插件工作区和运行时装配。
 - `core`：机器人运行时内核，负责适配器、事件调度、路由、中间件、插件、任务和关闭流程。
 - `Route`：事件处理规则，支持优先级、命名、中间件、`Stop` 和 `Pass`。
 - `Observer`：旁路事件观察者，适合审计、记忆、指标、日志，不参与路由控制。
@@ -90,10 +90,10 @@ func main() {
 AnyBot 是一个 Go module 下的三个项目目录：
 
 - `core/`：核心库和协议无关抽象。
-- `app/`：插件化宿主、内置插件和 AnyBot 产品运行模型。
+- `app/`：插件化运行框架、内置插件和 AnyBot 产品运行模型。
 - `sdk/`：插件作者使用的配置、清单和安装 SDK。
 
-`cmd/anybot` 是统一 CLI。这样可以让核心库、宿主应用和插件 SDK 拥有明确边界，同时保持一个版本、一套依赖和一个发布单元。
+`cmd/anybot` 是统一 CLI。这样可以让核心库、框架应用和插件 SDK 拥有明确边界，同时保持一个版本、一套依赖和一个发布单元。
 
 ## 文档
 
@@ -102,7 +102,7 @@ AnyBot 是一个 Go module 下的三个项目目录：
 - [文档总览](docs/index.md)
 - [快速开始](docs/getting-started.md)
 - [核心库](docs/core.md)
-- [anybot 宿主](docs/anybot.md)
+- [anybot 运行框架](docs/anybot.md)
 - [插件开发](docs/plugin-development.md)
 - [配置](docs/configuration.md)
 - [OneBot v11](docs/onebot11.md)
@@ -153,6 +153,7 @@ anybot version
 ```sh
 anybot dev init [-module 模块名] [-dir 目录] [-force]
 anybot dev plugin <名称> [-template basic|companion|minecraft] [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
+anybot dev plugin <名称> -in-project [-template basic|companion|minecraft] [-dir 目录] [-force]
 anybot dev doctor [-config core.yaml] [-connect]
 anybot dev run [go run 参数...]
 ```

@@ -2,10 +2,10 @@
 
 AnyBot 有两套配置入口：
 
-- `anybot.yaml`：插件化宿主配置。
+- `anybot.yaml`：插件化运行框架配置。
 - `core.yaml`：直接写 Go 项目时，OneBot v11 适配器读取的简单配置。
 
-成熟项目建议使用 `anybot.yaml`。它把运行时、协议适配器、安全策略和插件配置放在同一套宿主模型下。
+成熟项目建议使用 `anybot.yaml`。它把运行时、协议适配器、安全策略和插件配置放在同一套框架模型下。
 
 ## anybot.yaml
 
@@ -61,18 +61,18 @@ runtime:
     path: store.json
 ```
 
-- `log_level`：宿主日志级别。
+- `log_level`：框架日志级别。
 - `workers`：事件处理 worker 数；`auto` 使用运行时默认值。
 - `buffer`：事件队列大小。
 - `serial`：事件串行策略。`conversation` 表示同一会话内串行处理。
-- `data_dir`：宿主运行时数据目录，相对路径按 `anybot.yaml` 所在目录解析。
-- `store`：宿主托管的会话状态存储。默认 `file` 会写入 `runtime.data_dir/store.json`；相对 `path` 必须留在 `runtime.data_dir` 内，绝对 `path` 会按原样使用；需要完全进程内状态时可设为 `memory`。
+- `data_dir`：框架运行时数据目录，相对路径按 `anybot.yaml` 所在目录解析。
+- `store`：框架托管的会话状态存储。默认 `file` 会写入 `runtime.data_dir/store.json`；相对 `path` 必须留在 `runtime.data_dir` 内，绝对 `path` 会按原样使用；需要完全进程内状态时可设为 `memory`。
 
-标准宿主会把 `runtime.data_dir/plugins/<插件名>/` 作为插件私有数据目录暴露给 SDK。小型状态优先用 SDK 会话存储；需要自管文件、缓存、索引或数据库时再使用插件数据目录。
+标准运行框架会把 `runtime.data_dir/plugins/<插件名>/` 作为插件私有数据目录暴露给 SDK。小型状态优先用 SDK 会话存储；需要自管文件、缓存、索引或数据库时再使用插件数据目录。
 
 ## adapter
 
-当前宿主支持 OneBot v11：
+当前框架支持 OneBot v11：
 
 ```yaml
 adapter:
@@ -139,7 +139,7 @@ security:
     - "10000"
 ```
 
-`superusers` 是宿主级管理员 ID。SDK 插件可以通过 `absdk.RequireSuperUser()` 复用这套身份；直接使用 core 时可以用 `core.RequireSuperUser()` 和 `Context.IsSuperUser()`。
+`superusers` 是框架级管理员 ID。SDK 插件可以通过 `absdk.RequireSuperUser()` 复用这套身份；直接使用核心库时可以用 `core.RequireSuperUser()` 和 `Context.IsSuperUser()`。
 
 内置 `admin` 插件在未单独配置 `users` 时也会使用 `security.superusers`。
 
@@ -230,7 +230,7 @@ anybot plugin add github.com/acme/anybot-weather@v0.1.0
 anybot plugin remove weather
 ```
 
-远端插件省略版本时，`anybot plugin add` 会解析当前 `latest` 并把具体版本写入清单；`-version latest` 也会被收敛成具体版本。本地 `-replace` 开发不会解析远端版本；没有版本时生成宿主会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。`anybot build/up` 会同步生成宿主对 AnyBot 自身和外部插件的 `require/replace`。发布版使用当前框架版本；源码开发版使用本地 `replace`。
+远端插件省略版本时，`anybot plugin add` 会解析当前 `latest` 并把具体版本写入清单；`-version latest` 也会被收敛成具体版本。本地 `-replace` 开发不会解析远端版本；没有版本时生成框架会按模块主版本写入占位 `require` 并加上 `replace`，例如普通模块使用 `v0.0.0`，`/v2` 模块使用 `v2.0.0`，已有版本则保留版本配合 `replace`。`anybot build/up` 会同步生成框架对 AnyBot 自身和外部插件的 `require/replace`。发布版使用当前框架版本；源码开发版使用本地 `replace`。
 
 ## core.yaml
 
@@ -245,4 +245,4 @@ transport:
   access_token_env: ONEBOT_ACCESS_TOKEN
 ```
 
-它只描述 OneBot v11 适配器，不包含插件宿主、security 或 `plugins.d`。
+它只描述 OneBot v11 适配器，不包含插件运行框架、security 或 `plugins.d`。

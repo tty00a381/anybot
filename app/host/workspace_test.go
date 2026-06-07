@@ -96,6 +96,37 @@ func TestLoadPluginWorkspaceRejectsYMLExtension(t *testing.T) {
 	}
 }
 
+func TestLoadPluginWorkspaceValidatesManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, PluginWorkspaceFile)
+	if err := os.WriteFile(path, []byte(`module: anybot.local/bot
+plugins:
+  - name: weather
+    module: github.com/acme/weather
+    symbol: Module
+  - name: weather
+    module: github.com/acme/other
+    symbol: Module
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadPluginWorkspace(path)
+	if err == nil || !strings.Contains(err.Error(), "plugin weather already exists") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAddPluginModuleRejectsInvalidNameBeforeWriting(t *testing.T) {
+	dir := t.TempDir()
+	_, err := AddPluginModule(AddPluginOptions{Dir: dir, Name: "bad/name", Module: "github.com/acme/weather"})
+	if err == nil || !strings.Contains(err.Error(), `plugin name "bad/name" is invalid`) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, PluginWorkspaceFile)); !os.IsNotExist(err) {
+		t.Fatalf("workspace should not be written: %v", err)
+	}
+}
+
 func TestAddPluginModuleParsesVersionAndReplace(t *testing.T) {
 	dir := t.TempDir()
 	workspace, err := AddPluginModule(AddPluginOptions{

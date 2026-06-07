@@ -1,4 +1,4 @@
-// ratelimit 包提供宿主级会话限速插件。
+// ratelimit 包提供框架级会话限速插件。
 package ratelimit
 
 import (

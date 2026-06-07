@@ -160,7 +160,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	if err := run([]string{"dev", "init", "-dir", dir, "-module", "example.com/devbot"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成 core 项目") ||
+	if !strings.Contains(out.String(), "已生成核心库项目") ||
 		!strings.Contains(out.String(), "anybot dev doctor") ||
 		!strings.Contains(out.String(), "go run .") {
 		t.Fatalf("dev init output:\n%s", out.String())
@@ -188,7 +188,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	}
 	out.Reset()
 
-	if err := run([]string{"dev", "plugin", "hello-world", "-dir", dir}); err != nil {
+	if err := run([]string{"dev", "plugin", "hello-world", "-in-project", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "已生成插件骨架：hello_world") ||
@@ -203,7 +203,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	}
 	out.Reset()
 
-	if err := run([]string{"dev", "plugin", "-template", "minecraft", "mc-admin", "-dir", dir}); err != nil {
+	if err := run([]string{"dev", "plugin", "-template", "minecraft", "-in-project", "mc-admin", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
 	mcPlugin := readTestFile(t, filepath.Join(dir, "plugins", "mc_admin", "mc_admin.go"))
@@ -251,6 +251,30 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	}
 }
 
+func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
+	root := t.TempDir()
+	anybotDir := filepath.Join(root, "anybot")
+	setTestFrameworkDependencies(t, []moduleDependency{
+		{Module: "github.com/tty00a381/anybot", Version: "v0.0.0", Replace: anybotDir},
+	})
+	dir := filepath.Join(root, "plugin")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"dev", "plugin", "hello-world", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已生成独立插件模块：hello_world (example.com/anybot-plugin/hello-world)") ||
+		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world -name hello_world") {
+		t.Fatalf("dev plugin output:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins", "hello_world", "hello_world.go")); !os.IsNotExist(err) {
+		t.Fatalf("default plugin should be standalone, project plugin err=%v", err)
+	}
+}
+
 func TestRunDevPluginTemplateFlagForms(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -260,25 +284,25 @@ func TestRunDevPluginTemplateFlagForms(t *testing.T) {
 	}{
 		{
 			name:     "after name",
-			args:     []string{"dev", "plugin", "buddy", "-template", "companion"},
+			args:     []string{"dev", "plugin", "buddy", "-template", "companion", "-in-project"},
 			path:     filepath.Join("plugins", "buddy", "buddy.go"),
 			contains: "renderCompanionReply",
 		},
 		{
 			name:     "before name",
-			args:     []string{"dev", "plugin", "-template", "companion", "buddy"},
+			args:     []string{"dev", "plugin", "-template", "companion", "-in-project", "buddy"},
 			path:     filepath.Join("plugins", "buddy", "buddy.go"),
 			contains: "renderCompanionReply",
 		},
 		{
 			name:     "equals after name",
-			args:     []string{"dev", "plugin", "mc-admin", "--template=minecraft"},
+			args:     []string{"dev", "plugin", "mc-admin", "--template=minecraft", "-in-project"},
 			path:     filepath.Join("plugins", "mc_admin", "mc_admin.go"),
 			contains: "writeFileAtomic",
 		},
 		{
 			name:     "equals before name",
-			args:     []string{"dev", "plugin", "--template=minecraft", "mc-admin"},
+			args:     []string{"dev", "plugin", "--template=minecraft", "-in-project", "mc-admin"},
 			path:     filepath.Join("plugins", "mc_admin", "mc_admin.go"),
 			contains: "writeFileAtomic",
 		},
@@ -535,6 +559,45 @@ func TestRunPluginAddReportsVersionResolutionErrorWithoutPartialWrite(t *testing
 	}
 }
 
+func TestRunPluginAddRollsBackAfterConfigFailure(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		t.Fatalf("local replace should not resolve %s@%s", module, query)
+		return "", nil
+	})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls int
+	commandRunner = func(dir, name string, args ...string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("go mod edit failed")
+		}
+		return nil
+	}
+	dir := t.TempDir()
+	pluginDir := filepath.Join(t.TempDir(), "weather")
+	err := run([]string{
+		"plugin", "add", "github.com/acme/weather",
+		"-name", "weather",
+		"-replace", pluginDir,
+		"-dir", dir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, name := range []string{host.PluginWorkspaceFile, "plugins.gen.go", "main.go", "go.mod", "anybot.yaml"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s should be rolled back, err=%v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins.d", "weather.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("plugin config should not be written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins.d")); !os.IsNotExist(err) {
+		t.Fatalf("plugins.d should be rolled back, err=%v", err)
+	}
+}
+
 func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	oldRunner := commandRunner
 	defer func() { commandRunner = oldRunner }()
@@ -781,6 +844,47 @@ func TestNormalizeReplacePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "../plugins/weather" {
+		t.Fatalf("replace = %q", got)
+	}
+}
+
+func TestNormalizeReplacePathResolvesSymlinkedDirectories(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	link := filepath.Join(root, "link")
+	if err := os.MkdirAll(filepath.Join(real, "bot"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(real, "plugins", "weather"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	got, err := normalizeReplacePath(filepath.Join(link, "bot"), filepath.Join(real, "plugins", "weather"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "../plugins/weather" {
+		t.Fatalf("replace = %q", got)
+	}
+}
+
+func TestNormalizeReplacePathResolvesSymlinkedMissingLeaf(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	link := filepath.Join(root, "link")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	got, err := normalizeReplacePath(filepath.Join(link, "plugin"), filepath.Join(real, "anybot"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "../anybot" {
 		t.Fatalf("replace = %q", got)
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Module 是面向插件化宿主的成熟插件接口。
+// Module 是面向插件化运行框架的成熟插件接口。
 type Module interface {
 	Manifest() Manifest
 	Setup(*Context) error
@@ -48,7 +48,7 @@ func (s Spec[T]) Setup(ctx *Context) error {
 	return s.SetupFn(ctx, cfg)
 }
 
-// Factory 返回可供宿主注册的插件工厂。
+// Factory 返回可供运行框架注册的插件工厂。
 func (s Spec[T]) Factory() Factory {
 	return Factory{
 		Info:    s.Info,

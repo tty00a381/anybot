@@ -1,6 +1,6 @@
 # {{.Name}}
 
-{{.Name}} 是一个 AnyBot SDK 插件。插件导出 `Module`，宿主可以通过 `anybot plugin add` 安装，也可以在 Go 代码中用 `absdk.AsPlugin(Module)` 显式安装。
+{{.Name}} 是一个 AnyBot SDK 插件。插件导出 `Module`，运行框架可以通过 `anybot plugin add` 安装，也可以在 Go 代码中用 `absdk.AsPlugin(Module)` 显式安装。
 
 ## 开发
 
@@ -28,7 +28,7 @@ anybot plugin config {{.Manifest}} command={{.Command}}
 anybot up
 ```
 
-`anybot up` 会构建带外部插件的生成宿主、同步默认配置并检查插件配置。停止机器人后，也可以运行 `./anybot-bot plugin check` 复查。
+`anybot up` 会构建带外部插件的运行框架、同步默认配置并检查插件配置。停止机器人后，也可以运行 `./anybot-bot plugin check` 复查。
 
 ## 配置
 

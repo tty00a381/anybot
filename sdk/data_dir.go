@@ -16,7 +16,7 @@ var ErrDataDirUnavailable = errors.New("anybot: plugin data dir unavailable")
 
 var appDataDirs sync.Map
 
-// WithDataDir 注入插件数据根目录；宿主会在其下为每个插件创建独立目录。
+// WithDataDir 注入插件数据根目录；运行框架会在其下为每个插件创建独立目录。
 func WithDataDir(root string) Option {
 	return func(app *core.App) {
 		if app == nil {

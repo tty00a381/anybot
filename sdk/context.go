@@ -16,7 +16,7 @@ type Context struct {
 	manifest Manifest
 }
 
-// NewContext 创建插件安装上下文，主要供宿主或测试使用。
+// NewContext 创建插件安装上下文，主要供运行框架或测试使用。
 func NewContext(app *App, manifest Manifest) *Context {
 	ctx := &Context{app: app, manifest: manifest}
 	if app != nil {
@@ -41,7 +41,7 @@ func (c *Context) Manifest() Manifest {
 	return c.manifest
 }
 
-// Logger 返回宿主日志器。
+// Logger 返回框架日志器。
 func (c *Context) Logger() *slog.Logger {
 	if c == nil || c.app == nil {
 		return slog.Default()
@@ -53,7 +53,7 @@ func (c *Context) Logger() *slog.Logger {
 	return logger.With("plugin", c.manifest.Name)
 }
 
-// Store 返回宿主会话存储。
+// Store 返回框架会话存储。
 func (c *Context) Store() Store {
 	if c == nil || c.app == nil {
 		return nil
@@ -121,7 +121,7 @@ func (c *Context) Use(middleware ...Middleware) {
 	}
 }
 
-// UseGlobal 注册宿主级全局中间件。普通插件应优先使用 Use；只有安全策略、全局限流等宿主策略才应使用此方法。
+// UseGlobal 注册框架级全局中间件。普通插件应优先使用 Use；只有安全策略、全局限流等框架策略才应使用此方法。
 func (c *Context) UseGlobal(middleware ...Middleware) {
 	if c != nil && c.app != nil {
 		c.app.Use(middleware...)
@@ -188,7 +188,7 @@ func (c *Context) OnReady(hook Hook) {
 	}
 }
 
-// OnError 注册全局路由错误回调，会影响整个宿主；插件局部错误优先使用路由中间件处理。
+// OnError 注册全局路由错误回调，会影响整个运行框架；插件局部错误优先使用路由中间件处理。
 func (c *Context) OnError(handler ErrorHandler) {
 	if c != nil && c.app != nil {
 		c.app.OnError(handler)

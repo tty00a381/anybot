@@ -199,7 +199,7 @@ func withWorkspacePluginHint(err error, dir string) error {
 	}
 	for _, item := range workspace.Plugins {
 		if item.Name == unknown.Name {
-			return fmt.Errorf("%w；%s 是工作区外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.Name, unknown.Name)
+			return fmt.Errorf("%w；%s 是工作区外部插件，请使用 anybot up 构建并运行生成框架，或先执行 anybot plugin disable %s", err, unknown.Name, unknown.Name)
 		}
 	}
 	return err

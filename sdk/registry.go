@@ -8,14 +8,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Factory 根据宿主配置创建插件实例。
+// Factory 根据框架配置创建插件实例。
 type Factory struct {
 	Info    Manifest
 	Default any
 	Build   func(yaml.Node) (core.Plugin, error)
 }
 
-// WithName 返回使用指定注册名的工厂，适合宿主为外部插件提供配置别名。
+// WithName 返回使用指定注册名的工厂，适合运行框架为外部插件提供配置别名。
 func (f Factory) WithName(name string) Factory {
 	if name == "" {
 		return f
@@ -35,7 +35,7 @@ func (f Factory) WithName(name string) Factory {
 	return f
 }
 
-// Registry 保存宿主可加载的插件工厂。
+// Registry 保存运行框架可加载的插件工厂。
 type Registry struct {
 	factories map[string]Factory
 }

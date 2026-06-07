@@ -424,7 +424,7 @@ func SyncPluginConfigEntries(path string, registry absdk.Registry) (int, error) 
 	return result.Changed, err
 }
 
-// SyncPluginConfigEntriesForWorkspace 同步插件配置，并允许工作区里的外部插件等待生成宿主补全默认配置。
+// SyncPluginConfigEntriesForWorkspace 同步插件配置，并允许工作区里的外部插件等待生成框架补全默认配置。
 func SyncPluginConfigEntriesForWorkspace(path string, registry absdk.Registry, workspace PluginWorkspace) (PluginConfigSyncResult, error) {
 	workspace.applyDefaults()
 	allowUnavailable := map[string]struct{}{}
@@ -942,7 +942,7 @@ func saveYAMLDocument(path string, doc yaml.Node) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, out.Bytes(), 0o644)
+	return writeFileAtomic(path, out.Bytes(), 0o644)
 }
 
 func pluginEntryNode(config *yaml.Node) *yaml.Node {

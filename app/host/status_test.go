@@ -89,13 +89,13 @@ func TestPluginConfigChecks(t *testing.T) {
 func TestWritePluginConfigCheckTable(t *testing.T) {
 	var out bytes.Buffer
 	err := WritePluginConfigCheckTable(&out, []PluginConfigCheck{
-		{Name: "weather", Source: "external", State: pluginCheckUnavailable, Detail: "外部插件尚未构建到当前宿主"},
+		{Name: "weather", Source: "external", State: pluginCheckUnavailable, Detail: "外部插件尚未构建到当前框架"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "名称\t来源\t状态\t说明") ||
-		!strings.Contains(out.String(), "weather\t外部\t待构建\t外部插件尚未构建到当前宿主") {
+		!strings.Contains(out.String(), "weather\t外部\t待构建\t外部插件尚未构建到当前框架") {
 		t.Fatalf("check table:\n%s", out.String())
 	}
 }

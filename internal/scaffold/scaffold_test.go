@@ -40,6 +40,17 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if !strings.Contains(string(readmeData), "NapCat") || !strings.Contains(string(readmeData), "运行") {
 		t.Fatalf("README.md 内容不符合预期:\n%s", readmeData)
 	}
+	readme := string(readmeData)
+	for _, want := range []string{
+		"anybot dev plugin hello -in-project",
+		"anybot dev plugin buddy -template companion -in-project",
+		"anybot dev plugin mc-admin -template minecraft -in-project",
+		"anybot dev plugin hello -dir ../anybot-hello -module example.com/hello",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README.md 缺少插件命令 %q:\n%s", want, readme)
+		}
+	}
 	result, err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"})
 	if err != nil {
 		t.Fatal(err)

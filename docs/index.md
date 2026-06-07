@@ -3,7 +3,7 @@
 AnyBot 是一个 Go module 里的三个项目目录：
 
 1. 核心库：`core/`，负责运行时、路由、中间件、任务、observer、状态存储和协议无关接口。
-2. 应用宿主：`app/` 与 `cmd/anybot`，负责配置、插件化运行、外部插件工作区和统一 CLI。
+2. 应用运行框架：`app/` 与 `cmd/anybot`，负责配置、插件化运行、外部插件工作区和统一 CLI。
 3. 插件 SDK：`sdk/`，负责可复用插件的 typed config、默认配置、校验、工厂和安装上下文。
 
 这三个项目可以单独使用，也可以组合起来。面向最终用户的机器人应交给 `anybot`；想发布插件给别人用，应使用 `sdk`；高度定制的 Go 程序再直接使用 `core`。
@@ -13,7 +13,7 @@ AnyBot 是一个 Go module 里的三个项目目录：
 第一次使用：
 
 1. 阅读 [快速开始](getting-started.md)。
-2. 如果你不想写 Go 入口，继续看 [anybot 宿主](anybot.md)。
+2. 如果你不想写 Go 入口，继续看 [anybot 运行框架](anybot.md)。
 3. 如果你要直接写 Go 程序，继续看 [核心库](core.md)。
 
 准备写可复用插件：
@@ -25,7 +25,7 @@ AnyBot 是一个 Go module 里的三个项目目录：
 需要接入协议端：
 
 1. 阅读 [OneBot v11](onebot11.md)。
-2. 使用 `anybot doctor` 检查宿主配置，或使用 `anybot dev doctor` 检查直接 core 项目的 OneBot 配置。
+2. 使用 `anybot doctor` 检查框架配置，或使用 `anybot dev doctor` 检查直接核心库项目的 OneBot 配置。
 
 理解仓库结构和职责边界：
 
@@ -35,7 +35,7 @@ AnyBot 是一个 Go module 里的三个项目目录：
 
 - [快速开始](getting-started.md)
 - [核心库](core.md)
-- [anybot 宿主](anybot.md)
+- [anybot 运行框架](anybot.md)
 - [插件开发](plugin-development.md)
 - [配置](configuration.md)
 - [OneBot v11](onebot11.md)

@@ -394,7 +394,7 @@ transport:
   action_timeout: 10s
 `
 
-const projectReadme = `# AnyBot Core 机器人
+const projectReadme = `# AnyBot 核心库机器人
 
 本项目由 ` + "`anybot dev init`" + ` 生成，模块名为 ` + "`{{.Module}}`" + `。它直接使用 core 运行时，默认通过 OneBot v11 反向 WebSocket 接入；下面以 NapCat 为例，其他 OneBot v11 协议端也按同样方式接入。
 
@@ -428,17 +428,23 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 - ` + "`.env.example`" + `：环境变量示例。
 - ` + "`plugins/`" + `：插件目录，按需生成。
 
-## 插件
+	## 插件
 
-使用以下命令生成插件：
+	当前核心库项目里直接使用的插件，用 ` + "`-in-project`" + ` 生成到 ` + "`plugins/`" + `：
 
-` + "```sh" + `
-anybot dev plugin hello
-anybot dev plugin buddy -template companion
-anybot dev plugin mc-admin -template minecraft
-` + "```" + `
+	` + "```sh" + `
+	anybot dev plugin hello -in-project
+	anybot dev plugin buddy -template companion -in-project
+	anybot dev plugin mc-admin -template minecraft -in-project
+	` + "```" + `
 
-生成的插件导出 ` + "`Module`" + `，可被 ` + "`anybot plugin add`" + ` 加入插件化宿主；直接写 Go 入口时也可以显式安装：
+	默认推荐把要发布给别人使用的插件生成成独立模块：
+
+	` + "```sh" + `
+	anybot dev plugin hello -dir ../anybot-hello -module example.com/hello
+	` + "```" + `
+
+项目内插件导出 ` + "`Module`" + `，适合直接写 Go 入口时显式安装：
 
 ` + "```go" + `
 if err := app.UsePlugin(absdk.AsPlugin(hello.Module)); err != nil {

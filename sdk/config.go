@@ -19,7 +19,7 @@ type ConfigAssignment struct {
 	Value any
 }
 
-// ConfigStore 是宿主注入的插件配置写回能力。
+// ConfigStore 是运行框架注入的插件配置写回能力。
 type ConfigStore interface {
 	SetPluginConfig(context.Context, string, []ConfigAssignment) error
 	ResetPluginConfig(context.Context, string, [][]string) error
@@ -33,7 +33,7 @@ type ConfigHandle struct {
 
 var appConfigStores sync.Map
 
-// WithConfigStore 注入插件配置写回能力；通常由宿主配置文件加载层使用。
+// WithConfigStore 注入插件配置写回能力；通常由框架配置文件加载层使用。
 func WithConfigStore(store ConfigStore) Option {
 	return func(app *core.App) {
 		if app == nil {
@@ -64,7 +64,7 @@ func storeAsConfigStore(store any) ConfigStore {
 	return out
 }
 
-// Available 判断当前宿主是否支持运行期写回插件配置。
+// Available 判断当前框架是否支持运行期写回插件配置。
 func (h ConfigHandle) Available() bool {
 	return h.plugin != "" && h.store != nil
 }

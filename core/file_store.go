@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// FileStore 是 goroutine 安全的文件持久化 Store，适合插件宿主保存轻量状态。
+// FileStore 是 goroutine 安全的文件持久化 Store，适合插件运行框架保存轻量状态。
 type FileStore struct {
 	mu    sync.Mutex
 	path  string
