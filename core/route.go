@@ -65,22 +65,22 @@ func newRouter(app *App, parent *Router, rules []Rule) *Router {
 
 // Use 追加路由器中间件。根路由器上的中间件作用于所有路由。
 func (r *Router) Use(middleware ...Middleware) {
+	root := r.root()
+	root.mu.Lock()
+	defer root.mu.Unlock()
 	if r.parent != nil {
 		r.baseMiddle = append(r.baseMiddle, middleware...)
 		return
 	}
-	r.mu.Lock()
 	r.middleware = append(r.middleware, middleware...)
-	r.mu.Unlock()
 }
 
 // Group 创建继承当前基础规则的子路由器。
 func (r *Router) Group(rules ...Rule) *Router {
 	return &Router{
-		app:        r.app,
-		parent:     r,
-		baseRules:  append(append([]Rule(nil), r.baseRules...), rules...),
-		baseMiddle: append([]Middleware(nil), r.baseMiddle...),
+		app:       r.app,
+		parent:    r,
+		baseRules: append(append([]Rule(nil), r.baseRules...), rules...),
 	}
 }
 
@@ -92,10 +92,9 @@ func (r *Router) On(rules ...Rule) *Route {
 
 	root.nextOrder++
 	route := &Route{
-		router:     root,
-		rules:      append(append([]Rule(nil), r.baseRules...), rules...),
-		middleware: append([]Middleware(nil), r.baseMiddle...),
-		order:      root.nextOrder,
+		router: r,
+		rules:  append(append([]Rule(nil), r.baseRules...), rules...),
+		order:  root.nextOrder,
 	}
 	root.routes = append(root.routes, route)
 	root.dirty = true
@@ -191,6 +190,13 @@ func (r *Route) Priority(priority int) *Route {
 
 // Use 追加只作用于当前路由的中间件。
 func (r *Route) Use(middleware ...Middleware) *Route {
+	if r.router != nil {
+		root := r.router.root()
+		root.mu.Lock()
+		r.middleware = append(r.middleware, middleware...)
+		root.mu.Unlock()
+		return r
+	}
 	r.middleware = append(r.middleware, middleware...)
 	return r
 }
@@ -218,11 +224,34 @@ func (r *Route) match(c *Context) (Match, bool) {
 
 func (r *Route) chain() Handler {
 	handler := r.handler
-	for i := len(r.middleware) - 1; i >= 0; i-- {
-		handler = r.middleware[i](handler)
-	}
-	for i := len(r.router.middleware) - 1; i >= 0; i-- {
-		handler = r.router.middleware[i](handler)
+	middleware := r.middlewareChain()
+	for i := len(middleware) - 1; i >= 0; i-- {
+		handler = middleware[i](handler)
 	}
 	return handler
+}
+
+func (r *Route) middlewareChain() []Middleware {
+	if r == nil || r.router == nil {
+		return append([]Middleware(nil), r.middleware...)
+	}
+	root := r.router.root()
+	root.mu.RLock()
+	defer root.mu.RUnlock()
+
+	var routers []*Router
+	for router := r.router; router != nil; router = router.parent {
+		routers = append(routers, router)
+	}
+	middleware := make([]Middleware, 0, len(r.middleware))
+	for i := len(routers) - 1; i >= 0; i-- {
+		router := routers[i]
+		if router.parent == nil {
+			middleware = append(middleware, router.middleware...)
+		} else {
+			middleware = append(middleware, router.baseMiddle...)
+		}
+	}
+	middleware = append(middleware, r.middleware...)
+	return middleware
 }

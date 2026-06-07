@@ -12,6 +12,8 @@ import (
 	"github.com/tty00a381/anybot/core/message"
 )
 
+const testProtocol Protocol = "test"
+
 func TestRouterPriorityMiddlewareAndStop(t *testing.T) {
 	app := New()
 	var calls []string
@@ -38,6 +40,29 @@ func TestRouterPriorityMiddlewareAndStop(t *testing.T) {
 	want := []string{"middleware", "high"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestGroupMiddlewareAppliesToExistingRoutes(t *testing.T) {
+	app := New()
+	group := app.Group()
+	var calls []string
+	group.Command("ping").Handle(func(*Context) error {
+		calls = append(calls, "handler")
+		return nil
+	})
+	group.Use(func(next Handler) Handler {
+		return func(c *Context) error {
+			calls = append(calls, "group")
+			return next(c)
+		}
+	})
+
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", Text: "/ping"}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls, []string{"group", "handler"}) {
+		t.Fatalf("calls=%#v", calls)
 	}
 }
 
@@ -123,12 +148,12 @@ func TestToMeAndMentionedRules(t *testing.T) {
 		return nil
 	})
 	event := &Event{
-		Protocol: ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "7",
 		Type:     "message",
 		UserID:   "42",
 		GroupID:  "100",
-		Message:  message.New(message.At("7"), message.Text(" ping")),
+		Message:  message.New(message.Raw("at", map[string]any{"id": "7"}), message.Text(" ping")),
 	}
 	_ = app.dispatch(context.Background(), event)
 	want := []string{"to_me", "mentioned"}
@@ -150,14 +175,14 @@ func TestFromSelfRules(t *testing.T) {
 	})
 
 	_ = app.dispatch(context.Background(), &Event{
-		Protocol: ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "7",
 		Type:     "message",
 		UserID:   "7",
 		Text:     "self",
 	})
 	_ = app.dispatch(context.Background(), &Event{
-		Protocol: ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "7",
 		Type:     "message",
 		UserID:   "42",
@@ -175,7 +200,7 @@ func TestRuleCombinators(t *testing.T) {
 	var rest string
 	app.OnMessage(All(Contains("hello"), Prefix("hello"))).Handle(func(c *Context) error {
 		calls = append(calls, "all")
-		rest = c.String("rest")
+		rest = c.VarString("rest")
 		return nil
 	})
 	app.OnMessage(AnyOf(Contains("missing"), Contains("world"))).Handle(func(c *Context) error {
@@ -301,7 +326,7 @@ func TestWaitActionReadyUsesAdapterState(t *testing.T) {
 		t.Fatalf("ready returned before adapter state: %v", err)
 	case <-time.After(30 * time.Millisecond):
 	}
-	adapter.emit(AdapterState{Protocol: ProtocolOneBot11, Kind: AdapterStateReady, ActionReady: true})
+	adapter.emit(AdapterState{Protocol: testProtocol, Kind: AdapterStateReady, ActionReady: true})
 	select {
 	case err := <-ready:
 		if err != nil {
@@ -476,6 +501,32 @@ func TestMatchVarsDoNotLeakBetweenRoutes(t *testing.T) {
 	}
 }
 
+func TestMatchVarsDoNotPolluteLocalValues(t *testing.T) {
+	app := New()
+	var commandValue any
+	var commandOK bool
+	var command string
+	app.Command("echo").Handle(func(c *Context) error {
+		commandValue, commandOK = c.Get("command")
+		command = c.Command()
+		c.Set("command", "local")
+		if got := c.String("command"); got != "local" {
+			t.Fatalf("local command value = %q", got)
+		}
+		return nil
+	})
+
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", Text: "/echo"}); err != nil {
+		t.Fatal(err)
+	}
+	if commandOK || commandValue != nil {
+		t.Fatalf("match command polluted locals: ok=%v value=%#v", commandOK, commandValue)
+	}
+	if command != "echo" {
+		t.Fatalf("command = %q", command)
+	}
+}
+
 func TestBuiltInMiddlewares(t *testing.T) {
 	app := New()
 	var hits int
@@ -524,9 +575,9 @@ func TestRateLimitByCustomKey(t *testing.T) {
 		hits++
 		return nil
 	})
-	_ = app.dispatch(context.Background(), &Event{Protocol: ProtocolOneBot11, Type: "message", Text: "/ping", UserID: "1", GroupID: "100"})
-	_ = app.dispatch(context.Background(), &Event{Protocol: ProtocolOneBot11, Type: "message", Text: "/ping", UserID: "1", GroupID: "200"})
-	_ = app.dispatch(context.Background(), &Event{Protocol: ProtocolOneBot11, Type: "message", Text: "/ping", UserID: "2", GroupID: "100"})
+	_ = app.dispatch(context.Background(), &Event{Protocol: testProtocol, Type: "message", Text: "/ping", UserID: "1", GroupID: "100"})
+	_ = app.dispatch(context.Background(), &Event{Protocol: testProtocol, Type: "message", Text: "/ping", UserID: "1", GroupID: "200"})
+	_ = app.dispatch(context.Background(), &Event{Protocol: testProtocol, Type: "message", Text: "/ping", UserID: "2", GroupID: "100"})
 	if hits != 2 {
 		t.Fatalf("hits = %d", hits)
 	}
@@ -541,7 +592,7 @@ func TestSerialByConversation(t *testing.T) {
 		<-release
 		return nil
 	})
-	event := &Event{Protocol: ProtocolOneBot11, Type: "message", UserID: "42", GroupID: "100"}
+	event := &Event{Protocol: testProtocol, Type: "message", UserID: "42", GroupID: "100"}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -566,7 +617,7 @@ func TestReplyUsesActionClient(t *testing.T) {
 	client := &fakeClient{}
 	app := New(WithAdapter(fakeAdapter{client: client}))
 	c := newContext(context.Background(), app, &Event{
-		Protocol: ProtocolOneBot11,
+		Protocol: testProtocol,
 		Type:     "message",
 		UserID:   "42",
 		Text:     "ping",
@@ -582,7 +633,7 @@ func TestReplyUsesActionClient(t *testing.T) {
 	if client.target.UserID != "42" || client.sent.Text() != "pong" {
 		t.Fatalf("target=%#v sent=%#v", client.target, client.sent)
 	}
-	if c.ConversationID() != "onebot11:private:42" || c.RawEvent() != "raw" {
+	if c.ConversationID() != "test:private:42" || c.RawEvent() != "raw" {
 		t.Fatalf("conversation=%q raw=%#v", c.ConversationID(), c.RawEvent())
 	}
 }
@@ -591,7 +642,7 @@ type fakeAdapter struct {
 	client *fakeClient
 }
 
-func (fakeAdapter) Protocol() Protocol { return ProtocolOneBot11 }
+func (fakeAdapter) Protocol() Protocol { return testProtocol }
 func (fakeAdapter) Start(context.Context, EmitFunc) error {
 	return errors.New("not used")
 }
@@ -602,10 +653,6 @@ type fakeClient struct {
 	sent   message.Chain
 }
 
-func (*fakeClient) Call(context.Context, string, any, any) error { return nil }
-func (*fakeClient) CallRaw(context.Context, string, any) (*ActionResponse, error) {
-	return &ActionResponse{}, nil
-}
 func (c *fakeClient) Send(_ context.Context, target ReplyTarget, chain message.Chain) (MessageReceipt, error) {
 	c.target = target
 	c.sent = chain
@@ -615,7 +662,7 @@ func (c *fakeClient) Send(_ context.Context, target ReplyTarget, chain message.C
 type fakeBlockingAdapter struct {
 }
 
-func (*fakeBlockingAdapter) Protocol() Protocol { return ProtocolOneBot11 }
+func (*fakeBlockingAdapter) Protocol() Protocol { return testProtocol }
 func (a *fakeBlockingAdapter) Start(ctx context.Context, _ EmitFunc) error {
 	<-ctx.Done()
 	return ctx.Err()
@@ -628,7 +675,7 @@ type fakeEmittingAdapter struct {
 	started chan struct{}
 }
 
-func (*fakeEmittingAdapter) Protocol() Protocol { return ProtocolOneBot11 }
+func (*fakeEmittingAdapter) Protocol() Protocol { return testProtocol }
 func (a *fakeEmittingAdapter) Start(ctx context.Context, emit EmitFunc) error {
 	eventCtx := context.WithValue(ctx, observerTestContextKey{}, "event-value")
 	_ = emit(eventCtx, &Event{Type: "message", Text: "hello"})
@@ -643,7 +690,7 @@ type fakeStatefulAdapter struct {
 	started chan struct{}
 }
 
-func (*fakeStatefulAdapter) Protocol() Protocol { return ProtocolOneBot11 }
+func (*fakeStatefulAdapter) Protocol() Protocol { return testProtocol }
 func (a *fakeStatefulAdapter) Start(ctx context.Context, _ EmitFunc) error {
 	close(a.started)
 	<-ctx.Done()
@@ -651,7 +698,7 @@ func (a *fakeStatefulAdapter) Start(ctx context.Context, _ EmitFunc) error {
 }
 func (*fakeStatefulAdapter) Client() ActionClient { return nil }
 func (*fakeStatefulAdapter) State() AdapterState {
-	return AdapterState{Protocol: ProtocolOneBot11, Kind: AdapterStateUnknown}
+	return AdapterState{Protocol: testProtocol, Kind: AdapterStateUnknown}
 }
 func (a *fakeStatefulAdapter) SetStateSink(sink AdapterStateSink) {
 	a.sink = sink

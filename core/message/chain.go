@@ -3,7 +3,6 @@ package message
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -31,29 +30,9 @@ func Text(text string) Segment {
 	return Segment{Type: "text", Data: map[string]any{"text": text}}
 }
 
-// At 创建提及消息段，具体编码由适配器决定。
-func At(id any) Segment {
-	return Segment{Type: "at", Data: map[string]any{"id": fmt.Sprint(id)}}
-}
-
 // Image 创建图片消息段，file 通常为 URL、file URI 或协议端可识别的路径。
 func Image(file string) Segment {
 	return Segment{Type: "image", Data: map[string]any{"file": file}}
-}
-
-// Reply 创建回复消息段。
-func Reply(id any) Segment {
-	return Segment{Type: "reply", Data: map[string]any{"id": fmt.Sprint(id)}}
-}
-
-// Face 创建表情消息段。
-func Face(id any) Segment {
-	return Segment{Type: "face", Data: map[string]any{"id": fmt.Sprint(id)}}
-}
-
-// Record 创建语音消息段。
-func Record(file string) Segment {
-	return Segment{Type: "record", Data: map[string]any{"file": file}}
 }
 
 // Video 创建视频消息段。

@@ -182,7 +182,7 @@ func (e *Event) Normalize() *core.Event {
 	}
 	return &core.Event{
 		ID:         id,
-		Protocol:   core.ProtocolOneBot11,
+		Protocol:   Protocol,
 		SelfID:     idString(e.SelfID),
 		Type:       e.PostType,
 		DetailType: detail,

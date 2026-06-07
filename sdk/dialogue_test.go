@@ -90,7 +90,7 @@ func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 		return nil
 	})
 
-	ctx := core.NewTestContext(app, &core.Event{Protocol: core.ProtocolOneBot11, Type: "message", UserID: "42"})
+	ctx := core.NewTestContext(app, &core.Event{Protocol: testProtocol, Type: "message", UserID: "42"})
 	if err := firstDialogue.Begin(ctx, "step", map[string]string{"plugin": "first"}); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestDialogueRejectsUnknownSteps(t *testing.T) {
 func dispatch(t *testing.T, app *core.App, userID, text string) {
 	t.Helper()
 	if err := app.Dispatch(context.Background(), &core.Event{
-		Protocol: core.ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "bot",
 		Type:     "message",
 		UserID:   userID,
@@ -188,7 +188,7 @@ type dialogueTestAdapter struct {
 	client ActionClient
 }
 
-func (a dialogueTestAdapter) Protocol() Protocol                         { return ProtocolOneBot11 }
+func (a dialogueTestAdapter) Protocol() Protocol                         { return testProtocol }
 func (a dialogueTestAdapter) Start(context.Context, core.EmitFunc) error { return nil }
 func (a dialogueTestAdapter) Client() ActionClient                       { return a.client }
 
@@ -196,10 +196,6 @@ type dialogueTestClient struct {
 	sent []coremsg.Chain
 }
 
-func (*dialogueTestClient) Call(context.Context, string, any, any) error { return nil }
-func (*dialogueTestClient) CallRaw(context.Context, string, any) (*ActionResponse, error) {
-	return &ActionResponse{}, nil
-}
 func (c *dialogueTestClient) Send(_ context.Context, _ ReplyTarget, chain coremsg.Chain) (MessageReceipt, error) {
 	c.sent = append(c.sent, chain.Clone())
 	return MessageReceipt{ID: "sent"}, nil

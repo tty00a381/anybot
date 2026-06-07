@@ -93,7 +93,7 @@ type MemoryStore = core.MemoryStore
 // FileStore 是 goroutine 安全的文件持久化 Store。
 type FileStore = core.FileStore
 
-// ActionClient 是协议无关的动作调用接口。
+// ActionClient 是协议无关的消息发送接口。
 type ActionClient = core.ActionClient
 
 // ReplyTarget 描述主动消息的发送目标。
@@ -102,14 +102,8 @@ type ReplyTarget = core.ReplyTarget
 // MessageReceipt 是协议无关的消息发送回执。
 type MessageReceipt = core.MessageReceipt
 
-// ActionResponse 是协议无关的动作响应封套。
-type ActionResponse = core.ActionResponse
-
 // Protocol 是协议标识。
 type Protocol = core.Protocol
-
-// ActionError 描述一次由协议端明确拒绝或返回失败状态的动作调用。
-type ActionError = core.ActionError
 
 // PanicError 包装处理函数或中间件中恢复到的 panic 值和调用栈。
 type PanicError = core.PanicError
@@ -125,11 +119,6 @@ type AdapterState = core.AdapterState
 
 // AdapterStateHook 观察动作通道状态变化。
 type AdapterStateHook = core.AdapterStateHook
-
-const (
-	// ProtocolOneBot11 表示 OneBot v11 协议。
-	ProtocolOneBot11 = core.ProtocolOneBot11
-)
 
 var (
 	// ErrActionUnavailable 表示动作客户端当前暂不可用。

@@ -66,7 +66,7 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 	if err != nil {
 		if ctx.Err() == nil {
 			c.opts.emitAdapterState(ctx, core.AdapterState{
-				Protocol:  core.ProtocolOneBot11,
+				Protocol:  Protocol,
 				Kind:      core.AdapterStateDisconnected,
 				Transport: "websocket",
 				Reason:    "websocket dial failed",

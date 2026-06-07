@@ -35,7 +35,7 @@ func TestContextSendTextUsesActionClient(t *testing.T) {
 		core.New(core.WithAdapter(sdkTestAdapter{client: client})),
 		Manifest{Name: "dialogue"},
 	)
-	receipt, err := ctx.SendText(context.Background(), ReplyTarget{Protocol: ProtocolOneBot11, UserID: "42"}, "hello")
+	receipt, err := ctx.SendText(context.Background(), ReplyTarget{Protocol: testProtocol, UserID: "42"}, "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 	app := core.New()
 	first := NewContext(app, Manifest{Name: "first"})
 	second := NewContext(app, Manifest{Name: "second"})
-	event := core.NewTestContext(app, &core.Event{Protocol: core.ProtocolOneBot11, UserID: "42", Type: "message"})
+	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
 	if err := first.UserSession(event).SaveJSON(context.Background(), "profile", map[string]string{"name": "first"}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ type sdkTestAdapter struct {
 	client ActionClient
 }
 
-func (a sdkTestAdapter) Protocol() Protocol                         { return ProtocolOneBot11 }
+func (a sdkTestAdapter) Protocol() Protocol                         { return testProtocol }
 func (a sdkTestAdapter) Start(context.Context, core.EmitFunc) error { return nil }
 func (a sdkTestAdapter) Client() ActionClient                       { return a.client }
 
@@ -182,10 +182,6 @@ type sdkTestClient struct {
 	chain  coremsg.Chain
 }
 
-func (*sdkTestClient) Call(context.Context, string, any, any) error { return nil }
-func (*sdkTestClient) CallRaw(context.Context, string, any) (*ActionResponse, error) {
-	return &ActionResponse{}, nil
-}
 func (c *sdkTestClient) Send(_ context.Context, target ReplyTarget, chain coremsg.Chain) (MessageReceipt, error) {
 	c.target = target
 	c.chain = chain

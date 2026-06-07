@@ -210,7 +210,7 @@ func (d *Dialogue) activeRule() Rule {
 }
 
 func (d *Dialogue) handle(c *EventContext) error {
-	if value, ok := c.Get(dialogueErrorKey); ok {
+	if value, ok := c.Var(dialogueErrorKey); ok {
 		if err, ok := value.(error); ok {
 			c.Stop()
 			return err
@@ -333,7 +333,7 @@ func (d *Dialogue) storeKey() string {
 }
 
 func dialogueRecordFromContext(c *EventContext) (dialogueRecord, bool) {
-	value, ok := c.Get(dialogueRecordKey)
+	value, ok := c.Var(dialogueRecordKey)
 	if !ok {
 		return dialogueRecord{}, false
 	}

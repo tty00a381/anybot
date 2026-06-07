@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const storeTestProtocol Protocol = "test"
+
 func TestMemoryStoreTTLAndSessionJSON(t *testing.T) {
 	store := NewMemoryStore()
 	now := time.Unix(100, 0)
@@ -183,18 +185,18 @@ func TestFileStoreRollsBackMemoryOnSaveError(t *testing.T) {
 func TestContextSessionScopes(t *testing.T) {
 	app := New()
 	c := NewTestContext(app, &Event{
-		Protocol: ProtocolOneBot11,
+		Protocol: storeTestProtocol,
 		Type:     "message",
 		UserID:   "42",
 		GroupID:  "100",
 	})
-	if c.Session().Key() != "onebot11:group:100:user:42" {
+	if c.Session().Key() != "test:group:100:user:42" {
 		t.Fatalf("conversation key = %q", c.Session().Key())
 	}
-	if c.UserSession().Key() != "onebot11:user:42" {
+	if c.UserSession().Key() != "test:user:42" {
 		t.Fatalf("user key = %q", c.UserSession().Key())
 	}
-	if c.GroupSession().Key() != "onebot11:group:100" {
+	if c.GroupSession().Key() != "test:group:100" {
 		t.Fatalf("group key = %q", c.GroupSession().Key())
 	}
 	if c.SessionBy("custom").Key() != "custom" {

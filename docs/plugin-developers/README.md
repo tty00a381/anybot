@@ -220,8 +220,7 @@ SDK 的 `sdk/message` 是协议无关消息链：
 import "github.com/tty00a381/anybot/sdk/message"
 
 chain := message.New(
-	message.Text("你好 "),
-	message.At(c.UserID()),
+	message.Text("你好"),
 )
 _, err := c.Reply(chain)
 ```
@@ -229,11 +228,7 @@ _, err := c.Reply(chain)
 通用消息段：
 
 - `message.Text(text)`
-- `message.At(id)`
 - `message.Image(file)`
-- `message.Reply(id)`
-- `message.Face(id)`
-- `message.Record(file)`
 - `message.Video(file)`
 - `message.Raw(kind, data)`
 
@@ -242,7 +237,10 @@ _, err := c.Reply(chain)
 ```go
 import "github.com/tty00a381/anybot/adapters/onebot11"
 
-_, err := c.Reply(message.New(onebot11.Image("file:///tmp/a.png")))
+_, err := c.Reply(message.New(
+	onebot11.At(c.UserID()),
+	onebot11.Image("file:///tmp/a.png"),
+))
 ```
 
 ## 会话存储
@@ -319,12 +317,14 @@ ctx.Go("worker", worker, absdk.TaskCritical())
 主动发送消息时先等待动作通道可用：
 
 ```go
+import "github.com/tty00a381/anybot/adapters/onebot11"
+
 ctx.Go("welcome", func(runCtx context.Context) error {
 	if err := ctx.WaitActionReady(runCtx); err != nil {
 		return err
 	}
 	_, err := ctx.SendText(runCtx, absdk.ReplyTarget{
-		Protocol: absdk.ProtocolOneBot11,
+		Protocol: onebot11.Protocol,
 		GroupID:  "123456",
 	}, "机器人已启动")
 	return err

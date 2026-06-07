@@ -31,7 +31,7 @@ func newHTTPTransport(apiURL, listenAddr string, opts options) *httpTransport {
 
 func (t *httpTransport) Start(ctx context.Context, sink func(context.Context, *Event) error) error {
 	t.opts.emitAdapterState(ctx, core.AdapterState{
-		Protocol:    core.ProtocolOneBot11,
+		Protocol:    Protocol,
 		Kind:        core.AdapterStateReady,
 		ActionReady: t.apiURL != "",
 		Transport:   "http",

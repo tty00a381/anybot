@@ -16,7 +16,7 @@ func TestModuleRepliesAndStoresHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := app.Dispatch(context.Background(), &absdk.Event{
-		Protocol: absdk.ProtocolOneBot11,
+		Protocol: "test",
 		SelfID:   "bot",
 		Type:     "message",
 		UserID:   "user",
@@ -30,7 +30,7 @@ func TestModuleRepliesAndStoresHistory(t *testing.T) {
 	}
 	ctx := absdk.NewContext(app, Module.Manifest())
 	event := absdk.NewTestContext(app, &absdk.Event{
-		Protocol: absdk.ProtocolOneBot11,
+		Protocol: "test",
 		Type:     "message",
 		UserID:   "user",
 		GroupID:  "group",
@@ -57,7 +57,7 @@ type recordAdapter struct {
 	client *recordClient
 }
 
-func (a recordAdapter) Protocol() absdk.Protocol { return absdk.ProtocolOneBot11 }
+func (a recordAdapter) Protocol() absdk.Protocol { return "test" }
 func (a recordAdapter) Start(context.Context, absdk.EmitFunc) error {
 	return nil
 }
@@ -65,14 +65,6 @@ func (a recordAdapter) Client() absdk.ActionClient { return a.client }
 
 type recordClient struct {
 	last message.Chain
-}
-
-func (c *recordClient) Call(context.Context, string, any, any) error {
-	return nil
-}
-
-func (c *recordClient) CallRaw(context.Context, string, any) (*absdk.ActionResponse, error) {
-	return &absdk.ActionResponse{}, nil
 }
 
 func (c *recordClient) Send(_ context.Context, _ absdk.ReplyTarget, chain message.Chain) (absdk.MessageReceipt, error) {

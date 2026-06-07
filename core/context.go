@@ -19,7 +19,7 @@ type Context struct {
 	route *Route
 
 	values    map[string]any
-	matchKeys []string
+	matchVars map[string]any
 	stopped   bool
 }
 
@@ -61,7 +61,7 @@ func (c *Context) Event() *Event {
 	return c.event
 }
 
-// Client 返回适配器动作客户端，可用于发送消息或调用协议 API。
+// Client 返回适配器动作客户端，可用于协议无关的消息发送。
 func (c *Context) Client() ActionClient {
 	if c.app == nil {
 		return nil
@@ -85,9 +85,13 @@ func (c *Context) Logger() *slog.Logger {
 	return c.app.Logger()
 }
 
-// Match 返回当前路由的匹配详情，包括评分、原因和规则写入的变量。
+// Match 返回当前路由的匹配详情，包括评分、原因和规则写入的变量副本。
 func (c *Context) Match() Match {
-	return c.match
+	out := c.match
+	if len(out.Vars) > 0 {
+		out.Vars = cloneVars(out.Vars)
+	}
+	return out
 }
 
 // Route 返回当前正在执行的路由。
@@ -100,18 +104,18 @@ func (c *Context) RouteName() string {
 	return routeName(c.route)
 }
 
-// Set 写入当前处理链内可见的局部值。
+// Set 写入当前路由处理链内可见的局部值。
 func (c *Context) Set(key string, value any) {
 	c.values[key] = value
 }
 
-// Get 读取当前处理链内的局部值。
+// Get 读取当前路由处理链内的局部值。
 func (c *Context) Get(key string) (any, bool) {
 	value, ok := c.values[key]
 	return value, ok
 }
 
-// String 读取字符串局部值；不存在或类型不匹配时返回空字符串。
+// String 读取当前路由处理链内的字符串局部值；不存在或类型不匹配时返回空字符串。
 func (c *Context) String(key string) string {
 	value, ok := c.Get(key)
 	if !ok {
@@ -125,39 +129,69 @@ func (c *Context) applyMatch(route *Route, match Match) {
 	c.clearMatch()
 	c.route = route
 	c.match = match
-	for key, value := range match.Vars {
-		c.values[key] = value
-		c.matchKeys = append(c.matchKeys, key)
-	}
+	c.matchVars = cloneVars(match.Vars)
 }
 
 func (c *Context) clearMatch() {
-	for _, key := range c.matchKeys {
-		delete(c.values, key)
-	}
-	c.matchKeys = c.matchKeys[:0]
 	c.route = nil
 	c.match = Match{}
+	c.matchVars = nil
+	c.values = map[string]any{}
 }
 
 // Command 返回命令规则匹配到的命令名。
 func (c *Context) Command() string {
-	return c.String("command")
+	return c.matchString("command")
 }
 
 // Args 返回命令名之后的原始参数文本。
 func (c *Context) Args() string {
-	return c.String("args")
+	return c.matchString("args")
 }
 
 // Argv 返回按空白拆分后的命令参数，并保留简单引号与转义处理。
 func (c *Context) Argv() []string {
-	value, ok := c.Get("argv")
+	value, ok := c.matchVar("argv")
 	if !ok {
 		return nil
 	}
 	argv, _ := value.([]string)
 	return append([]string(nil), argv...)
+}
+
+// Var 读取当前规则匹配写入的变量。
+func (c *Context) Var(key string) (any, bool) {
+	return c.matchVar(key)
+}
+
+// VarString 读取当前规则匹配写入的字符串变量；不存在或类型不匹配时返回空字符串。
+func (c *Context) VarString(key string) string {
+	return c.matchString(key)
+}
+
+func (c *Context) matchVar(key string) (any, bool) {
+	value, ok := c.matchVars[key]
+	return value, ok
+}
+
+func (c *Context) matchString(key string) string {
+	value, ok := c.matchVar(key)
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return text
+}
+
+func cloneVars(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 // ConversationID 返回当前事件对应的会话键，可直接用于会话存储。

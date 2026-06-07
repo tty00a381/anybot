@@ -6,6 +6,9 @@ import (
 	"github.com/tty00a381/anybot/core"
 )
 
+// Protocol 表示 OneBot v11 协议标识。
+const Protocol core.Protocol = "onebot11"
+
 // Transport 定义 OneBot v11 事件接收与动作调用所需的底层传输能力。
 type Transport interface {
 	Start(context.Context, func(context.Context, *Event) error) error
@@ -38,7 +41,7 @@ func newAdapter(transport Transport, opts options) *Adapter {
 
 // Protocol 返回适配器所属协议。
 func (a *Adapter) Protocol() core.Protocol {
-	return core.ProtocolOneBot11
+	return Protocol
 }
 
 // Start 启动底层传输，并把 OneBot v11 事件标准化后投递给运行时。
@@ -56,7 +59,7 @@ func (a *Adapter) Client() core.ActionClient {
 // State 返回最近一次已知的 OneBot v11 动作通道状态。
 func (a *Adapter) State() core.AdapterState {
 	if a == nil || a.state == nil {
-		return core.AdapterState{Protocol: core.ProtocolOneBot11, Kind: core.AdapterStateUnknown}
+		return core.AdapterState{Protocol: Protocol, Kind: core.AdapterStateUnknown}
 	}
 	return a.state.State()
 }

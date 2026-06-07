@@ -10,7 +10,7 @@ func TestChainTextAndAppend(t *testing.T) {
 	if chain.IsZero() {
 		t.Fatal("chain should not be zero")
 	}
-	if Face(14).Type != "face" || Record("a.amr").Type != "record" || Video("a.mp4").Type != "video" {
+	if Raw("custom", map[string]any{"x": "y"}).Type != "custom" || Video("a.mp4").Type != "video" {
 		t.Fatal("common segment builders returned unexpected types")
 	}
 }

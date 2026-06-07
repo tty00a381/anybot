@@ -29,7 +29,7 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	}
 	server := &http.Server{Addr: s.addr, Handler: s.handler(sink)}
 	s.opts.emitAdapterState(ctx, core.AdapterState{
-		Protocol:  core.ProtocolOneBot11,
+		Protocol:  Protocol,
 		Kind:      core.AdapterStateDisconnected,
 		Transport: "reverse_ws",
 		Reason:    "waiting for reverse websocket connection",

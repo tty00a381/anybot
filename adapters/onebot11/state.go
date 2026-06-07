@@ -16,14 +16,14 @@ type adapterState struct {
 
 func newAdapterState() *adapterState {
 	return &adapterState{state: core.AdapterState{
-		Protocol: core.ProtocolOneBot11,
+		Protocol: Protocol,
 		Kind:     core.AdapterStateUnknown,
 	}}
 }
 
 func (s *adapterState) State() core.AdapterState {
 	if s == nil {
-		return core.AdapterState{Protocol: core.ProtocolOneBot11, Kind: core.AdapterStateUnknown}
+		return core.AdapterState{Protocol: Protocol, Kind: core.AdapterStateUnknown}
 	}
 	s.mu.RLock()
 	state := s.state
@@ -49,7 +49,7 @@ func (s *adapterState) Set(ctx context.Context, state core.AdapterState) {
 		return
 	}
 	if state.Protocol == "" {
-		state.Protocol = core.ProtocolOneBot11
+		state.Protocol = Protocol
 	}
 	if state.At.IsZero() {
 		state.At = time.Now()
@@ -71,7 +71,7 @@ func (opts options) emitAdapterState(ctx context.Context, state core.AdapterStat
 
 func (opts options) emitConnectionState(ctx context.Context, event ConnectionEvent) {
 	state := core.AdapterState{
-		Protocol:  core.ProtocolOneBot11,
+		Protocol:  Protocol,
 		Transport: event.Transport,
 		Reason:    string(event.State),
 	}

@@ -18,20 +18,8 @@ func Raw(kind string, data map[string]any) Segment { return coremsg.Raw(kind, da
 // Text 创建纯文本消息段。
 func Text(text string) Segment { return coremsg.Text(text) }
 
-// At 创建提及消息段。
-func At(id any) Segment { return coremsg.At(id) }
-
 // Image 创建图片消息段。
 func Image(file string) Segment { return coremsg.Image(file) }
-
-// Reply 创建回复消息段。
-func Reply(id any) Segment { return coremsg.Reply(id) }
-
-// Face 创建表情消息段。
-func Face(id any) Segment { return coremsg.Face(id) }
-
-// Record 创建语音消息段。
-func Record(file string) Segment { return coremsg.Record(file) }
 
 // Video 创建视频消息段。
 func Video(file string) Segment { return coremsg.Video(file) }

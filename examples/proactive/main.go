@@ -45,7 +45,7 @@ func main() {
 			return err
 		}
 		_, err := app.Client().Send(taskCtx, core.ReplyTarget{
-			Protocol: core.ProtocolOneBot11,
+			Protocol: onebot11.Protocol,
 			UserID:   targetUser,
 		}, message.New(message.Text("AnyBot 已连接，主动消息通道可用。")))
 		return err

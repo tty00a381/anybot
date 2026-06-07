@@ -18,26 +18,6 @@ var (
 	ErrActionUnavailable = errors.New("anybot: action unavailable")
 )
 
-// ActionError 描述一次由协议端明确拒绝或返回失败状态的动作调用。
-type ActionError struct {
-	Action  string
-	Status  string
-	RetCode int
-	Message string
-	Wording string
-}
-
-func (e *ActionError) Error() string {
-	detail := e.Message
-	if detail == "" {
-		detail = e.Wording
-	}
-	if detail == "" {
-		detail = "action failed"
-	}
-	return fmt.Sprintf("%s: status=%s retcode=%d: %s", e.Action, e.Status, e.RetCode, detail)
-}
-
 // PanicError 包装处理函数或中间件中恢复到的 panic 值和调用栈。
 type PanicError struct {
 	Value any

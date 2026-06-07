@@ -325,7 +325,7 @@ SDK 自有规则：
 
 ### core 类型别名
 
-SDK 重新导出 `core` 的常用类型：`App`、`Option`、`Adapter`、`EmitFunc`、`Route`、`Observer`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`ActionResponse`、`Protocol`、`ActionError`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
+SDK 重新导出 `core` 的常用类型：`App`、`Option`、`Adapter`、`EmitFunc`、`Route`、`Observer`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
 
 SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUsers`、`NewTestContext`、`NewSession`、`NewMemoryStore`、`NewFileStore`、`TaskCritical`、`TaskImmediate`。
 
@@ -337,11 +337,7 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `type Segment`
 - `New(segments ...Segment) Chain`
 - `Text(text string) Segment`
-- `At(id any) Segment`
 - `Image(file string) Segment`
-- `Reply(id any) Segment`
-- `Face(id any) Segment`
-- `Record(file string) Segment`
 - `Video(file string) Segment`
 - `Raw(kind string, data map[string]any) Segment`
 
@@ -432,14 +428,11 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 ### Adapter 与动作
 
 - `Protocol`
-- `ProtocolOneBot11`
 - `Adapter`：`Protocol()`、`Start(ctx, emit)`、`Client()`。
 - `EmitFunc`
-- `ActionClient`：`Call`、`CallRaw`、`Send`。
+- `ActionClient`：`Send`。
 - `ReplyTarget`
 - `MessageReceipt`
-- `ActionResponse`：`OK()`、`Decode(out)`。
-- `ActionError`
 
 ### Adapter state
 
@@ -524,11 +517,7 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `New`
 - `Raw`
 - `Text`
-- `At`
 - `Image`
-- `Reply`
-- `Face`
-- `Record`
 - `Video`
 - `Chain.Append`
 - `Chain.Clone`
@@ -682,9 +671,10 @@ Options：
 NapCat 专属扩展动作辅助包。
 
 - `API`：NapCat HTTP API 客户端。
-- `New(client core.ActionClient) *API`
+- `Client`：NapCat 所需的 OneBot v11 调用能力。
+- `New(client Client) *API`
 - `API.Call(ctx, action, params, out) error`
-- `API.CallRaw(ctx, action, params) (*core.ActionResponse, error)`
+- `API.CallRaw(ctx, action, params) (*onebot11.Response, error)`
 - `API.GetGroupMessageHistory(ctx, groupID, messageSeq, count)`
 - `API.GetFriendMessageHistory(ctx, userID, messageSeq, count)`
 - `API.SetMessageEmojiLike(ctx, messageID, emojiID)`

@@ -35,15 +35,11 @@ func MustClient(c *core.Context) *Client {
 	return client
 }
 
-// CallRaw 调用 OneBot v11 动作，并返回协议无关的原始响应封套。
-func (c *Client) CallRaw(ctx context.Context, action string, params any) (*core.ActionResponse, error) {
+// CallRaw 调用 OneBot v11 动作，并返回 OneBot v11 原始响应封套。
+func (c *Client) CallRaw(ctx context.Context, action string, params any) (*Response, error) {
 	ctx, cancel := c.withActionTimeout(ctx)
 	defer cancel()
-	resp, err := c.transport.CallRaw(ctx, action, params)
-	if err != nil {
-		return nil, err
-	}
-	return resp.actionResponse(), nil
+	return c.transport.CallRaw(ctx, action, params)
 }
 
 // Call 调用 OneBot v11 动作，并在成功时把 data 解码到 out。
@@ -58,7 +54,7 @@ func (c *Client) Call(ctx context.Context, action string, params any, out any) e
 		return fmt.Errorf("onebot11: action %s returned nil response", action)
 	}
 	if !resp.OK() {
-		return &core.ActionError{
+		return &ActionError{
 			Action:  action,
 			Status:  resp.Status,
 			RetCode: resp.RetCode,

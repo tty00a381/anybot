@@ -72,6 +72,7 @@ core 不依赖 sdk、app/host、cmd
 
 - `core/message` 定义协议无关消息链。
 - `sdk/message` 是给插件作者使用的别名与构造器。
+- OneBot 专属消息段构造器保留在 `adapters/onebot11`。
 
 `examples`
 

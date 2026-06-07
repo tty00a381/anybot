@@ -7,13 +7,8 @@ import (
 	"github.com/tty00a381/anybot/core/message"
 )
 
-// Protocol 标识事件和动作所属的协议。
+// Protocol 标识事件和动作所属的协议，具体取值由适配器包定义。
 type Protocol string
-
-const (
-	// ProtocolOneBot11 表示 OneBot v11 协议。
-	ProtocolOneBot11 Protocol = "onebot11"
-)
 
 // Event 是 AnyBot 的协议无关事件封套，保留常用标准字段和原始协议数据。
 type Event struct {

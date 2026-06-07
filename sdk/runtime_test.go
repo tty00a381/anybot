@@ -7,17 +7,19 @@ import (
 	"github.com/tty00a381/anybot/core"
 )
 
+const testProtocol Protocol = "test"
+
 func TestRuntimeRulesSupportDialogueRouting(t *testing.T) {
 	app := core.New()
 	var topic string
 	app.OnMessage(All(Private(), NotFromSelf(), RegexRule(`^问\s+(?P<topic>.+)$`))).
 		Handle(func(c *EventContext) error {
-			topic = c.String("topic")
+			topic = c.VarString("topic")
 			return nil
 		})
 
 	if err := app.Dispatch(context.Background(), &core.Event{
-		Protocol: core.ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "bot",
 		UserID:   "bot",
 		Type:     "message",
@@ -30,7 +32,7 @@ func TestRuntimeRulesSupportDialogueRouting(t *testing.T) {
 	}
 
 	if err := app.Dispatch(context.Background(), &core.Event{
-		Protocol: core.ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "bot",
 		UserID:   "user",
 		GroupID:  "group",
@@ -44,7 +46,7 @@ func TestRuntimeRulesSupportDialogueRouting(t *testing.T) {
 	}
 
 	if err := app.Dispatch(context.Background(), &core.Event{
-		Protocol: core.ProtocolOneBot11,
+		Protocol: testProtocol,
 		SelfID:   "bot",
 		UserID:   "user",
 		Type:     "message",
@@ -67,7 +69,7 @@ func TestRuntimeExposesCustomRuleBuildingBlocks(t *testing.T) {
 		return Match{Reason: "configured", Score: 10}.WithVar("persona", "admin"), true
 	})
 	app.OnMessage(configuredRule).Handle(func(c *EventContext) error {
-		called = c.String("persona") == "admin"
+		called = c.VarString("persona") == "admin"
 		return ErrStop
 	})
 	if err := app.Dispatch(context.Background(), &core.Event{Type: "message", UserID: "42", Text: "hi"}); err != nil {

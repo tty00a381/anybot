@@ -140,7 +140,7 @@ func TestReverseWSReportsAdapterState(t *testing.T) {
 	}
 	select {
 	case state := <-states:
-		if state.Kind != core.AdapterStateReady || !state.ActionReady || state.Protocol != core.ProtocolOneBot11 {
+		if state.Kind != core.AdapterStateReady || !state.ActionReady || state.Protocol != Protocol {
 			t.Fatalf("state = %#v", state)
 		}
 	case <-ctx.Done():
