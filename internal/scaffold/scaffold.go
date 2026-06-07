@@ -447,7 +447,7 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 项目内插件导出 ` + "`Module`" + `，适合直接写 Go 入口时显式安装：
 
 ` + "```go" + `
-if err := app.UsePlugin(absdk.AsPlugin(hello.Module)); err != nil {
+if err := absdk.Install(app, hello.Module); err != nil {
 	log.Fatal(err)
 }
 ` + "```" + `

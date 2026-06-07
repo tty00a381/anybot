@@ -193,11 +193,11 @@ App option：
 - `Spec.Manifest() Manifest`
 - `Spec.Setup(ctx *Context) error`：按默认配置安装。
 - `Spec.Factory() Factory`：转为运行框架可注册工厂。
-- `AsPlugin(module Module) core.Plugin`：适配到核心库插件。
+- `Install(app *App, modules ...Module) error`：把 SDK 插件安装到运行时。
 
 ### 注册表
 
-- `Factory`：`Info`、`Default`、`Build`。
+- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Module, error)`。
 - `Factory.WithName(name string) Factory`：为外部插件配置别名。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
@@ -357,8 +357,6 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `ResetDefault(opts ...Option)`
 - `Run(ctxs ...context.Context) error`
 - `Use(...)`
-- `UsePlugin(plugin Plugin) error`
-- `UsePlugins(plugins ...Plugin) error`
 - `OnStart`、`OnReady`、`OnShutdown`、`OnStop`
 - `OnError`
 - `OnAdapterState`
@@ -387,9 +385,6 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `OnObserverError(handler)`
 - `Go(name, fn, opts...)`
 - `Every(name, interval, fn, opts...)`
-- `UsePlugin(plugin) error`
-- `UsePlugins(plugins...) error`
-- `Plugins() []Manifest`
 - `OnStart`、`OnReady`、`OnError`、`OnShutdown`、`OnStop`
 - `OnAdapterState(hook)`
 - `AdapterState() AdapterState`
@@ -497,13 +492,8 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `ErrActionUnavailable`
 - `PanicError`
 
-### Plugin 与生命周期
+### 生命周期
 
-- `Manifest`
-- `Plugin`
-- `PluginFunc`
-- `PluginFunc.Manifest`
-- `PluginFunc.Install`
 - `Hook`
 - `TaskFunc`
 - `TaskOption`

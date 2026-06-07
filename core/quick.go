@@ -32,16 +32,6 @@ func Use(middleware ...Middleware) {
 	Default().Use(middleware...)
 }
 
-// UsePlugin 向默认 App 安装插件。
-func UsePlugin(plugin Plugin) error {
-	return Default().UsePlugin(plugin)
-}
-
-// UsePlugins 向默认 App 按顺序安装多个插件。
-func UsePlugins(plugins ...Plugin) error {
-	return Default().UsePlugins(plugins...)
-}
-
 // OnStart 向默认 App 注册启动钩子。
 func OnStart(hook Hook) {
 	Default().OnStart(hook)

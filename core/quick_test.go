@@ -6,23 +6,9 @@ import (
 	"testing"
 )
 
-func TestDefaultPluginAndLifecycleHelpers(t *testing.T) {
+func TestDefaultLifecycleHelpers(t *testing.T) {
 	ResetDefault()
 	defer ResetDefault()
-
-	var installed bool
-	if err := UsePlugins(PluginFunc{
-		Info: Manifest{Name: "quick"},
-		Fn: func(*App) error {
-			installed = true
-			return nil
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if !installed || len(Default().Plugins()) != 1 {
-		t.Fatalf("installed=%v plugins=%#v", installed, Default().Plugins())
-	}
 
 	OnStart(func(context.Context) error { return nil })
 	OnReady(func(context.Context) error { return nil })

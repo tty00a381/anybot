@@ -24,7 +24,6 @@ type App struct {
 	startHooks    []Hook
 	readyHooks    []Hook
 	shutdownHooks []Hook
-	plugins       []Manifest
 	superUsers    []string
 
 	stateMu      sync.RWMutex

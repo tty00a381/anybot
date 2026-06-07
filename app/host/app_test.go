@@ -17,6 +17,25 @@ import (
 func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 	enabled := true
 	disabled := false
+	var called bool
+	registry := absdk.NewRegistry()
+	help := absdk.Define(absdk.Manifest{Name: "help"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
+		ctx.Command("help").Handle(func(*absdk.EventContext) error {
+			called = true
+			return nil
+		})
+		return nil
+	})
+	echo := absdk.Define(absdk.Manifest{Name: "echo"}, struct{}{}, func(*absdk.Context, struct{}) error {
+		t.Fatal("disabled plugin should not be installed")
+		return nil
+	})
+	if err := registry.Register(help.Factory()); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(echo.Factory()); err != nil {
+		t.Fatal(err)
+	}
 	cfg := Config{
 		Adapter: AdapterConfig{
 			Protocol:  "onebot11",
@@ -27,15 +46,17 @@ func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 			"echo": {Enabled: &disabled},
 		},
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	app, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
 	if err != nil {
 		t.Fatal(err)
 	}
-	plugins := app.Plugins()
-	if len(plugins) != 1 || plugins[0].Name != "help" {
-		t.Fatalf("plugins = %#v", plugins)
+	if err := app.Dispatch(context.Background(), &absdk.Event{Type: "message", Text: "/help"}); err != nil {
+		t.Fatal(err)
 	}
-	names, err := EnabledPlugins(cfg, DefaultRegistry())
+	if !called {
+		t.Fatal("enabled plugin route did not run")
+	}
+	names, err := EnabledPlugins(cfg, registry)
 	if err != nil {
 		t.Fatal(err)
 	}

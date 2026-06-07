@@ -3,7 +3,6 @@ package sdk
 import (
 	"fmt"
 
-	"github.com/tty00a381/anybot/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,7 +52,7 @@ func (s Spec[T]) Factory() Factory {
 	return Factory{
 		Info:    s.Info,
 		Default: s.Default,
-		Build: func(node yaml.Node) (core.Plugin, error) {
+		Build: func(node yaml.Node) (Module, error) {
 			cfg, err := cloneTypedConfig(s.Default)
 			if err != nil {
 				return nil, fmt.Errorf("default config: %w", err)
@@ -70,7 +69,7 @@ func (s Spec[T]) Factory() Factory {
 			if err := validateTypedConfig(cfg); err != nil {
 				return nil, err
 			}
-			return AsPlugin(configuredSpec[T]{spec: s, config: cfg}), nil
+			return configuredSpec[T]{spec: s, config: cfg}, nil
 		},
 	}
 }
@@ -89,36 +88,6 @@ func (s configuredSpec[T]) Setup(ctx *Context) error {
 		return fmt.Errorf("plugin %s setup function is required", s.spec.Info.Name)
 	}
 	return s.spec.SetupFn(ctx, s.config)
-}
-
-type pluginAdapter struct {
-	module Module
-}
-
-// AsPlugin 将插件 SDK Module 适配为核心 core.Plugin。
-func AsPlugin(module Module) core.Plugin {
-	return pluginAdapter{module: module}
-}
-
-func (p pluginAdapter) Manifest() Manifest {
-	if p.module == nil {
-		return Manifest{}
-	}
-	return p.module.Manifest()
-}
-
-func (p pluginAdapter) Install(app *core.App) error {
-	if p.module == nil {
-		return nil
-	}
-	return p.installWithManifest(app, p.module.Manifest())
-}
-
-func (p pluginAdapter) installWithManifest(app *core.App, manifest Manifest) error {
-	if p.module == nil {
-		return nil
-	}
-	return p.module.Setup(NewContext(app, manifest))
 }
 
 func validateTypedConfig[T any](config T) error {

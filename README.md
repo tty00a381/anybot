@@ -1,16 +1,21 @@
 # AnyBot
 
-AnyBot 是一个 Go 实现的聊天机器人框架。它把三件事分开：
-
+AnyBot 是一个 Go 实现的聊天机器人框架。其主要由三部分组成：
 - 核心库：`core/`，负责事件、路由、中间件、生命周期、状态存储和协议无关动作。
 - 插件 SDK：`sdk/`，让插件作者用 typed config、路由、会话、后台任务和私有数据目录写插件。
 - 运行框架：`anybot` CLI 与 `app/host`，负责最终用户的工作目录、配置、插件安装、构建、检查和运行。
 
 当前内置 OneBot v11 适配器，可以配合支持 OneBot v11 的协议端使用。默认工作方式是反向 WebSocket：AnyBot 监听 `ws://127.0.0.1:6700/`，协议端主动连接。
 
-## 最快开始
+## 安装
 
-以下假设你的环境里已经有 `anybot` 命令。
+首先 [安装 Go 1.24+](https://golang.org/dl/)，然后执行以下命令安装 AnyBot：
+
+```sh
+go install github.com/tty00a381/anybot/cmd/anybot@latest
+```
+
+## 快速开始
 
 ```sh
 mkdir mybot
@@ -30,7 +35,7 @@ anybot up
 
 ## 安装插件
 
-外部插件按 Go module 安装。安装后先检查，再启用，再用 `anybot up` 构建并运行完整框架。
+以安装一个天气插件为例：
 
 ```sh
 anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Module

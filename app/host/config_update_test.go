@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tty00a381/anybot/core"
 	absdk "github.com/tty00a381/anybot/sdk"
 	"gopkg.in/yaml.v3"
 )
@@ -494,9 +493,9 @@ func TestSyncPluginConfigEntriesMergesNestedDefaults(t *testing.T) {
 	}
 	registry := absdk.NewRegistry()
 	if err := registry.Register(absdk.Factory{
-		Info:    core.Manifest{Name: "ai"},
+		Info:    absdk.Manifest{Name: "ai"},
 		Default: aiConfig{Provider: providerConfig{Model: "gpt", Timeout: "30s"}},
-		Build: func(yaml.Node) (core.Plugin, error) {
+		Build: func(yaml.Node) (absdk.Module, error) {
 			return nil, nil
 		},
 	}); err != nil {

@@ -175,11 +175,11 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry) error {
 		if !ok {
 			return UnknownPluginError{Name: name}
 		}
-		plugin, err := factory.Build(entry.Config)
+		module, err := factory.Build(entry.Config)
 		if err != nil {
 			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
 		}
-		if err := app.UsePlugin(plugin); err != nil {
+		if err := absdk.Install(app, module); err != nil {
 			return err
 		}
 	}

@@ -6,25 +6,32 @@ import (
 
 	"github.com/tty00a381/anybot/adapters/onebot11"
 	"github.com/tty00a381/anybot/core"
+	absdk "github.com/tty00a381/anybot/sdk"
 )
 
-type helloPlugin struct{}
+var helloModule = absdk.Define(
+	absdk.Manifest{Name: "hello", Version: "0.1.0"},
+	struct{}{},
+	func(ctx *absdk.Context, _ struct{}) error {
+		ctx.Command("hello").Handle(func(c *absdk.EventContext) error {
+			_, err := c.ReplyText("world")
+			return err
+		})
+		return nil
+	},
+)
 
-func (helloPlugin) Manifest() core.Manifest {
-	return core.Manifest{Name: "hello", Version: "0.1.0"}
-}
-
-func (helloPlugin) Install(app *core.App) error {
-	app.Command("hello").Handle(func(c *core.Context) error {
-		_, err := c.ReplyText("world")
+func installRoutes(app *core.App) {
+	app.Command("ping").Handle(func(c *core.Context) error {
+		_, err := c.ReplyText("pong")
 		return err
 	})
-	return nil
 }
 
 func main() {
 	app := core.New(core.WithAdapter(onebot11.ReverseWS("127.0.0.1:6700")))
-	if err := app.UsePlugin(helloPlugin{}); err != nil {
+	installRoutes(app)
+	if err := absdk.Install(app, helloModule); err != nil {
 		log.Fatal(err)
 	}
 	if err := app.Run(context.Background()); err != nil {

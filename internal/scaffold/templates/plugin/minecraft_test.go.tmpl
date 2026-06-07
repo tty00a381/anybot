@@ -16,7 +16,7 @@ func TestModuleStoresPlayerBinding(t *testing.T) {
 		absdk.WithDataDir(t.TempDir()),
 		absdk.WithSuperUsers("admin"),
 	)
-	if err := app.UsePlugin(absdk.AsPlugin(Module)); err != nil {
+	if err := absdk.Install(app, Module); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Dispatch(context.Background(), &absdk.Event{

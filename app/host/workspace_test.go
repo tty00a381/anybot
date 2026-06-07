@@ -347,7 +347,6 @@ require github.com/tty00a381/anybot v0.0.0
 	if err := os.WriteFile(filepath.Join(pluginDir, "weather.go"), []byte(`package weather
 
 import (
-	"github.com/tty00a381/anybot/core"
 	absdk "github.com/tty00a381/anybot/sdk"
 )
 
@@ -356,7 +355,7 @@ type Config struct {
 }
 
 var Module = absdk.Define(
-	core.Manifest{Name: "weather", Version: "1.0.0", Description: "天气插件"},
+	absdk.Manifest{Name: "weather", Version: "1.0.0", Description: "天气插件"},
 	Config{Command: "weather"},
 	func(ctx *absdk.Context, cfg Config) error {
 		return nil

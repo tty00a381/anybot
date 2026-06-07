@@ -11,7 +11,7 @@ import (
 func TestModuleRepliesToCommand(t *testing.T) {
 	client := &recordClient{}
 	app := absdk.NewApp(absdk.WithAdapter(recordAdapter{client: client}))
-	if err := app.UsePlugin(absdk.AsPlugin(Module)); err != nil {
+	if err := absdk.Install(app, Module); err != nil {
 		t.Fatal(err)
 	}
 	err := app.Dispatch(context.Background(), &absdk.Event{

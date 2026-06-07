@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"fmt"
 	"log/slog"
 	"regexp"
 	"time"
@@ -8,8 +9,32 @@ import (
 	"github.com/tty00a381/anybot/core"
 )
 
-// Manifest 描述插件名称、版本、说明和可选配置。
-type Manifest = core.Manifest
+// Manifest 描述插件名称、版本和说明。
+type Manifest struct {
+	Name        string
+	Version     string
+	Description string
+}
+
+// Install 将 SDK 插件安装到运行时。普通插件代码不需要接触 core.App 的内部安装细节。
+func Install(app *App, modules ...Module) error {
+	if app == nil {
+		return fmt.Errorf("anybot: app is nil")
+	}
+	for _, module := range modules {
+		if module == nil {
+			continue
+		}
+		manifest := module.Manifest()
+		if err := module.Setup(NewContext(app, manifest)); err != nil {
+			if manifest.Name != "" {
+				return fmt.Errorf("anybot: 安装插件 %s 失败: %w", manifest.Name, err)
+			}
+			return fmt.Errorf("anybot: 安装插件失败: %w", err)
+		}
+	}
+	return nil
+}
 
 // EventContext 是事件处理函数的上下文。
 type EventContext = core.Context

@@ -3,13 +3,14 @@ package sdk
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tty00a381/anybot/core"
 	"gopkg.in/yaml.v3"
 )
 
-func TestSpecFactoryBuildsConfiguredPlugin(t *testing.T) {
+func TestSpecFactoryBuildsConfiguredModule(t *testing.T) {
 	type config struct {
 		Command string `yaml:"command"`
 	}
@@ -25,12 +26,12 @@ func TestSpecFactoryBuildsConfiguredPlugin(t *testing.T) {
 	if err := yaml.Unmarshal([]byte("command: hi\n"), &node); err != nil {
 		t.Fatal(err)
 	}
-	plugin, err := spec.Factory().Build(node)
+	module, err := spec.Factory().Build(node)
 	if err != nil {
 		t.Fatal(err)
 	}
 	app := core.New()
-	if err := app.UsePlugin(plugin); err != nil {
+	if err := Install(app, module); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Dispatch(context.Background(), &core.Event{Type: "message", Text: "/hi"}); err != nil {
@@ -62,11 +63,11 @@ func TestSpecClonesDefaultConfig(t *testing.T) {
 		return nil
 	})
 	for i := 0; i < 2; i++ {
-		plugin, err := spec.Factory().Build(yaml.Node{})
+		module, err := spec.Factory().Build(yaml.Node{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := core.New().UsePlugin(plugin); err != nil {
+		if err := Install(core.New(), module); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -75,7 +76,7 @@ func TestSpecClonesDefaultConfig(t *testing.T) {
 	}
 }
 
-func TestFactoryWithNameAliasesPluginContext(t *testing.T) {
+func TestFactoryWithNameAliasesModuleContext(t *testing.T) {
 	type config struct {
 		Command string `yaml:"command"`
 	}
@@ -88,22 +89,19 @@ func TestFactoryWithNameAliasesPluginContext(t *testing.T) {
 	if factory.Info.Name != "daily_weather" || factory.Info.Version != "1.0.0" {
 		t.Fatalf("factory info = %#v", factory.Info)
 	}
-	plugin, err := factory.Build(yaml.Node{})
+	module, err := factory.Build(yaml.Node{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest := plugin.Manifest(); manifest.Name != "daily_weather" || manifest.Version != "1.0.0" {
-		t.Fatalf("plugin manifest = %#v", manifest)
+	if manifest := module.Manifest(); manifest.Name != "daily_weather" || manifest.Version != "1.0.0" {
+		t.Fatalf("module manifest = %#v", manifest)
 	}
 	app := core.New()
-	if err := app.UsePlugin(plugin); err != nil {
+	if err := Install(app, module); err != nil {
 		t.Fatal(err)
 	}
 	if contextName != "daily_weather" {
 		t.Fatalf("context manifest name = %q", contextName)
-	}
-	if plugins := app.Plugins(); len(plugins) != 1 || plugins[0].Name != "daily_weather" {
-		t.Fatalf("app plugins = %#v", plugins)
 	}
 }
 
@@ -121,11 +119,11 @@ func TestSpecFactoryResolvesEnvConfig(t *testing.T) {
 	if err := yaml.Unmarshal([]byte("token: !env ANYBOT_TEST_TOKEN\n"), &node); err != nil {
 		t.Fatal(err)
 	}
-	plugin, err := spec.Factory().Build(node)
+	module, err := spec.Factory().Build(node)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := core.New().UsePlugin(plugin); err != nil {
+	if err := Install(core.New(), module); err != nil {
 		t.Fatal(err)
 	}
 	if seen != "secret-token" {
@@ -146,6 +144,22 @@ func TestSpecFactoryRejectsMissingEnvConfig(t *testing.T) {
 	}
 	_, err := spec.Factory().Build(node)
 	if err == nil || err.Error() != "plugin config environment variable ANYBOT_MISSING_TOKEN is not set" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInstallWrapsSetupError(t *testing.T) {
+	module := Define(Manifest{Name: "broken"}, struct{}{}, func(*Context, struct{}) error {
+		return errors.New("boom")
+	})
+	err := Install(core.New(), module)
+	if err == nil || !strings.Contains(err.Error(), "broken") || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInstallRejectsNilApp(t *testing.T) {
+	if err := Install(nil); err == nil || err.Error() != "anybot: app is nil" {
 		t.Fatalf("err = %v", err)
 	}
 }

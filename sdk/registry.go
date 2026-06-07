@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/tty00a381/anybot/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -12,7 +11,7 @@ import (
 type Factory struct {
 	Info    Manifest
 	Default any
-	Build   func(yaml.Node) (core.Plugin, error)
+	Build   func(yaml.Node) (Module, error)
 }
 
 // WithName 返回使用指定注册名的工厂，适合运行框架为外部插件提供配置别名。
@@ -25,12 +24,12 @@ func (f Factory) WithName(name string) Factory {
 		return f
 	}
 	build := f.Build
-	f.Build = func(node yaml.Node) (core.Plugin, error) {
-		plugin, err := build(node)
+	f.Build = func(node yaml.Node) (Module, error) {
+		module, err := build(node)
 		if err != nil {
 			return nil, err
 		}
-		return namedPlugin{plugin: plugin, name: name}, nil
+		return namedModule{module: module, name: name}, nil
 	}
 	return f
 }
@@ -83,28 +82,23 @@ func (r Registry) Plugins() []Manifest {
 	return out
 }
 
-type namedPlugin struct {
-	plugin core.Plugin
+type namedModule struct {
+	module Module
 	name   string
 }
 
-func (p namedPlugin) Manifest() Manifest {
-	if p.plugin == nil {
-		return Manifest{Name: p.name}
+func (m namedModule) Manifest() Manifest {
+	if m.module == nil {
+		return Manifest{Name: m.name}
 	}
-	manifest := p.plugin.Manifest()
-	manifest.Name = p.name
+	manifest := m.module.Manifest()
+	manifest.Name = m.name
 	return manifest
 }
 
-func (p namedPlugin) Install(app *core.App) error {
-	if p.plugin == nil {
+func (m namedModule) Setup(ctx *Context) error {
+	if m.module == nil {
 		return nil
 	}
-	if plugin, ok := p.plugin.(interface {
-		installWithManifest(*core.App, Manifest) error
-	}); ok {
-		return plugin.installWithManifest(app, p.Manifest())
-	}
-	return p.plugin.Install(app)
+	return m.module.Setup(ctx)
 }
