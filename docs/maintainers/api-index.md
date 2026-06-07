@@ -217,9 +217,8 @@ App option：
 
 ### 注册表
 
-- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`、`AllowGlobalMiddleware`。
+- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
 - `Factory.WithName(name string) Factory`：为外部插件配置别名。
-- `Factory.WithGlobalMiddleware() Factory`：授予框架级全局中间件能力，当前只应用于内置策略插件。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
 - `Registry.Register(factory Factory) error`
@@ -373,6 +372,9 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `Message(text string, opts ...EventOption) *sdk.Event`
 - `FromUser(id string) EventOption`
 - `InGroup(id string) EventOption`
+- `WithMessage(chain message.Chain) EventOption`
+- `Mention(id string) EventOption`
+- `MentionSelf() EventOption`
 - `WithSelfID(id string) EventOption`
 - `WithProtocol(protocol sdk.Protocol) EventOption`
 - `Client.Sent() []SentMessage`

@@ -458,6 +458,12 @@ if got := app.LastReplyText(); got != "hello" {
 }
 ```
 
+群聊提及规则可以显式构造：
+
+```go
+err := app.DispatchText("看看这个", testkit.InGroup("100"), testkit.MentionSelf())
+```
+
 需要端到端验证时，把插件用 `-replace` 安装到一个临时机器人工作目录，再跑：
 
 ```sh

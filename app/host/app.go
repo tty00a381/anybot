@@ -181,7 +181,7 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absd
 			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
 		}
 		pluginEnv := env
-		pluginEnv.AllowGlobalMiddleware = factory.AllowGlobalMiddleware
+		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(name)
 		if err := absdk.InstallWith(app, pluginEnv, plugin); err != nil {
 			return err
 		}

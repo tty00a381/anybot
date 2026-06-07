@@ -108,6 +108,7 @@ func Message(text string, opts ...EventOption) *sdk.Event {
 		Type:     "message",
 		UserID:   "user",
 		Text:     text,
+		Message:  message.New(message.Text(text)),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -131,6 +132,32 @@ func FromUser(id string) EventOption {
 func InGroup(id string) EventOption {
 	return func(event *sdk.Event) {
 		event.GroupID = id
+	}
+}
+
+// WithMessage 设置完整消息链，并同步 Text 为消息链中的纯文本内容。
+func WithMessage(chain message.Chain) EventOption {
+	return func(event *sdk.Event) {
+		event.Message = chain.Clone()
+		event.Text = event.Message.Text()
+	}
+}
+
+// Mention 追加一个 at 消息段，便于测试 Mentioned 和 ToMe 规则。
+func Mention(id string) EventOption {
+	return func(event *sdk.Event) {
+		event.Message = event.Message.Append(message.Raw("at", map[string]any{"id": id}))
+	}
+}
+
+// MentionSelf 追加一个指向当前机器人账号的 at 消息段。
+func MentionSelf() EventOption {
+	return func(event *sdk.Event) {
+		id := event.SelfID
+		if id == "" {
+			id = "bot"
+		}
+		event.Message = event.Message.Append(message.Raw("at", map[string]any{"id": id}))
 	}
 }
 

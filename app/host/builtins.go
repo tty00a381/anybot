@@ -14,7 +14,7 @@ func DefaultRegistry() absdk.Registry {
 	mustRegister(registry, help.Plugin.Factory())
 	mustRegister(registry, echo.Plugin.Factory())
 	mustRegister(registry, admin.Plugin.Factory())
-	mustRegister(registry, ratelimit.Plugin.Factory().WithGlobalMiddleware())
+	mustRegister(registry, ratelimit.Plugin.Factory())
 	return registry
 }
 
@@ -22,4 +22,8 @@ func mustRegister(registry absdk.Registry, factory absdk.Factory) {
 	if err := registry.Register(factory); err != nil {
 		panic(err)
 	}
+}
+
+func pluginAllowsGlobalMiddleware(name string) bool {
+	return name == "ratelimit"
 }

@@ -86,6 +86,46 @@ func TestNewAppInjectsSuperUsers(t *testing.T) {
 	}
 }
 
+func TestNewAppDoesNotGrantGlobalMiddlewareToOrdinaryPlugins(t *testing.T) {
+	enabled := true
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{
+			"policy": {Enabled: &enabled},
+		},
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Manifest{Name: "policy"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
+		return ctx.UseGlobal(absdk.Timeout(0))
+	})
+	if err := registry.Register(module.Factory()); err != nil {
+		t.Fatal(err)
+	}
+	_, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
+	if !errors.Is(err, absdk.ErrGlobalMiddlewareUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNewAppGrantsGlobalMiddlewareToBuiltinRatelimit(t *testing.T) {
+	enabled := true
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{
+			"ratelimit": {Enabled: &enabled},
+		},
+	}
+	if _, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "anybot.yaml")

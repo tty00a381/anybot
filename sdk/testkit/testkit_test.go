@@ -39,6 +39,45 @@ func TestAppDispatchRecordsReplies(t *testing.T) {
 	}
 }
 
+func TestDispatchTextSupportsMentionRules(t *testing.T) {
+	plugin := sdk.Define(
+		sdk.Manifest{Name: "mention"},
+		struct{}{},
+		func(ctx *sdk.Context, _ struct{}) error {
+			ctx.OnMessage(sdk.ToMe()).Handle(func(c *sdk.EventContext) error {
+				_, err := c.ReplyText("mentioned")
+				return err
+			})
+			return nil
+		},
+	)
+	app := NewApp()
+	if err := app.InstallDefault(plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.DispatchText("hi", InGroup("100"), WithSelfID("bot")); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.LastReplyText(); got != "" {
+		t.Fatalf("unmentioned group message should not reply, got %q", got)
+	}
+	if err := app.DispatchText("hi", InGroup("100"), WithSelfID("bot"), MentionSelf()); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.LastReplyText(); got != "mentioned" {
+		t.Fatalf("reply = %q", got)
+	}
+}
+
+func TestWithMessageClonesChain(t *testing.T) {
+	original := message.New(message.Text("stable"))
+	event := Message("", WithMessage(original))
+	original[0].Data["text"] = "mutated"
+	if got := event.Message.Text(); got != "stable" {
+		t.Fatalf("event message should be cloned, got %q", got)
+	}
+}
+
 func TestDispatchRejectsNilApp(t *testing.T) {
 	var app *App
 	if err := app.DispatchText("/hello"); err != ErrAppUnavailable {
