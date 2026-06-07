@@ -231,7 +231,8 @@ plugins:
 生成代码：
 
 - `plugins.gen.go` import 每个外部插件 module。
-- `main.go` 创建运行框架，并把外部插件注册到 registry。
+- `main.go` 只负责创建 registry、注册外部插件、分派生成框架内置的 `plugin` 子命令并启动运行框架。
+- 生成框架内置的 `plugin` 子命令由 `host.RunPluginCommand` 承载，避免业务逻辑散落在模板里。
 - 生成文件用原子写入。
 
 CLI 的 `plugin add` 在执行多文件更新前会快照可能被改动的文件和目录；中途失败会回滚，避免留下半写工作区。

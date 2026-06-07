@@ -86,6 +86,22 @@ App option：
 - `ValidatePluginModule(item PluginModule) error`
 - `ValidatePluginName(name string) error`
 
+实现文件：
+
+- `workspace.go`：工作区模型、增删改和校验。
+- `workspace_io.go`：清单读写、生成文件写入保护。
+- `workspace_render.go`：`plugins.gen.go`、生成 `main.go` 和 `go.mod` 的渲染。
+
+### 生成框架内置命令
+
+类型：
+
+- `PluginCommandOptions`：`Args`、`Output`、`ConfigPath`、`WorkspacePath`、`Registry`。
+
+函数：
+
+- `RunPluginCommand(opts PluginCommandOptions) error`：执行生成运行框架内置的 `plugin` 子命令。
+
 ### 插件配置更新
 
 类型：
