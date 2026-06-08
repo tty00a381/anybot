@@ -35,20 +35,26 @@ anybot up
 
 ## 安装插件
 
-以安装一个天气插件为例：
+先生成一个本地插件并安装到机器人工作目录：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0
+anybot dev plugin hello -dir ../anybot-hello -module example.com/anybot-plugin/hello
+cd ../anybot-hello
+go mod tidy
+go test ./...
+
+cd ../mybot
+anybot plugin add example.com/anybot-plugin/hello -replace ../anybot-hello
 anybot plugin status
 anybot plugin inspect <id>
 anybot plugin enable <id>
 anybot up
 ```
 
-本地插件开发时使用 `-replace`：
+安装已发布插件时使用 module 版本：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather -replace ../anybot-weather
+anybot plugin add example.com/anybot-plugin/hello@v0.1.0
 anybot plugin status
 anybot plugin enable <id>
 anybot up

@@ -12,7 +12,7 @@ import (
 
 func TestDialogueCapturesAndCompletesConversation(t *testing.T) {
 	client := &dialogueTestClient{}
-	app := core.New(core.WithAdapter(dialogueTestAdapter{client: client}))
+	app := NewApp(WithAdapter(dialogueTestAdapter{client: client}))
 	ctx := NewContext(app, Manifest{Name: "profile"}, WithPluginID(sdkTestProfileID))
 	dialogue := ctx.Dialogue("signup")
 	dialogue.Step("ask-name", func(turn *DialogueTurn) error {
@@ -57,7 +57,7 @@ func TestDialogueCapturesAndCompletesConversation(t *testing.T) {
 }
 
 func TestDialoguePassesWhenNoConversationIsActive(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "dialogue"}, WithPluginID(sdkTestDialogueID))
 	ctx.Dialogue("flow").
 		Step("next", func(*DialogueTurn) error {
@@ -77,7 +77,7 @@ func TestDialoguePassesWhenNoConversationIsActive(t *testing.T) {
 }
 
 func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	first := NewContext(app, Manifest{Name: "first"}, WithPluginID(sdkTestFirstID))
 	second := NewContext(app, Manifest{Name: "second"}, WithPluginID(sdkTestSecondID))
 	firstDialogue := first.Dialogue("flow")
@@ -90,7 +90,7 @@ func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 		return nil
 	})
 
-	ctx := core.NewTestContext(app, &core.Event{Protocol: testProtocol, Type: "message", UserID: "42"})
+	ctx := NewTestContext(app, &core.Event{Protocol: testProtocol, Type: "message", UserID: "42"})
 	if err := firstDialogue.Begin(ctx, "step", map[string]string{"plugin": "first"}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 
 func TestDialogueTurnCanCarryStateAcrossSteps(t *testing.T) {
 	client := &dialogueTestClient{}
-	app := core.New(core.WithAdapter(dialogueTestAdapter{client: client}))
+	app := NewApp(WithAdapter(dialogueTestAdapter{client: client}))
 	ctx := NewContext(app, Manifest{Name: "survey"}, WithPluginID(sdkTestSurveyID))
 	dialogue := ctx.Dialogue("survey", DialogueWithTTL(time.Hour))
 	type answers struct {
@@ -138,7 +138,7 @@ func TestDialogueTurnCanCarryStateAcrossSteps(t *testing.T) {
 }
 
 func TestDialogueRejectsUnknownSteps(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	var handledErr error
 	app.OnError(func(_ *EventContext, err error) {
 		handledErr = err
@@ -150,7 +150,7 @@ func TestDialogueRejectsUnknownSteps(t *testing.T) {
 		fallbackCalled = true
 		return nil
 	})
-	event := core.NewTestContext(app, &core.Event{Type: "message", UserID: "42"})
+	event := NewTestContext(app, &core.Event{Type: "message", UserID: "42"})
 	if err := dialogue.Begin(event, "missing", nil); err == nil {
 		t.Fatal("Begin should reject unregistered steps")
 	}
@@ -171,7 +171,7 @@ func TestDialogueRejectsUnknownSteps(t *testing.T) {
 	}
 }
 
-func dispatch(t *testing.T, app *core.App, userID, text string) {
+func dispatch(t *testing.T, app *App, userID, text string) {
 	t.Helper()
 	if err := app.Dispatch(context.Background(), &core.Event{
 		Protocol: testProtocol,

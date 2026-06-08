@@ -660,6 +660,26 @@ func TestReplyUsesActionClient(t *testing.T) {
 	}
 }
 
+func TestReplyErrorsAreClassifiable(t *testing.T) {
+	app := New(WithAdapter(fakeAdapter{}))
+	c := newContext(context.Background(), app, &Event{
+		Protocol: testProtocol,
+		Type:     "message",
+		UserID:   "42",
+	})
+	if _, err := c.ReplyText("pong"); !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+
+	c = newContext(context.Background(), New(WithAdapter(fakeAdapter{client: &fakeClient{}})), &Event{
+		Protocol: testProtocol,
+		Type:     "meta_event",
+	})
+	if _, err := c.ReplyText("pong"); !errors.Is(err, ErrReplyTargetUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 type fakeAdapter struct {
 	client *fakeClient
 }
@@ -668,7 +688,12 @@ func (fakeAdapter) Protocol() Protocol { return testProtocol }
 func (fakeAdapter) Start(context.Context, EmitFunc) error {
 	return errors.New("not used")
 }
-func (a fakeAdapter) Client() ActionClient { return a.client }
+func (a fakeAdapter) Client() ActionClient {
+	if a.client == nil {
+		return nil
+	}
+	return a.client
+}
 
 type fakeClient struct {
 	target ReplyTarget

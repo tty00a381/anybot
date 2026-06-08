@@ -221,6 +221,7 @@ App option：
 - `Environment`：`DataDir`、`PluginID`、`ConfigStore`、`AllowGlobalMiddleware`。
 - `Install(app *App, plugins ...Plugin) error`：把已配置插件对象安装到运行时。
 - `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件对象。
+- `InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error`：运行框架装配到底层 core 时使用。
 - `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
 - `InstallDefaultWith(app *App, env Environment, definitions ...Definition) error`：按默认配置和显式宿主能力安装插件定义。
 
@@ -364,7 +365,9 @@ SDK 自有规则：
 
 ### core 类型别名和测试入口
 
-SDK 重新导出 `core` 的常用类型，目的是让插件测试和嵌入式程序不必直接 import `core`：`App`、`Option`、`Adapter`、`EmitFunc`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`ObserverHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
+SDK 重新导出或包装 `core` 的常用类型，目的是让插件测试和嵌入式程序不必直接 import `core`：`App`、`Option`、`Adapter`、`EmitFunc`、`Event`、`EventContext`、`Handler`、`ErrorHandler`、`ObserverHandler`、`Hook`、`Middleware`、`Match`、`Rule`、`RuleFunc`、`Store`、`Session`、`MemoryStore`、`FileStore`、`ActionClient`、`ReplyTarget`、`MessageReceipt`、`Protocol`、`PanicError`、`TaskFunc`、`TaskOption`、`AdapterState`、`AdapterStateHook`。
+
+`EventContext`、`Handler`、`Middleware`、`Rule`、`RuleFunc` 和 `App` 是 SDK 包装层，不是 `core` 的裸别名；需要诊断或迁移时使用 `EventContext.UnsafeCoreContext()` 显式越过 SDK 边界。
 
 SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUsers`、`NewTestContext`、`NewSession`、`NewMemoryStore`、`NewFileStore`、`TaskCritical`、`TaskImmediate`。
 

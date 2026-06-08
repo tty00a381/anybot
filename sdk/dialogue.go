@@ -180,7 +180,7 @@ func (d *Dialogue) End(c *EventContext) error {
 	if err != nil {
 		return err
 	}
-	return session.Delete(c.Context, d.storeKey())
+	return session.Delete(c.Context(), d.storeKey())
 }
 
 // Active 返回当前事件所在会话中的对话状态。
@@ -293,7 +293,7 @@ func (d *Dialogue) load(c *EventContext) (dialogueRecord, bool, error) {
 		return dialogueRecord{}, false, err
 	}
 	var record dialogueRecord
-	ok, err := session.LoadJSON(c.Context, d.storeKey(), &record)
+	ok, err := session.LoadJSON(c.Context(), d.storeKey(), &record)
 	if err != nil || !ok {
 		return dialogueRecord{}, ok, err
 	}
@@ -308,7 +308,7 @@ func (d *Dialogue) save(c *EventContext, record dialogueRecord) error {
 	if err != nil {
 		return err
 	}
-	return session.SaveJSON(c.Context, d.storeKey(), record, d.ttl)
+	return session.SaveJSON(c.Context(), d.storeKey(), record, d.ttl)
 }
 
 func (d *Dialogue) session(c *EventContext) (*Session, error) {

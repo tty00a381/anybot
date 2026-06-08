@@ -10,7 +10,7 @@ import (
 const testProtocol Protocol = "test"
 
 func TestRuntimeRulesSupportDialogueRouting(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	var topic string
 	app.OnMessage(All(Private(), NotFromSelf(), RegexRule(`^问\s+(?P<topic>.+)$`))).
 		Handle(func(c *EventContext) error {
@@ -60,7 +60,7 @@ func TestRuntimeRulesSupportDialogueRouting(t *testing.T) {
 }
 
 func TestRuntimeExposesCustomRuleBuildingBlocks(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	var called bool
 	configuredRule := RuleFunc(func(_ context.Context, c *EventContext) (Match, bool) {
 		if c.UserID() != "42" {

@@ -26,6 +26,8 @@ type moduleDependency struct {
 
 var frameworkDependencies = detectFrameworkDependencies
 var moduleVersionResolver = resolveModuleVersion
+var buildInfoMainVersion = readBuildInfoMainVersion
+var moduleSourceRoot = detectModuleSourceRoot
 
 func runBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
@@ -209,15 +211,24 @@ func detectFrameworkDependency(module string) moduleDependency {
 	if v := normalizedVersion(version); v != "" {
 		return moduleDependency{Module: module, Version: v}
 	}
+	if root, ok := moduleSourceRoot(module); ok && !moduleCacheSourceRoot(root) {
+		return moduleDependency{Module: module, Version: "v0.0.0", Replace: root}
+	}
+	if v := normalizedVersion(buildInfoMainVersion()); v != "" {
+		return moduleDependency{Module: module, Version: v}
+	}
 	if root, ok := moduleSourceRoot(module); ok {
 		return moduleDependency{Module: module, Version: "v0.0.0", Replace: root}
 	}
-	if info, ok := debug.ReadBuildInfo(); ok {
-		if v := normalizedVersion(info.Main.Version); v != "" {
-			return moduleDependency{Module: module, Version: v}
-		}
-	}
 	return moduleDependency{Module: module, Version: "v0.0.0"}
+}
+
+func readBuildInfoMainVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	return info.Main.Version
 }
 
 func normalizedVersion(v string) string {
@@ -235,7 +246,7 @@ func normalizedVersion(v string) string {
 	return ""
 }
 
-func moduleSourceRoot(module string) (string, bool) {
+func detectModuleSourceRoot(module string) (string, bool) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok || !filepath.IsAbs(file) {
 		return "", false
@@ -257,6 +268,11 @@ func moduleSourceRoot(module string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func moduleCacheSourceRoot(root string) bool {
+	clean := filepath.ToSlash(filepath.Clean(root))
+	return strings.Contains(clean, "/pkg/mod/")
 }
 
 func syncPluginGoMod(dir string, plugin host.PluginInstall) error {

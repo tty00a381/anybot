@@ -213,7 +213,7 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, lock Plu
 		pluginEnv := env
 		pluginEnv.PluginID = id
 		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(installs[id].Builtin)
-		if err := absdk.InstallWith(app, pluginEnv, plugin); err != nil {
+		if err := absdk.InstallCoreWith(app, pluginEnv, plugin); err != nil {
 			return err
 		}
 	}

@@ -16,7 +16,7 @@ var ErrGlobalMiddlewareUnavailable = errors.New("anybot: global middleware is no
 
 // Context 是成熟插件的安装上下文，暴露插件应使用的运行时能力。
 type Context struct {
-	app      *App
+	app      *core.App
 	router   *core.Router
 	manifest Manifest
 	env      Environment
@@ -24,6 +24,10 @@ type Context struct {
 
 // NewContext 创建插件安装上下文，主要供运行框架或测试使用。
 func NewContext(app *App, manifest Manifest, opts ...InstallOption) *Context {
+	return newCoreContext(coreApp(app), manifest, opts...)
+}
+
+func newCoreContext(app *core.App, manifest Manifest, opts ...InstallOption) *Context {
 	ctx := &Context{app: app, manifest: manifest}
 	for _, opt := range opts {
 		if opt != nil {
@@ -83,18 +87,24 @@ func (c *Context) Session(event *EventContext) *Session {
 
 // UserSession 返回当前 PluginID 命名空间下的用户存储视图。
 func (c *Context) UserSession(event *EventContext) *Session {
-	if event == nil {
-		return c.SessionBy("session:user")
+	key := "session:user"
+	if event != nil {
+		if current := event.Event(); current != nil && current.UserSessionID() != "" {
+			key = current.UserSessionID()
+		}
 	}
-	return c.SessionBy(event.UserSession().Key())
+	return c.SessionBy(key)
 }
 
 // GroupSession 返回当前 PluginID 命名空间下的群或频道存储视图。
 func (c *Context) GroupSession(event *EventContext) *Session {
-	if event == nil {
-		return c.SessionBy("session:group")
+	key := "session:group"
+	if event != nil {
+		if current := event.Event(); current != nil && current.GroupSessionID() != "" {
+			key = current.GroupSessionID()
+		}
 	}
-	return c.SessionBy(event.GroupSession().Key())
+	return c.SessionBy(key)
 }
 
 // SessionBy 返回当前 PluginID 命名空间下的自定义存储视图。
@@ -129,7 +139,7 @@ func (c *Context) SendText(ctx context.Context, target ReplyTarget, text string)
 // Use 注册插件级中间件，只作用于当前插件通过 Context 注册的后续路由。
 func (c *Context) Use(middleware ...Middleware) {
 	if c != nil && c.router != nil {
-		c.router.Use(middleware...)
+		c.router.Use(coreMiddleware(middleware)...)
 	}
 }
 
@@ -141,7 +151,7 @@ func (c *Context) UseGlobal(middleware ...Middleware) error {
 	if !c.env.AllowGlobalMiddleware {
 		return ErrGlobalMiddlewareUnavailable
 	}
-	c.app.Use(middleware...)
+	c.app.Use(coreMiddleware(middleware)...)
 	return nil
 }
 
@@ -150,7 +160,7 @@ func (c *Context) On(rules ...Rule) *Route {
 	if c == nil || c.router == nil {
 		return nil
 	}
-	return newRoute(c, c.router.On(rules...))
+	return newRoute(c, c.router.On(coreRules(rules)...))
 }
 
 // OnMessage 注册消息事件路由。
@@ -158,7 +168,7 @@ func (c *Context) OnMessage(rules ...Rule) *Route {
 	if c == nil || c.router == nil {
 		return nil
 	}
-	return newRoute(c, c.router.OnMessage(rules...))
+	return newRoute(c, c.router.OnMessage(coreRules(rules)...))
 }
 
 // Command 注册命令路由。
@@ -174,7 +184,7 @@ func (c *Context) Observe(rules ...Rule) *Observer {
 	if c == nil || c.app == nil {
 		return nil
 	}
-	return newObserver(c, c.app.Observe(rules...))
+	return newObserver(c, c.app.Observe(coreRules(rules)...))
 }
 
 // Go 注册生命周期托管的后台任务。
@@ -259,7 +269,7 @@ func (r *Route) Priority(priority int) *Route {
 // Use 追加只作用于当前路由的中间件。
 func (r *Route) Use(middleware ...Middleware) *Route {
 	if r != nil && r.route != nil {
-		r.route.Use(middleware...)
+		r.route.Use(coreMiddleware(middleware)...)
 	}
 	return r
 }
@@ -267,7 +277,7 @@ func (r *Route) Use(middleware ...Middleware) *Route {
 // Handle 设置路由处理函数。
 func (r *Route) Handle(handler Handler) *Route {
 	if r != nil && r.route != nil {
-		r.route.Handle(handler)
+		r.route.Handle(coreHandler(handler))
 	}
 	return r
 }
@@ -313,6 +323,293 @@ func (o *Observer) pluginName() string {
 		return ""
 	}
 	return o.ctx.PluginID()
+}
+
+// EventContext 是插件事件处理函数的上下文。
+type EventContext struct {
+	core *core.Context
+}
+
+func newEventContext(c *core.Context) *EventContext {
+	if c == nil {
+		return nil
+	}
+	return &EventContext{core: c}
+}
+
+// Context 返回当前事件处理链使用的标准 context。
+func (c *EventContext) Context() context.Context {
+	if c == nil || c.core == nil || c.core.Context == nil {
+		return context.Background()
+	}
+	return c.core.Context
+}
+
+// UnsafeCoreContext 返回底层 core.Context。普通插件不应依赖它；它只适合协议适配、诊断或迁移代码。
+func (c *EventContext) UnsafeCoreContext() *core.Context {
+	if c == nil {
+		return nil
+	}
+	return c.core
+}
+
+// Event 返回当前正在处理的标准化事件。
+func (c *EventContext) Event() *Event {
+	if c == nil || c.core == nil {
+		return nil
+	}
+	return c.core.Event()
+}
+
+// Match 返回当前路由的匹配详情。
+func (c *EventContext) Match() Match {
+	if c == nil || c.core == nil {
+		return Match{}
+	}
+	return c.core.Match()
+}
+
+// RouteName 返回当前路由的诊断名称。
+func (c *EventContext) RouteName() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.RouteName()
+}
+
+// Set 写入当前插件处理链内可见的局部值。
+func (c *EventContext) Set(key string, value any) {
+	if c != nil && c.core != nil {
+		c.core.Set(key, value)
+	}
+}
+
+// Get 读取当前插件处理链内的局部值。
+func (c *EventContext) Get(key string) (any, bool) {
+	if c == nil || c.core == nil {
+		return nil, false
+	}
+	return c.core.Get(key)
+}
+
+// String 读取当前插件处理链内的字符串局部值。
+func (c *EventContext) String(key string) string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.String(key)
+}
+
+// Command 返回命令规则匹配到的命令名。
+func (c *EventContext) Command() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.Command()
+}
+
+// Args 返回命令名之后的原始参数文本。
+func (c *EventContext) Args() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.Args()
+}
+
+// Argv 返回按空白拆分后的命令参数。
+func (c *EventContext) Argv() []string {
+	if c == nil || c.core == nil {
+		return nil
+	}
+	return c.core.Argv()
+}
+
+// Var 读取当前规则匹配写入的变量。
+func (c *EventContext) Var(key string) (any, bool) {
+	if c == nil || c.core == nil {
+		return nil, false
+	}
+	return c.core.Var(key)
+}
+
+// VarString 读取当前规则匹配写入的字符串变量。
+func (c *EventContext) VarString(key string) string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.VarString(key)
+}
+
+// ConversationID 返回当前事件对应的会话键。
+func (c *EventContext) ConversationID() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.ConversationID()
+}
+
+// UserID 返回当前事件的用户 ID。
+func (c *EventContext) UserID() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.UserID()
+}
+
+// SelfID 返回当前机器人账号 ID。
+func (c *EventContext) SelfID() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.SelfID()
+}
+
+// GroupID 返回当前事件的群 ID。
+func (c *EventContext) GroupID() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.GroupID()
+}
+
+// IsPrivate 判断当前事件是否为私聊消息。
+func (c *EventContext) IsPrivate() bool {
+	return c != nil && c.core != nil && c.core.IsPrivate()
+}
+
+// IsGroup 判断当前事件是否为群消息。
+func (c *EventContext) IsGroup() bool {
+	return c != nil && c.core != nil && c.core.IsGroup()
+}
+
+// RawEvent 返回适配器保留的原始协议事件对象。
+func (c *EventContext) RawEvent() any {
+	if c == nil || c.core == nil {
+		return nil
+	}
+	return c.core.RawEvent()
+}
+
+// Text 返回事件中的文本内容。
+func (c *EventContext) Text() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.Text()
+}
+
+// Target 返回当前事件的自然回复目标。
+func (c *EventContext) Target() ReplyTarget {
+	if c == nil || c.core == nil {
+		return ReplyTarget{}
+	}
+	return c.core.Target()
+}
+
+// Stop 停止当前事件继续传播到后续路由。
+func (c *EventContext) Stop() {
+	if c != nil && c.core != nil {
+		c.core.Stop()
+	}
+}
+
+// Stopped 报告当前事件是否已被要求停止传播。
+func (c *EventContext) Stopped() bool {
+	return c != nil && c.core != nil && c.core.Stopped()
+}
+
+// Pass 跳过当前路由且不视为失败。
+func (c *EventContext) Pass() error {
+	if c == nil || c.core == nil {
+		return ErrPass
+	}
+	return c.core.Pass()
+}
+
+// StopError 返回可用于处理函数的停止错误，同时标记当前上下文已停止。
+func (c *EventContext) StopError() error {
+	if c == nil || c.core == nil {
+		return ErrStop
+	}
+	return c.core.StopError()
+}
+
+// Reply 使用事件的自然目标发送消息。
+func (c *EventContext) Reply(chain message.Chain) (MessageReceipt, error) {
+	if c == nil || c.core == nil {
+		return MessageReceipt{}, ErrReplyTargetUnavailable
+	}
+	return c.core.Reply(chain)
+}
+
+// ReplyText 使用事件的自然目标发送纯文本回复。
+func (c *EventContext) ReplyText(text string) (MessageReceipt, error) {
+	if c == nil || c.core == nil {
+		return MessageReceipt{}, ErrReplyTargetUnavailable
+	}
+	return c.core.ReplyText(text)
+}
+
+// Handler 处理已经匹配成功的插件事件。
+type Handler func(*EventContext) error
+
+// Middleware 包装插件处理函数。
+type Middleware func(Handler) Handler
+
+// Rule 判断插件路由是否应处理当前事件。
+type Rule interface {
+	Match(context.Context, *EventContext) (Match, bool)
+}
+
+// RuleFunc 将普通函数适配为 Rule。
+type RuleFunc func(context.Context, *EventContext) (Match, bool)
+
+// Match 调用底层函数完成规则匹配。
+func (f RuleFunc) Match(ctx context.Context, c *EventContext) (Match, bool) {
+	return f(ctx, c)
+}
+
+func coreHandler(handler Handler) core.Handler {
+	if handler == nil {
+		return nil
+	}
+	return func(c *core.Context) error {
+		return handler(newEventContext(c))
+	}
+}
+
+func coreMiddleware(middleware []Middleware) []core.Middleware {
+	out := make([]core.Middleware, 0, len(middleware))
+	for _, item := range middleware {
+		if item == nil {
+			continue
+		}
+		item := item
+		out = append(out, func(next core.Handler) core.Handler {
+			wrapped := item(func(c *EventContext) error {
+				if c == nil {
+					return next(nil)
+				}
+				return next(c.UnsafeCoreContext())
+			})
+			return coreHandler(wrapped)
+		})
+	}
+	return out
+}
+
+func coreRules(rules []Rule) []core.Rule {
+	out := make([]core.Rule, 0, len(rules))
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		rule := rule
+		out = append(out, core.RuleFunc(func(ctx context.Context, c *core.Context) (Match, bool) {
+			return rule.Match(ctx, newEventContext(c))
+		}))
+	}
+	return out
 }
 
 func scopedName(pluginName, name string) string {

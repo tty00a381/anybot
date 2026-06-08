@@ -207,9 +207,10 @@ ctx.OnMessage(absdk.ToMe()).
 - `c.UserID()`、`c.GroupID()`、`c.SelfID()`：标准 ID。
 - `c.Target()`：自然回复目标。
 - `c.ReplyText(text)`、`c.Reply(chain)`：回复当前事件。
-- `c.Session()`、`c.UserSession()`、`c.GroupSession()`：会话存储。
 - `c.Pass()`：让出当前路由，继续匹配后续路由。
 - `c.Stop()`、`c.StopError()`：停止事件传播。
+
+插件状态应通过 `ctx.Session(c)`、`ctx.UserSession(c)`、`ctx.GroupSession(c)` 或 typed state helper 访问，这些入口会自动落入当前 `PluginID` 命名空间。`c.UnsafeCoreContext()` 是显式逃生口，只适合协议适配、诊断或迁移代码。
 
 ## 消息
 

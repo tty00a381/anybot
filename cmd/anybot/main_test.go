@@ -1634,6 +1634,31 @@ func TestDetectFrameworkDependencyFindsSourceRoot(t *testing.T) {
 	}
 }
 
+func TestDetectFrameworkDependencyPrefersLocalSourceOverPseudoVersion(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/tty00a381/anybot\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setTestModuleSourceRoot(t, root, true)
+	setTestBuildInfoMainVersion(t, "v1.0.1-0.20260608195323-a5dba06356cb")
+
+	dep := detectFrameworkDependency("github.com/tty00a381/anybot")
+	if dep.Version != "v0.0.0" || dep.Replace != root {
+		t.Fatalf("dependency = %#v", dep)
+	}
+}
+
+func TestDetectFrameworkDependencyUsesBuildVersionForModuleCacheSource(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "go", "pkg", "mod", "github.com", "tty00a381", "anybot@v1.2.3")
+	setTestModuleSourceRoot(t, root, true)
+	setTestBuildInfoMainVersion(t, "v1.2.3")
+
+	dep := detectFrameworkDependency("github.com/tty00a381/anybot")
+	if dep.Version != "v1.2.3" || dep.Replace != "" {
+		t.Fatalf("dependency = %#v", dep)
+	}
+}
+
 func TestBinaryPathHelpers(t *testing.T) {
 	absOutput := filepath.Join(string(filepath.Separator), "tmp", "bot")
 	tests := []struct {
@@ -1786,6 +1811,28 @@ func setTestFrameworkDependencies(t *testing.T, deps []moduleDependency) {
 	}
 	t.Cleanup(func() {
 		frameworkDependencies = old
+	})
+}
+
+func setTestBuildInfoMainVersion(t *testing.T, version string) {
+	t.Helper()
+	old := buildInfoMainVersion
+	buildInfoMainVersion = func() string {
+		return version
+	}
+	t.Cleanup(func() {
+		buildInfoMainVersion = old
+	})
+}
+
+func setTestModuleSourceRoot(t *testing.T, root string, ok bool) {
+	t.Helper()
+	old := moduleSourceRoot
+	moduleSourceRoot = func(string) (string, bool) {
+		return root, ok
+	}
+	t.Cleanup(func() {
+		moduleSourceRoot = old
 	})
 }
 

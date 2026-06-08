@@ -83,7 +83,7 @@ func (s State[T]) Load() (T, bool, error) {
 	if s.event == nil {
 		return out, false, ErrEventContextUnavailable
 	}
-	ok, err := s.session.LoadJSON(s.event.Context, s.key, &out)
+	ok, err := s.session.LoadJSON(s.event.Context(), s.key, &out)
 	return out, ok, err
 }
 
@@ -129,7 +129,7 @@ func (s State[T]) Save(value T, ttl time.Duration) error {
 	if s.event == nil {
 		return ErrEventContextUnavailable
 	}
-	return s.session.SaveJSON(s.event.Context, s.key, value, ttl)
+	return s.session.SaveJSON(s.event.Context(), s.key, value, ttl)
 }
 
 // Delete 删除状态。
@@ -143,5 +143,5 @@ func (s State[T]) Delete() error {
 	if s.event == nil {
 		return ErrEventContextUnavailable
 	}
-	return s.session.Delete(s.event.Context, s.key)
+	return s.session.Delete(s.event.Context(), s.key)
 }

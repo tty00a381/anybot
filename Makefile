@@ -1,4 +1,4 @@
-.PHONY: fmt fmt-check test race vet check release-files release-check
+.PHONY: fmt fmt-check test race vet check release-files release-e2e release-check
 
 GOFILES := $(shell find . -name '*.go' -not -path './.git/*')
 RELEASE_FILES := \
@@ -17,6 +17,7 @@ RELEASE_FILES := \
 	app/host/store.go \
 	cmd/anybot/main.go \
 	cmd/anybot/dev.go \
+	scripts/release-e2e.sh \
 	internal/scaffold/scaffold.go \
 	sdk/access.go \
 	sdk/config.go \
@@ -61,5 +62,8 @@ release-files:
 		test -s "$$file" || { echo "missing release file: $$file"; exit 1; }; \
 	done
 
-release-check: check release-files
+release-e2e:
+	sh scripts/release-e2e.sh
+
+release-check: check release-files release-e2e
 	@test -z "$$(git status --short)"

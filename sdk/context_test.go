@@ -32,7 +32,7 @@ func TestContextLoggerScopesPluginName(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
 	ctx := NewContext(
-		core.New(core.WithLogger(logger)),
+		NewApp(WithLogger(logger)),
 		Manifest{Name: "weather"},
 		WithPluginID(sdkTestWeatherID),
 	)
@@ -45,7 +45,7 @@ func TestContextLoggerScopesPluginName(t *testing.T) {
 func TestContextSendTextUsesActionClient(t *testing.T) {
 	client := &sdkTestClient{}
 	ctx := NewContext(
-		core.New(core.WithAdapter(sdkTestAdapter{client: client})),
+		NewApp(WithAdapter(sdkTestAdapter{client: client})),
 		Manifest{Name: "dialogue"},
 	)
 	receipt, err := ctx.SendText(context.Background(), ReplyTarget{Protocol: testProtocol, UserID: "42"}, "hello")
@@ -61,7 +61,7 @@ func TestContextSendTextUsesActionClient(t *testing.T) {
 }
 
 func TestContextUseIsPluginScoped(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	first := NewContext(app, Manifest{Name: "first"}, WithPluginID(sdkTestFirstID))
 	second := NewContext(app, Manifest{Name: "second"}, WithPluginID(sdkTestSecondID))
 	var scopedCalls int
@@ -95,7 +95,7 @@ func TestContextUseIsPluginScoped(t *testing.T) {
 }
 
 func TestContextUseGlobalRequiresHostGrant(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "ratelimit"}, WithPluginID(sdkTestRateLimitID))
 	if err := ctx.UseGlobal(Timeout(time.Second)); !errors.Is(err, ErrGlobalMiddlewareUnavailable) {
 		t.Fatalf("err = %v", err)
@@ -109,8 +109,8 @@ func TestContextUseGlobalRequiresHostGrant(t *testing.T) {
 func TestContextRouteNamesArePluginScoped(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
-	app := core.New(core.WithLogger(logger))
-	app.Use(core.Trace(logger))
+	app := NewApp(WithLogger(logger))
+	app.Use(Trace(logger))
 	ctx := NewContext(app, Manifest{Name: "weather"}, WithPluginID(sdkTestWeatherID))
 	ctx.Command("weather").Name("command").Handle(func(*EventContext) error {
 		return nil
@@ -126,8 +126,8 @@ func TestContextRouteNamesArePluginScoped(t *testing.T) {
 func TestContextRouteNamesKeepExplicitPluginPrefix(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
-	app := core.New(core.WithLogger(logger))
-	app.Use(core.Trace(logger))
+	app := NewApp(WithLogger(logger))
+	app.Use(Trace(logger))
 	ctx := NewContext(app, Manifest{Name: "weather"}, WithPluginID(sdkTestWeatherID))
 	ctx.Command("weather").Name(sdkTestWeatherID + ".command").Handle(func(*EventContext) error {
 		return nil
@@ -142,10 +142,10 @@ func TestContextRouteNamesKeepExplicitPluginPrefix(t *testing.T) {
 }
 
 func TestContextSessionsArePluginScoped(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	first := NewContext(app, Manifest{Name: "first"}, WithPluginID(sdkTestFirstID))
 	second := NewContext(app, Manifest{Name: "second"}, WithPluginID(sdkTestSecondID))
-	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
 	if err := first.UserSession(event).SaveJSON(context.Background(), "profile", map[string]string{"name": "first"}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 }
 
 func TestContextUsesPluginIDForStateNamespace(t *testing.T) {
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "天气"}, WithPluginID(sdkTestWeatherID))
 	if ctx.PluginID() != sdkTestWeatherID {
 		t.Fatalf("plugin id = %q", ctx.PluginID())
@@ -173,9 +173,9 @@ func TestTypedStateUsesEventContext(t *testing.T) {
 	type profile struct {
 		Name string `json:"name"`
 	}
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "profile"}, WithPluginID(sdkTestProfileID))
-	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
 	state := UserState[profile](ctx, event, "profile")
 	if value, ok, err := state.Load(); err != nil || ok || value.Name != "" {
 		t.Fatalf("empty load: value=%#v ok=%v err=%v", value, ok, err)
@@ -199,9 +199,9 @@ func TestTypedStateUpdateLoadsMutatesAndSaves(t *testing.T) {
 	type counter struct {
 		Count int `json:"count"`
 	}
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "counter"}, WithPluginID(sdkTestCounterID))
-	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
 	state := UserState[counter](ctx, event, "counter")
 	value, err := state.Update(counter{}, time.Hour, func(value *counter) error {
 		value.Count++
@@ -230,13 +230,13 @@ func TestTypedStateUnavailable(t *testing.T) {
 	if err := UserState[int](ctx, nil, "count").Save(1, 0); !errors.Is(err, ErrStoreUnavailable) {
 		t.Fatalf("err = %v", err)
 	}
-	ctx = NewContext(core.New(), Manifest{Name: "counter"}, WithPluginID("plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	ctx = NewContext(NewApp(), Manifest{Name: "counter"}, WithPluginID("plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	if err := UserState[int](ctx, nil, "count").Save(1, 0); !errors.Is(err, ErrEventContextUnavailable) {
 		t.Fatalf("err = %v", err)
 	}
-	app := core.New()
+	app := NewApp()
 	ctx = NewContext(app, Manifest{Name: "counter"}, WithPluginID("plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	event := core.NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
 	if _, _, err := UserState[int](ctx, event, "").Load(); !errors.Is(err, ErrStateKeyRequired) {
 		t.Fatalf("err = %v", err)
 	}
@@ -247,7 +247,7 @@ func TestTypedStateUnavailable(t *testing.T) {
 
 func TestContextConfigWritesThroughStore(t *testing.T) {
 	store := &sdkConfigStore{}
-	app := core.New()
+	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "Minecraft 管理"}, WithPluginID(sdkTestAdminID), WithConfigStore(store))
 	if !ctx.Config().Available() {
 		t.Fatal("config handle should be available")
@@ -272,7 +272,7 @@ func TestContextConfigWritesThroughStore(t *testing.T) {
 }
 
 func TestContextConfigUnavailableWithoutHostStore(t *testing.T) {
-	ctx := NewContext(core.New(), Manifest{Name: "minecraft"}, WithPluginID(sdkTestAdminID))
+	ctx := NewContext(NewApp(), Manifest{Name: "minecraft"}, WithPluginID(sdkTestAdminID))
 	if ctx.Config().Available() {
 		t.Fatal("config handle should be unavailable")
 	}
@@ -284,7 +284,7 @@ func TestContextConfigUnavailableWithoutHostStore(t *testing.T) {
 
 func TestContextDataDirUsesPluginNamespace(t *testing.T) {
 	root := t.TempDir()
-	ctx := NewContext(core.New(), Manifest{Name: "天气"}, WithPluginID("plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"), WithDataDir(root))
+	ctx := NewContext(NewApp(), Manifest{Name: "天气"}, WithPluginID("plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"), WithDataDir(root))
 	dir, err := ctx.DataDir()
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +304,7 @@ func TestContextDataDirUsesPluginNamespace(t *testing.T) {
 
 func TestContextDataDirUsesPluginID(t *testing.T) {
 	root := t.TempDir()
-	ctx := NewContext(core.New(), Manifest{Name: "weather"}, WithDataDir(root), WithPluginID("plg_bbbbbbbbbbbbbbbbbbbbbbbbbb"))
+	ctx := NewContext(NewApp(), Manifest{Name: "weather"}, WithDataDir(root), WithPluginID("plg_bbbbbbbbbbbbbbbbbbbbbbbbbb"))
 	dir, err := ctx.DataDir()
 	if err != nil {
 		t.Fatal(err)
@@ -316,14 +316,14 @@ func TestContextDataDirUsesPluginID(t *testing.T) {
 }
 
 func TestContextDataDirUnavailable(t *testing.T) {
-	ctx := NewContext(core.New(), Manifest{Name: "weather"})
+	ctx := NewContext(NewApp(), Manifest{Name: "weather"})
 	if _, err := ctx.DataDir(); !errors.Is(err, ErrDataDirUnavailable) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestContextDataDirRejectsUnsafePluginID(t *testing.T) {
-	ctx := NewContext(core.New(), Manifest{Name: "weather"}, WithPluginID("../weather"), WithDataDir(t.TempDir()))
+	ctx := NewContext(NewApp(), Manifest{Name: "weather"}, WithPluginID("../weather"), WithDataDir(t.TempDir()))
 	if _, err := ctx.DataDir(); err == nil {
 		t.Fatal("unsafe plugin id should be rejected")
 	}

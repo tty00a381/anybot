@@ -3,6 +3,7 @@ package onebot11
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,6 +41,14 @@ func TestClientActionError(t *testing.T) {
 	err := client.Call(context.Background(), "bad_action", nil, nil)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestClientSendRejectsUnsupportedTarget(t *testing.T) {
+	client := &Client{transport: &recordTransport{}}
+	_, err := client.Send(context.Background(), core.ReplyTarget{}, message.New(message.Text("hi")))
+	if !errors.Is(err, core.ErrReplyTargetUnavailable) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -30,7 +30,7 @@ func TestDefinitionFactoryBuildsConfiguredPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := core.New()
+	app := NewApp()
 	if err := Install(app, plugin); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestManifestNameIsDisplayOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallWith(core.New(), Environment{PluginID: testPluginID}, plugin); err != nil {
+	if err := InstallWith(NewApp(), Environment{PluginID: testPluginID}, plugin); err != nil {
 		t.Fatal(err)
 	}
 	if seen != "天气/每日" {
@@ -118,7 +118,7 @@ func TestDefinitionClonesDefaultConfig(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := Install(core.New(), plugin); err != nil {
+		if err := Install(NewApp(), plugin); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -148,7 +148,7 @@ func TestFactoryWithPluginIDLeavesManifestUntouched(t *testing.T) {
 	if manifest := plugin.Manifest(); manifest.Name != "weather" || manifest.Version != "1.0.0" {
 		t.Fatalf("plugin manifest = %#v", manifest)
 	}
-	app := core.New()
+	app := NewApp()
 	if err := InstallWith(app, Environment{PluginID: factory.PluginID}, plugin); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestDefinitionFactoryResolvesEnvConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Install(core.New(), plugin); err != nil {
+	if err := Install(NewApp(), plugin); err != nil {
 		t.Fatal(err)
 	}
 	if seen != "secret-token" {
@@ -210,7 +210,7 @@ func TestInstallWrapsSetupError(t *testing.T) {
 	if buildErr != nil {
 		t.Fatal(buildErr)
 	}
-	err := Install(core.New(), plugin)
+	err := Install(NewApp(), plugin)
 	if err == nil || !strings.Contains(err.Error(), "broken") || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v", err)
 	}

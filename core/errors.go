@@ -16,6 +16,8 @@ var (
 	ErrRateLimited = errors.New("anybot: rate limited")
 	// ErrActionUnavailable 表示动作客户端当前暂不可用，通常是连接尚未建立或已临时断开。
 	ErrActionUnavailable = errors.New("anybot: action unavailable")
+	// ErrReplyTargetUnavailable 表示当前事件或目标无法映射到可回复的会话。
+	ErrReplyTargetUnavailable = errors.New("anybot: reply target unavailable")
 )
 
 // PanicError 包装处理函数或中间件中恢复到的 panic 值和调用栈。

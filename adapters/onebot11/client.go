@@ -98,7 +98,7 @@ func (c *Client) Send(ctx context.Context, target core.ReplyTarget, chain messag
 		}, &out)
 		return core.MessageReceipt{ID: idString(out.MessageID.int64())}, err
 	default:
-		return core.MessageReceipt{}, fmt.Errorf("onebot11: no supported reply target")
+		return core.MessageReceipt{}, fmt.Errorf("%w: onebot11 has no supported reply target", core.ErrReplyTargetUnavailable)
 	}
 }
 

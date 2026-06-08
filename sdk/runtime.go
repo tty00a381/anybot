@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -95,6 +96,11 @@ func InstallDefaultWith(app *App, env Environment, definitions ...Definition) er
 
 // InstallWith 使用显式宿主能力安装 SDK 插件。
 func InstallWith(app *App, env Environment, plugins ...Plugin) error {
+	return InstallCoreWith(coreApp(app), env, plugins...)
+}
+
+// InstallCoreWith 将 SDK 插件安装到底层 core.App，供运行框架装配插件时使用。
+func InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error {
 	if app == nil {
 		return fmt.Errorf("anybot: app is nil")
 	}
@@ -110,7 +116,7 @@ func InstallWith(app *App, env Environment, plugins ...Plugin) error {
 			continue
 		}
 		manifest := plugin.Manifest()
-		if err := plugin.Setup(NewContext(app, manifest, WithEnvironment(env))); err != nil {
+		if err := plugin.Setup(newCoreContext(app, manifest, WithEnvironment(env))); err != nil {
 			if manifest.Name != "" {
 				return fmt.Errorf("anybot: 安装插件 %s 失败: %w", manifest.Name, err)
 			}
@@ -120,11 +126,10 @@ func InstallWith(app *App, env Environment, plugins ...Plugin) error {
 	return nil
 }
 
-// EventContext 是事件处理函数的上下文。
-type EventContext = core.Context
-
-// App 是底层运行时。常规插件应优先使用 sdk.Context 上的窄接口。
-type App = core.App
+// App 是 SDK 暴露的运行时句柄，常用于插件测试和嵌入式程序。
+type App struct {
+	runtime *core.App
+}
 
 // Option 调整底层运行时配置，常用于插件测试。
 type Option = core.Option
@@ -138,11 +143,8 @@ type EmitFunc = core.EmitFunc
 // Event 是协议标准化后的事件。
 type Event = core.Event
 
-// Handler 处理已经匹配成功的事件。
-type Handler = core.Handler
-
-// ErrorHandler 处理路由处理函数或中间件返回的错误。
-type ErrorHandler = core.ErrorHandler
+// ErrorHandler 处理插件路由处理函数或中间件返回的错误。
+type ErrorHandler func(*EventContext, error)
 
 // ObserverHandler 异步观察事件，不参与路由控制。
 type ObserverHandler = core.ObserverHandler
@@ -150,17 +152,8 @@ type ObserverHandler = core.ObserverHandler
 // Hook 是 App 生命周期钩子函数。
 type Hook = core.Hook
 
-// Middleware 包装处理函数。
-type Middleware = core.Middleware
-
 // Match 描述规则匹配结果。
 type Match = core.Match
-
-// Rule 判断路由是否应处理当前事件。
-type Rule = core.Rule
-
-// RuleFunc 将普通函数适配为 Rule。
-type RuleFunc = core.RuleFunc
 
 // Store 是会话存储接口。
 type Store = core.Store
@@ -204,6 +197,8 @@ type AdapterStateHook = core.AdapterStateHook
 var (
 	// ErrActionUnavailable 表示动作客户端当前暂不可用。
 	ErrActionUnavailable = core.ErrActionUnavailable
+	// ErrReplyTargetUnavailable 表示当前事件或目标无法映射到可回复的会话。
+	ErrReplyTargetUnavailable = core.ErrReplyTargetUnavailable
 	// ErrPass 表示当前路由主动让出处理权。
 	ErrPass = core.ErrPass
 	// ErrStop 表示当前事件应停止向后续路由传播。
@@ -221,7 +216,7 @@ func NewMemoryStore() *MemoryStore { return core.NewMemoryStore() }
 func NewFileStore(path string) (*FileStore, error) { return core.NewFileStore(path) }
 
 // NewApp 创建测试或嵌入式运行时。常规插件安装逻辑应使用 Context 上的窄接口。
-func NewApp(opts ...Option) *App { return core.New(opts...) }
+func NewApp(opts ...Option) *App { return &App{runtime: core.New(opts...)} }
 
 // WithAdapter 配置运行时使用的协议适配器。
 func WithAdapter(adapter Adapter) Option { return core.WithAdapter(adapter) }
@@ -229,109 +224,126 @@ func WithAdapter(adapter Adapter) Option { return core.WithAdapter(adapter) }
 // WithStore 配置测试或嵌入式运行时使用的会话存储。
 func WithStore(store Store) Option { return core.WithStore(store) }
 
+// WithLogger 配置测试或嵌入式运行时使用的日志器。
+func WithLogger(logger *slog.Logger) Option { return core.WithLogger(logger) }
+
 // WithSuperUsers 配置测试或嵌入式运行时的超级用户 ID。
 func WithSuperUsers(ids ...string) Option { return core.WithSuperUsers(ids...) }
 
 // NewTestContext 创建测试用事件上下文。
-func NewTestContext(app *App, event *Event) *EventContext { return core.NewTestContext(app, event) }
+func NewTestContext(app *App, event *Event) *EventContext {
+	return newEventContext(core.NewTestContext(coreApp(app), event))
+}
 
 // NewSession 创建指定键前缀下的会话视图。
 func NewSession(store Store, key string) *Session { return core.NewSession(store, key) }
 
 // Any 匹配所有事件。
-func Any() Rule { return core.Any() }
+func Any() Rule { return wrapRule(core.Any()) }
 
 // All 要求所有规则都匹配。
-func All(rules ...Rule) Rule { return core.All(rules...) }
+func All(rules ...Rule) Rule { return wrapRule(core.All(coreRules(rules)...)) }
 
 // AnyOf 在任意规则匹配时通过。
-func AnyOf(rules ...Rule) Rule { return core.AnyOf(rules...) }
+func AnyOf(rules ...Rule) Rule { return wrapRule(core.AnyOf(coreRules(rules)...)) }
 
 // Not 在规则不匹配时通过。
-func Not(rule Rule) Rule { return core.Not(rule) }
+func Not(rule Rule) Rule {
+	rules := coreRules([]Rule{rule})
+	if len(rules) == 0 {
+		return wrapRule(core.Not(nil))
+	}
+	return wrapRule(core.Not(rules[0]))
+}
 
 // EventType 匹配标准化事件类型。
-func EventType(kind string) Rule { return core.EventType(kind) }
+func EventType(kind string) Rule { return wrapRule(core.EventType(kind)) }
 
 // DetailType 匹配标准化事件细分类型。
-func DetailType(kind string) Rule { return core.DetailType(kind) }
+func DetailType(kind string) Rule { return wrapRule(core.DetailType(kind)) }
 
 // MessageEvent 匹配消息事件。
-func MessageEvent() Rule { return core.MessageEvent() }
+func MessageEvent() Rule { return wrapRule(core.MessageEvent()) }
 
 // Group 匹配群消息。
-func Group() Rule { return core.Group() }
+func Group() Rule { return wrapRule(core.Group()) }
 
 // Private 匹配私聊消息。
-func Private() Rule { return core.Private() }
+func Private() Rule { return wrapRule(core.Private()) }
 
 // FromUser 匹配指定发送者 ID。
-func FromUser(ids ...any) Rule { return core.FromUser(ids...) }
+func FromUser(ids ...any) Rule { return wrapRule(core.FromUser(ids...)) }
 
 // FromSelf 匹配由当前机器人账号自己发送的消息。
-func FromSelf() Rule { return core.FromSelf() }
+func FromSelf() Rule { return wrapRule(core.FromSelf()) }
 
 // NotFromSelf 排除当前机器人账号自己发送的消息。
-func NotFromSelf() Rule { return core.NotFromSelf() }
+func NotFromSelf() Rule { return wrapRule(core.NotFromSelf()) }
 
 // InGroup 匹配指定群 ID。
-func InGroup(ids ...any) Rule { return core.InGroup(ids...) }
+func InGroup(ids ...any) Rule { return wrapRule(core.InGroup(ids...)) }
 
 // Mentioned 匹配提及指定用户的消息；未传 ID 时匹配任意提及。
-func Mentioned(ids ...any) Rule { return core.Mentioned(ids...) }
+func Mentioned(ids ...any) Rule { return wrapRule(core.Mentioned(ids...)) }
 
 // ToMe 匹配提及机器人或私聊消息。
-func ToMe() Rule { return core.ToMe() }
+func ToMe() Rule { return wrapRule(core.ToMe()) }
 
 // Contains 匹配包含指定文本的消息。
-func Contains(substr string) Rule { return core.Contains(substr) }
+func Contains(substr string) Rule { return wrapRule(core.Contains(substr)) }
 
 // Prefix 匹配指定前缀的消息。
-func Prefix(prefix string) Rule { return core.Prefix(prefix) }
+func Prefix(prefix string) Rule { return wrapRule(core.Prefix(prefix)) }
 
 // CommandRule 使用默认前缀匹配命令。
-func CommandRule(names ...string) Rule { return core.CommandRule(names...) }
+func CommandRule(names ...string) Rule { return wrapRule(core.CommandRule(names...)) }
 
 // CommandWithPrefixes 使用显式前缀集合匹配命令。
 func CommandWithPrefixes(prefixes []string, names ...string) Rule {
-	return core.CommandWithPrefixes(prefixes, names...)
+	return wrapRule(core.CommandWithPrefixes(prefixes, names...))
 }
 
 // RegexRule 使用正则表达式字符串匹配事件文本。
-func RegexRule(pattern string) Rule { return core.RegexRule(pattern) }
+func RegexRule(pattern string) Rule { return wrapRule(core.RegexRule(pattern)) }
 
 // RegexpRule 使用已编译的正则表达式匹配事件文本。
-func RegexpRule(re *regexp.Regexp) Rule { return core.RegexpRule(re) }
+func RegexpRule(re *regexp.Regexp) Rule { return wrapRule(core.RegexpRule(re)) }
 
 // RequireSuperUser 只允许框架级超级用户继续执行。
-func RequireSuperUser() Middleware { return core.RequireSuperUser() }
+func RequireSuperUser() Middleware { return wrapMiddleware(core.RequireSuperUser()) }
 
 // Recover 捕获处理链中的 panic。
-func Recover(loggers ...*slog.Logger) Middleware { return core.Recover(loggers...) }
+func Recover(loggers ...*slog.Logger) Middleware { return wrapMiddleware(core.Recover(loggers...)) }
 
 // Trace 记录路由处理耗时和事件关键信息。
-func Trace(loggers ...*slog.Logger) Middleware { return core.Trace(loggers...) }
+func Trace(loggers ...*slog.Logger) Middleware { return wrapMiddleware(core.Trace(loggers...)) }
 
 // Timeout 为后续处理函数派生带超时的 context。
-func Timeout(timeout time.Duration) Middleware { return core.Timeout(timeout) }
+func Timeout(timeout time.Duration) Middleware { return wrapMiddleware(core.Timeout(timeout)) }
 
 // OnlyPrivate 仅允许私聊消息进入后续处理链。
-func OnlyPrivate() Middleware { return core.OnlyPrivate() }
+func OnlyPrivate() Middleware { return wrapMiddleware(core.OnlyPrivate()) }
 
 // OnlyGroup 仅允许群消息进入后续处理链。
-func OnlyGroup() Middleware { return core.OnlyGroup() }
+func OnlyGroup() Middleware { return wrapMiddleware(core.OnlyGroup()) }
 
 // SuperUser 仅允许指定用户进入后续处理链。
-func SuperUser(ids ...any) Middleware { return core.SuperUser(ids...) }
+func SuperUser(ids ...any) Middleware { return wrapMiddleware(core.SuperUser(ids...)) }
 
 // RateLimit 按会话限制事件处理频率。
 func RateLimit(limit int, window time.Duration) Middleware {
-	return core.RateLimit(limit, window)
+	return wrapMiddleware(core.RateLimit(limit, window))
 }
 
 // RateLimitBy 使用自定义键做进程内限速。
 func RateLimitBy(limit int, window time.Duration, keyFunc func(*EventContext) string) Middleware {
-	return core.RateLimitBy(limit, window, keyFunc)
+	var coreKeyFunc func(*core.Context) string
+	if keyFunc != nil {
+		coreKeyFunc = func(c *core.Context) string {
+			return keyFunc(newEventContext(c))
+		}
+	}
+	return wrapMiddleware(core.RateLimitBy(limit, window, coreKeyFunc))
 }
 
 // TaskImmediate 让周期任务启动后立即执行一次。
@@ -339,3 +351,71 @@ func TaskImmediate() TaskOption { return core.TaskImmediate() }
 
 // TaskCritical 让任务失败时停止 App.Run，并把任务错误作为运行错误返回。
 func TaskCritical() TaskOption { return core.TaskCritical() }
+
+// Runtime 返回底层 core.App，供测试、嵌入式程序或框架适配代码使用。
+func (a *App) Runtime() *core.App {
+	return coreApp(a)
+}
+
+// Dispatch 将标准化事件直接投递给运行时。
+func (a *App) Dispatch(ctx context.Context, event *Event) error {
+	if a == nil || a.runtime == nil {
+		return fmt.Errorf("anybot: app is nil")
+	}
+	return a.runtime.Dispatch(ctx, event)
+}
+
+// Use 注册全局中间件。
+func (a *App) Use(middleware ...Middleware) {
+	if a != nil && a.runtime != nil {
+		a.runtime.Use(coreMiddleware(middleware)...)
+	}
+}
+
+// OnError 注册错误处理器。
+func (a *App) OnError(handler ErrorHandler) {
+	if a == nil || a.runtime == nil || handler == nil {
+		return
+	}
+	a.runtime.OnError(func(c *core.Context, err error) {
+		handler(newEventContext(c), err)
+	})
+}
+
+// OnMessage 注册消息事件路由。
+func (a *App) OnMessage(rules ...Rule) *Route {
+	if a == nil || a.runtime == nil {
+		return nil
+	}
+	return newRoute(nil, a.runtime.OnMessage(coreRules(rules)...))
+}
+
+// Command 注册命令路由。
+func (a *App) Command(names ...string) *Route {
+	if a == nil || a.runtime == nil {
+		return nil
+	}
+	return newRoute(nil, a.runtime.Command(names...))
+}
+
+func coreApp(app *App) *core.App {
+	if app == nil {
+		return nil
+	}
+	return app.runtime
+}
+
+func wrapRule(rule core.Rule) Rule {
+	return RuleFunc(func(ctx context.Context, c *EventContext) (Match, bool) {
+		return rule.Match(ctx, c.UnsafeCoreContext())
+	})
+}
+
+func wrapMiddleware(middleware core.Middleware) Middleware {
+	return func(next Handler) Handler {
+		wrapped := middleware(coreHandler(next))
+		return func(c *EventContext) error {
+			return wrapped(c.UnsafeCoreContext())
+		}
+	}
+}

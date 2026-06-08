@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -324,15 +323,15 @@ func (c *Context) SessionBy(key string) *Session {
 // Reply 使用事件的自然目标发送消息。
 func (c *Context) Reply(chain message.Chain) (MessageReceipt, error) {
 	if c.event == nil {
-		return MessageReceipt{}, errors.New("anybot: cannot reply without event")
+		return MessageReceipt{}, fmt.Errorf("%w: cannot reply without event", ErrReplyTargetUnavailable)
 	}
 	client := c.Client()
 	if client == nil {
-		return MessageReceipt{}, errors.New("anybot: no action client configured")
+		return MessageReceipt{}, ErrActionUnavailable
 	}
 	target := c.event.Target()
 	if target.UserID == "" && target.GroupID == "" && target.ChannelID == "" {
-		return MessageReceipt{}, fmt.Errorf("anybot: cannot reply to event type %q", c.event.Type)
+		return MessageReceipt{}, fmt.Errorf("%w: event type %q", ErrReplyTargetUnavailable, c.event.Type)
 	}
 	return client.Send(c.Context, target, chain)
 }

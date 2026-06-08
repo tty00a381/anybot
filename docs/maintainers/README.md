@@ -254,7 +254,7 @@ SDK 是插件作者的主入口，不是 `core` 的简单转发。
 
 - `ctx.UseGlobal()`：只允许运行框架显式授权的策略插件使用，会影响所有插件和路由。
 - `sdk.NewApp`、`sdk.WithAdapter`、`sdk.InstallDefault`：适合嵌入式程序或底层测试；普通插件测试优先用 `sdk/testkit`。
-- `sdk.EventContext` 上的底层运行时访问方法：适合框架级插件或诊断代码。
+- `sdk.EventContext.UnsafeCoreContext()`：显式逃生口，只适合协议适配、诊断或迁移代码。
 
 新增 SDK 能力时先判断：
 
@@ -339,16 +339,7 @@ go test -race -count=1 ./core ./sdk ./app/host ./cmd/anybot ./adapters/onebot11
 涉及真实插件链路时，至少跑一遍：
 
 ```sh
-go build -o /tmp/anybot-cli ./cmd/anybot
-root=$(mktemp -d)
-/tmp/anybot-cli dev plugin buddy -dir "$root/buddy"
-(cd "$root/buddy" && go test ./...)
-/tmp/anybot-cli init -dir "$root/bot"
-/tmp/anybot-cli plugin add example.com/anybot-plugin/buddy -replace "$root/buddy" -dir "$root/bot"
-/tmp/anybot-cli plugin status -dir "$root/bot"
-/tmp/anybot-cli plugin enable <id> -dir "$root/bot"
-/tmp/anybot-cli build -dir "$root/bot" -o anybot-bot
-(cd "$root/bot" && ./anybot-bot plugin sync && ./anybot-bot plugin check && ./anybot-bot plugin inspect <id>)
+make release-e2e
 ```
 
 ## 设计检查清单

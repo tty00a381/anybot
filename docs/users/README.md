@@ -194,16 +194,22 @@ anybot plugins
 anybot plugin status
 ```
 
-安装外部插件：
+安装本地插件：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0
+anybot plugin add example.com/anybot-plugin/hello -replace ../anybot-hello
 ```
 
 常用参数：
 
 - `-version v0.1.0`：指定版本。也可写成 `module@version`。
 - `-replace ../plugin`：使用本地插件目录，适合本地开发和调试。
+
+安装已发布插件时去掉 `-replace` 并写入实际 module 版本：
+
+```sh
+anybot plugin add example.com/anybot-plugin/hello@v0.1.0
+```
 
 安装后先运行 `anybot plugin status` 查看首列 ID。CLI 支持使用唯一 ID 前缀操作插件；插件 Manifest 里的名称只用于展示。
 
@@ -311,12 +317,12 @@ anybot run
 
 ### 流程二：安装一个本地外部插件
 
-假设插件目录在 `../anybot-weather`，module 是 `github.com/acme/anybot-weather`。
+假设插件目录在 `../anybot-hello`，module 是 `example.com/anybot-plugin/hello`。
 
 1. 添加插件。
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather -replace ../anybot-weather
+anybot plugin add example.com/anybot-plugin/hello -replace ../anybot-hello
 ```
 
 2. 看状态。
