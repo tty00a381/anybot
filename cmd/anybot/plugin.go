@@ -17,10 +17,9 @@ func runPlugins(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	registry := host.DefaultRegistry()
-	for _, id := range registry.PluginIDs() {
-		factory, _ := registry.Factory(id)
-		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", id, factory.Info.Name, factory.Info.Version, factory.Info.Description)
+	for _, builtin := range host.BuiltinPlugins() {
+		info := builtin.Factory.Info
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", builtin.Source, info.Name, info.Version, info.Description)
 	}
 	return nil
 }
@@ -111,7 +110,7 @@ func runPluginAdd(args []string) (err error) {
 	defer func() {
 		joinRollbackError(&err, committed, rollback)
 	}()
-	lock, err := host.AddPluginModule(host.AddPluginOptions{
+	lock, err := host.AddPluginInstall(host.AddPluginInstallOptions{
 		Dir:     *dir,
 		ID:      pluginID,
 		Module:  modulePath,
@@ -180,7 +179,7 @@ func runPluginUpdate(args []string) (err error) {
 			return err
 		}
 	}
-	targetModule, lock, err := previewPluginModuleUpdate(*dir, target, host.UpdatePluginOptions{
+	targetModule, lock, err := previewPluginModuleUpdate(*dir, target, host.UpdatePluginInstallOptions{
 		Version:      *version,
 		Replace:      replacePath,
 		SetVersion:   setVersion,
@@ -189,6 +188,9 @@ func runPluginUpdate(args []string) (err error) {
 	})
 	if err != nil {
 		return err
+	}
+	if targetModule.Module == "" {
+		return fmt.Errorf("builtin plugin %s cannot be updated as a Go module", targetModule.ID)
 	}
 	updateVersion := *version
 	updateSetVersion := setVersion
@@ -208,7 +210,7 @@ func runPluginUpdate(args []string) (err error) {
 	defer func() {
 		joinRollbackError(&err, committed, rollback)
 	}()
-	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
+	updated, _, changed, err := host.UpdatePluginInstall(host.UpdatePluginInstallOptions{
 		Dir:          *dir,
 		ID:           targetModule.ID,
 		Version:      updateVersion,
@@ -267,7 +269,7 @@ func runPluginRemove(args []string) (err error) {
 	defer func() {
 		joinRollbackError(&err, committed, rollback)
 	}()
-	removed, _, err := host.RemovePluginModule(host.RemovePluginOptions{Dir: *dir, ID: pluginID})
+	removed, _, err := host.RemovePluginInstall(host.RemovePluginInstallOptions{Dir: *dir, ID: pluginID})
 	if err != nil {
 		return err
 	}
@@ -301,12 +303,18 @@ func runPluginList(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(lock.Plugins) == 0 {
+	var externals []host.PluginInstall
+	for _, item := range lock.Plugins {
+		if item.Module != "" {
+			externals = append(externals, item)
+		}
+	}
+	if len(externals) == 0 {
 		fmt.Fprintln(stdout, "外部插件：无")
 		return nil
 	}
 	fmt.Fprintln(stdout, "ID\t模块")
-	for _, item := range lock.Plugins {
+	for _, item := range externals {
 		fmt.Fprintf(stdout, "%s\t%s\n", host.ShortPluginID(item.ID), pluginModuleRef(item))
 	}
 	return nil
@@ -505,24 +513,24 @@ func removeCreatedPath(path string) error {
 	return err
 }
 
-func previewPluginModuleUpdate(dir, target string, opts host.UpdatePluginOptions) (host.PluginModule, host.PluginLock, error) {
+func previewPluginModuleUpdate(dir, target string, opts host.UpdatePluginInstallOptions) (host.PluginInstall, host.PluginLock, error) {
 	if dir == "" {
 		dir = "."
 	}
 	if opts.SetReplace && opts.ClearReplace {
-		return host.PluginModule{}, host.PluginLock{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
+		return host.PluginInstall{}, host.PluginLock{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
 	}
 	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
 	if err != nil {
-		return host.PluginModule{}, host.PluginLock{}, err
+		return host.PluginInstall{}, host.PluginLock{}, err
 	}
 	id, err := resolveLockPluginID(lock, target)
 	if err != nil {
-		return host.PluginModule{}, host.PluginLock{}, err
+		return host.PluginInstall{}, host.PluginLock{}, err
 	}
 	updated, ok := pluginModuleByID(lock, id)
 	if !ok {
-		return host.PluginModule{}, host.PluginLock{}, fmt.Errorf("plugin %s not found", id)
+		return host.PluginInstall{}, host.PluginLock{}, fmt.Errorf("plugin %s not found", id)
 	}
 	updated.ID = id
 	if opts.SetVersion {
@@ -573,13 +581,13 @@ func resolveLockPluginID(lock host.PluginLock, target string) (string, error) {
 	}
 }
 
-func pluginModuleByID(lock host.PluginLock, id string) (host.PluginModule, bool) {
+func pluginModuleByID(lock host.PluginLock, id string) (host.PluginInstall, bool) {
 	for _, item := range lock.Plugins {
 		if item.ID == id {
 			return item, true
 		}
 	}
-	return host.PluginModule{}, false
+	return host.PluginInstall{}, false
 }
 
 func pinPluginModuleVersion(module, version, replace string) (string, error) {
@@ -672,7 +680,10 @@ func stablePath(path string) (string, error) {
 	}
 }
 
-func pluginModuleRef(item host.PluginModule) string {
+func pluginModuleRef(item host.PluginInstall) string {
+	if item.Module == "" && item.Builtin != "" {
+		return "内置:" + item.Builtin
+	}
 	out := item.Module
 	if item.Version != "" {
 		out += "@" + item.Version
@@ -697,7 +708,7 @@ func runHostPluginCommand(args []string) error {
 		Output:     stdout,
 		ConfigPath: configPath,
 		LockPath:   filepath.Join(dir, host.PluginLockFile),
-		Registry:   host.DefaultRegistry(),
+		Registry:   host.EmptyRegistry(),
 	})
 }
 

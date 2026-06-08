@@ -24,20 +24,26 @@ type PluginStatus struct {
 	Available   bool
 }
 
-// PluginStatuses 合并注册表、外部插件锁和配置文件，生成稳定排序的插件状态。
+// PluginStatuses 合并注册表、插件安装锁和配置文件，生成稳定排序的插件状态。
 func PluginStatuses(cfg Config, registry absdk.Registry, lock PluginLock) []PluginStatus {
 	lock.applyDefaults()
 	statuses := map[string]PluginStatus{}
-	external := map[string]PluginModule{}
+	installs := map[string]PluginInstall{}
 	for _, item := range lock.Plugins {
 		if item.ID == "" {
 			continue
 		}
-		external[item.ID] = item
+		installs[item.ID] = item
+		source := "builtin"
+		module := ""
+		if item.Module != "" {
+			source = "external"
+			module = pluginModuleRef(item)
+		}
 		statuses[item.ID] = PluginStatus{
 			ID:     item.ID,
-			Source: "external",
-			Module: pluginModuleRef(item),
+			Source: source,
+			Module: module,
 		}
 	}
 	for _, id := range registry.PluginIDs() {
@@ -45,10 +51,13 @@ func PluginStatuses(cfg Config, registry absdk.Registry, lock PluginLock) []Plug
 		status := statuses[id]
 		status.ID = id
 		status.Name = factory.Info.Name
-		if _, ok := external[id]; ok {
-			status.Source = "external"
-		} else {
-			status.Source = "builtin"
+		if status.Source == "" {
+			if item, ok := installs[id]; ok && item.Module != "" {
+				status.Source = "external"
+				status.Module = pluginModuleRef(item)
+			} else {
+				status.Source = "registry"
+			}
 		}
 		status.Version = factory.Info.Version
 		status.Description = factory.Info.Description
@@ -111,14 +120,17 @@ func ResolvePluginID(cfg Config, registry absdk.Registry, lock PluginLock, targe
 
 func pluginTargetIDs(cfg Config, registry absdk.Registry, lock PluginLock, allowConfigured bool) []string {
 	seen := map[string]struct{}{}
-	for _, id := range registry.PluginIDs() {
-		seen[id] = struct{}{}
-	}
 	lock.applyDefaults()
 	for _, item := range lock.Plugins {
 		if item.ID != "" {
 			seen[item.ID] = struct{}{}
 		}
+	}
+	for _, id := range registry.PluginIDs() {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
 	}
 	if allowConfigured {
 		for id := range cfg.Plugins {
@@ -141,7 +153,7 @@ func ShortPluginID(id string) string {
 	return id[:pluginIDShortLength]
 }
 
-func pluginModuleRef(item PluginModule) string {
+func pluginModuleRef(item PluginInstall) string {
 	out := item.Module
 	if item.Version != "" {
 		out += "@" + item.Version
@@ -180,6 +192,8 @@ func sourceLabel(source string) string {
 		return "内置"
 	case "external":
 		return "外部"
+	case "registry":
+		return "注册表"
 	default:
 		return "配置"
 	}

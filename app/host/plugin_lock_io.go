@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadPluginLock 读取外部插件锁；文件不存在时返回空锁。
+// LoadPluginLock 读取插件安装锁；文件不存在时返回空锁。
 func LoadPluginLock(path string) (PluginLock, error) {
 	if path == "" {
 		path = PluginLockFile
@@ -33,7 +33,7 @@ func LoadPluginLock(path string) (PluginLock, error) {
 	return lock, nil
 }
 
-// SavePluginLock 写入外部插件锁。
+// SavePluginLock 写入插件安装锁。
 func SavePluginLock(path string, lock PluginLock) error {
 	if path == "" {
 		path = PluginLockFile

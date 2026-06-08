@@ -45,6 +45,7 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	}()
 	select {
 	case <-ctx.Done():
+		s.closeCurrentConn()
 		_ = server.Shutdown(context.Background())
 		err := <-errc
 		if err != nil {
@@ -88,11 +89,8 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 	defer func() {
 		info.State = ConnectionDisconnected
 		s.opts.emitConnection(ctx, info)
-		if s.peer.currentConn() == conn {
-			s.peer.setConn(nil)
-		}
+		s.peer.disconnectConn(conn, actionUnavailable("onebot11: reverse websocket disconnected"))
 		_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
-		s.peer.failPending(actionUnavailable("onebot11: reverse websocket disconnected"))
 	}()
 
 	for {
@@ -106,6 +104,13 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 		if err := s.peer.handleFrame(ctx, data, sink); err != nil {
 			logFrameError(s.opts.logger, err)
 		}
+	}
+}
+
+func (s *reverseWSServer) closeCurrentConn() {
+	conn := s.peer.currentConn()
+	if conn != nil {
+		_ = conn.CloseNow()
 	}
 }
 

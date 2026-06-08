@@ -30,7 +30,7 @@ type PluginInspect struct {
 	CheckDetail       string
 }
 
-// InspectPlugin 合并注册表、外部插件锁和配置文件，返回单个插件的可读视图。
+// InspectPlugin 合并注册表、插件安装锁和配置文件，返回单个插件的可读视图。
 func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, id string) (PluginInspect, error) {
 	if configPath == "" {
 		configPath = "anybot.yaml"

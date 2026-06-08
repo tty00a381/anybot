@@ -257,3 +257,93 @@ func TestReverseWSPendingCallFailsOnDisconnect(t *testing.T) {
 		t.Fatal("等待 pending action 失败超时")
 	}
 }
+
+func TestReverseWSOldConnectionDisconnectDoesNotFailNewPendingCall(t *testing.T) {
+	server := newReverseWSServer("127.0.0.1:0", newOptions(nil))
+	httpServer := httptest.NewServer(server.handler(func(context.Context, *Event) error {
+		return nil
+	}))
+	defer httpServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	url := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/"
+	oldConn, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newConn, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer newConn.Close(websocket.StatusNormalClosure, "done")
+
+	if err := oldConn.Close(websocket.StatusNormalClosure, "old done"); err != nil {
+		t.Fatal(err)
+	}
+	responses := make(chan *Response, 1)
+	errs := make(chan error, 1)
+	go func() {
+		response, err := server.CallRaw(ctx, "get_login_info", nil)
+		if err != nil {
+			errs <- err
+			return
+		}
+		responses <- response
+	}()
+
+	_, data, err := newConn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req struct {
+		Action string `json:"action"`
+		Echo   string `json:"echo"`
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Action != "get_login_info" || req.Echo == "" {
+		t.Fatalf("request = %#v", req)
+	}
+	resp := `{"status":"ok","retcode":0,"data":{"nickname":"bot"},"echo":"` + req.Echo + `"}`
+	if err := newConn.Write(ctx, websocket.MessageText, []byte(resp)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case response := <-responses:
+		var out struct {
+			Nick string `json:"nickname"`
+		}
+		if err := response.Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		if out.Nick != "bot" {
+			t.Fatalf("response = %#v", out)
+		}
+	case err := <-errs:
+		t.Fatal(err)
+	case <-ctx.Done():
+		t.Fatal("等待新连接动作响应超时")
+	}
+}
+
+func TestReverseWSStartClosesActiveConnectionOnCancel(t *testing.T) {
+	server := newReverseWSServer("127.0.0.1:0", newOptions(nil))
+	httpServer := httptest.NewServer(server.handler(func(context.Context, *Event) error {
+		return nil
+	}))
+	defer httpServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.closeCurrentConn()
+	_, _, err = conn.Read(ctx)
+	if err == nil {
+		t.Fatal("active connection should be closed")
+	}
+}

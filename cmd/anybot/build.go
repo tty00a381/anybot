@@ -178,6 +178,9 @@ func syncFrameworkGoMod(dir string) error {
 		if version == "" {
 			version = "v0.0.0"
 		}
+		if dep.Replace == "" && version == "v0.0.0" {
+			return fmt.Errorf("构建生成宿主需要可解析的 AnyBot 发布版本；请使用发布版 anybot，或在源码仓库中运行以写入本地 replace")
+		}
 		if err := commandRunner(dir, "go", "mod", "edit", "-require="+dep.Module+"@"+version); err != nil {
 			return err
 		}
@@ -256,8 +259,11 @@ func moduleSourceRoot(module string) (string, bool) {
 	return "", false
 }
 
-func syncPluginGoMod(dir string, plugin host.PluginModule) error {
-	if err := host.ValidatePluginModule(plugin); err != nil {
+func syncPluginGoMod(dir string, plugin host.PluginInstall) error {
+	if plugin.Module == "" {
+		return nil
+	}
+	if err := host.ValidatePluginInstallSource(plugin); err != nil {
 		return err
 	}
 	version := plugin.Version
@@ -294,7 +300,10 @@ func pluginReplacePlaceholderVersion(module string) string {
 	return version
 }
 
-func dropPluginGoMod(dir string, plugin host.PluginModule) error {
+func dropPluginGoMod(dir string, plugin host.PluginInstall) error {
+	if plugin.Module == "" {
+		return nil
+	}
 	if err := commandRunner(dir, "go", "mod", "edit", "-droprequire="+plugin.Module); err != nil {
 		return err
 	}

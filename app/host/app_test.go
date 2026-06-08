@@ -30,10 +30,10 @@ func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 		t.Fatal("disabled plugin should not be installed")
 		return nil
 	})
-	if err := registry.Register(help.Factory().WithPluginID("help")); err != nil {
+	if err := registry.Register(help.Factory().WithPluginID(testHelpID)); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(echo.Factory().WithPluginID("echo")); err != nil {
+	if err := registry.Register(echo.Factory().WithPluginID(testEchoID)); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Config{
@@ -42,8 +42,8 @@ func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
 		},
 		Plugins: map[string]PluginEntry{
-			"help": {Enabled: &enabled},
-			"echo": {Enabled: &disabled},
+			testHelpID: {Enabled: &enabled},
+			testEchoID: {Enabled: &disabled},
 		},
 	}
 	app, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
@@ -60,7 +60,7 @@ func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(names, []string{"help"}) {
+	if !reflect.DeepEqual(names, []string{testHelpID}) {
 		t.Fatalf("enabled = %#v", names)
 	}
 }
@@ -74,10 +74,11 @@ func TestNewAppInjectsSuperUsers(t *testing.T) {
 		},
 		Security: SecurityConfig{SuperUsers: []string{"42"}},
 		Plugins: map[string]PluginEntry{
-			"admin": {Enabled: &enabled},
+			testAdminID: {Enabled: &enabled},
 		},
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	lock := builtinLock(builtinInstall(testAdminID, "admin"))
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState(), WithPluginLock(lock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,14 +95,14 @@ func TestNewAppDoesNotGrantGlobalMiddlewareToOrdinaryPlugins(t *testing.T) {
 			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
 		},
 		Plugins: map[string]PluginEntry{
-			"policy": {Enabled: &enabled},
+			testWeatherID: {Enabled: &enabled},
 		},
 	}
 	registry := absdk.NewRegistry()
 	module := absdk.Define(absdk.Manifest{Name: "policy"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
 		return ctx.UseGlobal(absdk.Timeout(0))
 	})
-	if err := registry.Register(module.Factory().WithPluginID("policy")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
 		t.Fatal(err)
 	}
 	_, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
@@ -118,10 +119,11 @@ func TestNewAppGrantsGlobalMiddlewareToBuiltinRatelimit(t *testing.T) {
 			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
 		},
 		Plugins: map[string]PluginEntry{
-			"ratelimit": {Enabled: &enabled},
+			testRateLimitID: {Enabled: &enabled},
 		},
 	}
-	if _, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState()); err != nil {
+	lock := builtinLock(builtinInstall(testRateLimitID, "ratelimit"))
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState(), WithPluginLock(lock)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -137,7 +139,7 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pluginPath := filepath.Join(dir, "plugins.d", "minecraft.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", testWeatherID+".yaml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +154,7 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 	module := absdk.Define(absdk.Manifest{Name: "minecraft"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
 		return ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
 	})
-	if err := registry.Register(module.Factory().WithPluginID("minecraft")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewApp(cfg, registry, slog.Default(), WithConfigPath(configPath)); err != nil {
@@ -175,7 +177,7 @@ func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pluginPath := filepath.Join(dir, "plugins.d", "memory.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", testMemoryID+".yaml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +192,7 @@ func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 	module := absdk.Define(absdk.Manifest{Name: "memory"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
 		return ctx.Config().Set(context.Background(), "state.path", "memory.db")
 	})
-	if err := registry.Register(module.Factory().WithPluginID("memory")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewApp(cfg, registry, slog.Default()); err != nil {
@@ -218,7 +220,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +231,7 @@ plugins: {}
 	if _, err := os.Stat(storePath); err != nil {
 		t.Fatal(err)
 	}
-	next, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	next, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +260,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +288,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default())
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +320,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -341,7 +343,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := NewApp(cfg, DefaultRegistry(), slog.Default(), WithRuntimeState())
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +367,7 @@ func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
     type: reverse_ws
     listen: "127.0.0.1:0"
 plugins:
-  memory:
+  `+testMemoryID+`:
     enabled: true
     config: {}
 `), 0o644); err != nil {
@@ -381,7 +383,7 @@ plugins:
 		installed = true
 		return nil
 	})
-	if err := registry.Register(module.Factory().WithPluginID("memory")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
 	}
 	if err := ValidateConfig(cfg, registry); err != nil {
@@ -415,7 +417,7 @@ plugins: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateConfig(cfg, DefaultRegistry()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
+	if err := ValidateConfig(cfg, EmptyRegistry()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -433,7 +435,7 @@ adapter:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "memory", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig(configPath)
@@ -447,13 +449,13 @@ adapter:
 		dataDir, err = ctx.DataDir()
 		return err
 	})
-	if err := registry.Register(module.Factory().WithPluginID("memory")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState()); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(dir, "state", "plugins", "memory")
+	want := filepath.Join(dir, "state", "plugins", testMemoryID)
 	if dataDir != want {
 		t.Fatalf("dataDir = %q, want %q", dataDir, want)
 	}
@@ -473,7 +475,7 @@ func TestNewAppUsesPluginIDForDataDir(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "mc_admin", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testAdminID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig(configPath)
@@ -487,13 +489,13 @@ func TestNewAppUsesPluginIDForDataDir(t *testing.T) {
 		dataDir, err = ctx.DataDir()
 		return err
 	})
-	if err := registry.Register(module.Factory().WithPluginID("mc_admin")); err != nil {
+	if err := registry.Register(module.Factory().WithPluginID(testAdminID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState()); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(dir, ".anybot", "plugins", "mc_admin")
+	want := filepath.Join(dir, ".anybot", "plugins", testAdminID)
 	if dataDir != want {
 		t.Fatalf("dataDir = %q, want %q", dataDir, want)
 	}
@@ -505,13 +507,13 @@ func TestNewAppRejectsUnknownPlugin(t *testing.T) {
 			Protocol:  "onebot11",
 			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
 		},
-		Plugins: map[string]PluginEntry{"missing": {}},
+		Plugins: map[string]PluginEntry{testGhostID: {}},
 	}
-	if _, err := NewApp(cfg, DefaultRegistry(), slog.Default()); err == nil {
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default()); err == nil {
 		t.Fatal("unknown plugin should be rejected")
 	} else {
 		var unknown UnknownPluginError
-		if !errors.As(err, &unknown) || unknown.ID != "missing" {
+		if !errors.As(err, &unknown) || unknown.ID != testGhostID {
 			t.Fatalf("err = %#v", err)
 		}
 	}

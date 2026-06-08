@@ -195,6 +195,39 @@ func TestSocketPeerUnavailableError(t *testing.T) {
 	}
 }
 
+func TestSocketPeerDisconnectOnlyFailsCurrentConnectionPending(t *testing.T) {
+	peer := newSocketPeer(nil)
+	oldConn := &websocket.Conn{}
+	newConn := &websocket.Conn{}
+	peer.setConn(newConn)
+	ch := make(chan pendingResult, 1)
+	peer.pending["echo-1"] = ch
+
+	if peer.disconnectConn(oldConn, errors.New("old disconnected")) {
+		t.Fatal("old connection should not disconnect current peer")
+	}
+	select {
+	case result := <-ch:
+		t.Fatalf("pending should remain active: %#v", result)
+	default:
+	}
+	if peer.currentConn() != newConn {
+		t.Fatal("new connection should remain current")
+	}
+
+	if !peer.disconnectConn(newConn, errors.New("new disconnected")) {
+		t.Fatal("current connection should be disconnected")
+	}
+	select {
+	case result := <-ch:
+		if result.err == nil || result.err.Error() != "new disconnected" {
+			t.Fatalf("result = %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending action was not failed")
+	}
+}
+
 func TestSocketPeerAcceptsHeartbeatStatusObject(t *testing.T) {
 	peer := newSocketPeer(nil)
 	events := make(chan *Event, 1)

@@ -43,6 +43,28 @@ func TestRouterPriorityMiddlewareAndStop(t *testing.T) {
 	}
 }
 
+func TestTimeoutPreservesStopPropagation(t *testing.T) {
+	app := New()
+	app.Use(Timeout(time.Second))
+	var calls []string
+	app.OnMessage(Any()).Handle(func(c *Context) error {
+		calls = append(calls, "first")
+		c.Stop()
+		return nil
+	})
+	app.OnMessage(Any()).Handle(func(*Context) error {
+		calls = append(calls, "second")
+		return nil
+	})
+
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", Text: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls, []string{"first"}) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
 func TestGroupMiddlewareAppliesToExistingRoutes(t *testing.T) {
 	app := New()
 	group := app.Group()

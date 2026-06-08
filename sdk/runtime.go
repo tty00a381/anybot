@@ -100,6 +100,11 @@ func InstallWith(app *App, env Environment, plugins ...Plugin) error {
 	}
 	env.DataDir = strings.TrimSpace(env.DataDir)
 	env.PluginID = strings.TrimSpace(env.PluginID)
+	if env.PluginID != "" {
+		if err := ValidatePluginID(env.PluginID); err != nil {
+			return err
+		}
+	}
 	for _, plugin := range plugins {
 		if plugin == nil {
 			continue

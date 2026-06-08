@@ -13,14 +13,14 @@ import (
 func TestEnsurePluginConfigEntryAddsDisabledPlaceholder(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	changed, err := EnsurePluginConfigEntry(path, "weather")
+	changed, err := EnsurePluginConfigEntry(path, testWeatherID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
 		t.Fatal("entry should be added")
 	}
-	out := readFile(t, pluginConfigPath(dir, "weather"))
+	out := readFile(t, pluginConfigPath(dir, testWeatherID))
 	if !strings.Contains(out, "enabled: false") || !strings.Contains(out, "config: {}") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -28,7 +28,7 @@ func TestEnsurePluginConfigEntryAddsDisabledPlaceholder(t *testing.T) {
 	if strings.Contains(main, "weather:") {
 		t.Fatalf("main config should not contain plugin entry:\n%s", main)
 	}
-	changed, err = EnsurePluginConfigEntry(path, "weather")
+	changed, err = EnsurePluginConfigEntry(path, testWeatherID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,21 +40,21 @@ func TestEnsurePluginConfigEntryAddsDisabledPlaceholder(t *testing.T) {
 func TestSetPluginEnabled(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "weather", "enabled: false\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testWeatherID, "enabled: false\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := SetPluginEnabled(path, "weather", true)
+	changed, err := SetPluginEnabled(path, testWeatherID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
 		t.Fatal("enable should change config")
 	}
-	out := readFile(t, pluginConfigPath(dir, "weather"))
+	out := readFile(t, pluginConfigPath(dir, testWeatherID))
 	if !strings.Contains(out, "enabled: true") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
-	changed, err = SetPluginEnabled(path, "weather", true)
+	changed, err = SetPluginEnabled(path, testWeatherID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,10 +66,10 @@ func TestSetPluginEnabled(t *testing.T) {
 func TestSetPluginEnabledCreatesEntry(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if _, err := SetPluginEnabled(path, "weather", true); err != nil {
+	if _, err := SetPluginEnabled(path, testWeatherID, true); err != nil {
 		t.Fatal(err)
 	}
-	out := readFile(t, pluginConfigPath(dir, "weather"))
+	out := readFile(t, pluginConfigPath(dir, testWeatherID))
 	if !strings.Contains(out, "enabled: true") || !strings.Contains(out, "config: {}") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -78,14 +78,14 @@ func TestSetPluginEnabledCreatesEntry(t *testing.T) {
 func TestSetPluginEnabledUpdatesExistingYMLConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	pluginPath := filepath.Join(dir, "plugins.d", "weather.yml")
+	pluginPath := filepath.Join(dir, "plugins.d", testWeatherID+".yml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(pluginPath, []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := SetPluginEnabled(path, "weather", true)
+	changed, err := SetPluginEnabled(path, testWeatherID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestSetPluginEnabledUpdatesExistingYMLConfig(t *testing.T) {
 	if !strings.Contains(out, "enabled: true") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
-	if _, err := os.Stat(pluginConfigPath(dir, "weather")); !os.IsNotExist(err) {
+	if _, err := os.Stat(pluginConfigPath(dir, testWeatherID)); !os.IsNotExist(err) {
 		t.Fatalf("new .yaml config should not be created: %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestParsePluginConfigChangesRejectsMixedSetAndReset(t *testing.T) {
 func TestSetPluginConfigValues(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	changed, err := SetPluginConfigValues(path, "help", []PluginConfigAssignment{
+	changed, err := SetPluginConfigValues(path, testHelpID, []PluginConfigAssignment{
 		{Path: []string{"command"}, Value: yamlScalar("docs")},
 		{Path: []string{"lines"}, Value: yamlSequence("a", "b")},
 	})
@@ -150,7 +150,7 @@ func TestSetPluginConfigValues(t *testing.T) {
 	if !changed {
 		t.Fatal("config should change")
 	}
-	out := readFile(t, pluginConfigPath(dir, "help"))
+	out := readFile(t, pluginConfigPath(dir, testHelpID))
 	if !strings.Contains(out, "command: docs") || !strings.Contains(out, "- a") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -159,7 +159,7 @@ func TestSetPluginConfigValues(t *testing.T) {
 func TestRemovePluginConfigValues(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "ai", `enabled: true
+	if err := writePluginConfigFile(dir, testAdminID, `enabled: true
 config:
   provider:
     model: custom
@@ -169,20 +169,20 @@ config:
 `); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := RemovePluginConfigValues(path, "ai", [][]string{{"provider", "model"}, {"history", "enabled"}})
+	changed, err := RemovePluginConfigValues(path, testAdminID, [][]string{{"provider", "model"}, {"history", "enabled"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
 		t.Fatal("reset should remove configured values")
 	}
-	out := readFile(t, pluginConfigPath(dir, "ai"))
+	out := readFile(t, pluginConfigPath(dir, testAdminID))
 	if strings.Contains(out, "model: custom") ||
 		strings.Contains(out, "history:") ||
 		!strings.Contains(out, "timeout: 30s") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
-	changed, err = RemovePluginConfigValues(path, "ai", [][]string{{"provider", "model"}})
+	changed, err = RemovePluginConfigValues(path, testAdminID, [][]string{{"provider", "model"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,13 +194,13 @@ config:
 func TestRemovePluginConfigValuesRejectsScalarParent(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "help", `enabled: true
+	if err := writePluginConfigFile(dir, testHelpID, `enabled: true
 config:
   command: docs
 `); err != nil {
 		t.Fatal(err)
 	}
-	_, err := RemovePluginConfigValues(path, "help", [][]string{{"command", "name"}})
+	_, err := RemovePluginConfigValues(path, testHelpID, [][]string{{"command", "name"}})
 	if err == nil || !strings.Contains(err.Error(), "command must be a YAML mapping") {
 		t.Fatalf("err = %v", err)
 	}
@@ -209,20 +209,20 @@ config:
 func TestRemovePluginConfigEntry(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "weather", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testWeatherID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := RemovePluginConfigEntry(path, "weather")
+	changed, err := RemovePluginConfigEntry(path, testWeatherID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
 		t.Fatal("entry should be removed")
 	}
-	if _, err := os.Stat(pluginConfigPath(dir, "weather")); !os.IsNotExist(err) {
+	if _, err := os.Stat(pluginConfigPath(dir, testWeatherID)); !os.IsNotExist(err) {
 		t.Fatalf("plugin config should be removed: %v", err)
 	}
-	changed, err = RemovePluginConfigEntry(path, "weather")
+	changed, err = RemovePluginConfigEntry(path, testWeatherID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,31 +234,32 @@ func TestRemovePluginConfigEntry(t *testing.T) {
 func TestSyncPluginConfigEntriesUsesRegistryDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "echo", "enabled: false\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testEchoID, "enabled: false\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "help", `enabled: true
+	if err := writePluginConfigFile(dir, testHelpID, `enabled: true
 config:
   command: custom
 `); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := SyncPluginConfigEntries(path, DefaultRegistry())
+	registry := testBuiltinRegistry(t, builtinInstall(testEchoID, "echo"), builtinInstall(testHelpID, "help"))
+	changed, err := SyncPluginConfigEntries(path, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if changed != 2 {
 		t.Fatalf("changed = %d", changed)
 	}
-	echo := readFile(t, pluginConfigPath(dir, "echo"))
+	echo := readFile(t, pluginConfigPath(dir, testEchoID))
 	if !strings.Contains(echo, "command: echo") {
 		t.Fatalf("echo default missing:\n%s", echo)
 	}
-	help := readFile(t, pluginConfigPath(dir, "help"))
+	help := readFile(t, pluginConfigPath(dir, testHelpID))
 	if !strings.Contains(help, "command: custom") || !strings.Contains(help, "lines:") {
 		t.Fatalf("help config:\n%s", help)
 	}
-	changed, err = SyncPluginConfigEntries(path, DefaultRegistry())
+	changed, err = SyncPluginConfigEntries(path, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,17 +271,18 @@ config:
 func TestSyncPluginConfigEntriesFillsMissingEnabled(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "echo", "config: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testEchoID, "config: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := SyncPluginConfigEntries(path, DefaultRegistry())
+	registry := testBuiltinRegistry(t, builtinInstall(testEchoID, "echo"))
+	changed, err := SyncPluginConfigEntries(path, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if changed != 1 {
 		t.Fatalf("changed = %d", changed)
 	}
-	out := readFile(t, pluginConfigPath(dir, "echo"))
+	out := readFile(t, pluginConfigPath(dir, testEchoID))
 	if !strings.Contains(out, "enabled: true") || !strings.Contains(out, "command: echo") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -297,7 +299,7 @@ func TestSyncPluginConfigEntriesMergesNestedDefaults(t *testing.T) {
 	registry := absdk.NewRegistry()
 	if err := registry.Register(absdk.Factory{
 		Info:     absdk.Manifest{Name: "AI"},
-		PluginID: "ai",
+		PluginID: testAdminID,
 		Default:  aiConfig{Provider: providerConfig{Model: "gpt", Timeout: "30s"}},
 		Build: func(yaml.Node) (absdk.Plugin, error) {
 			return nil, nil
@@ -307,7 +309,7 @@ func TestSyncPluginConfigEntriesMergesNestedDefaults(t *testing.T) {
 	}
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "ai", `enabled: true
+	if err := writePluginConfigFile(dir, testAdminID, `enabled: true
 config:
   provider:
     model: custom
@@ -321,7 +323,7 @@ config:
 	if changed != 1 {
 		t.Fatalf("changed = %d", changed)
 	}
-	out := readFile(t, pluginConfigPath(dir, "ai"))
+	out := readFile(t, pluginConfigPath(dir, testAdminID))
 	if !strings.Contains(out, "model: custom") || !strings.Contains(out, "timeout: 30s") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -330,24 +332,25 @@ config:
 func TestSyncPluginConfigEntryIgnoresOtherUnknownPlugins(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "ratelimit", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testRateLimitID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "missing", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testGhostID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	result, err := SyncPluginConfigEntry(path, DefaultRegistry(), "ratelimit")
+	registry := testBuiltinRegistry(t, builtinInstall(testRateLimitID, "ratelimit"))
+	result, err := SyncPluginConfigEntry(path, registry, testRateLimitID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !result.Available || !result.Changed {
 		t.Fatalf("result = %#v", result)
 	}
-	out := readFile(t, pluginConfigPath(dir, "ratelimit"))
+	out := readFile(t, pluginConfigPath(dir, testRateLimitID))
 	if !strings.Contains(out, "limit: 5") || !strings.Contains(out, "window: 1m") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
-	if _, err := os.Stat(pluginConfigPath(dir, "missing")); err != nil {
+	if _, err := os.Stat(pluginConfigPath(dir, testGhostID)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -355,10 +358,10 @@ func TestSyncPluginConfigEntryIgnoresOtherUnknownPlugins(t *testing.T) {
 func TestSyncPluginConfigEntryUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "weather", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testWeatherID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	result, err := SyncPluginConfigEntry(path, DefaultRegistry(), "weather")
+	result, err := SyncPluginConfigEntry(path, EmptyRegistry(), testWeatherID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,10 +373,10 @@ func TestSyncPluginConfigEntryUnavailable(t *testing.T) {
 func TestSyncPluginConfigEntriesRejectsUnknownPlugin(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "missing", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testGhostID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SyncPluginConfigEntries(path, DefaultRegistry()); err == nil {
+	if _, err := SyncPluginConfigEntries(path, EmptyRegistry()); err == nil {
 		t.Fatal("unknown plugin should be rejected")
 	}
 }
@@ -381,20 +384,21 @@ func TestSyncPluginConfigEntriesRejectsUnknownPlugin(t *testing.T) {
 func TestSyncPluginConfigEntriesSkipsDisabledUnknownPlugin(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "echo", "enabled: false\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testEchoID, "enabled: false\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "legacy", "enabled: false\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testMemoryID, "enabled: false\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	result, err := syncPluginConfigEntries(path, DefaultRegistry(), nil)
+	registry := testBuiltinRegistry(t, builtinInstall(testEchoID, "echo"))
+	result, err := syncPluginConfigEntries(path, registry, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Changed != 1 || len(result.UnknownDisabled) != 1 || result.UnknownDisabled[0] != "legacy" {
+	if result.Changed != 1 || len(result.UnknownDisabled) != 1 || result.UnknownDisabled[0] != testMemoryID {
 		t.Fatalf("result = %#v", result)
 	}
-	out := readFile(t, pluginConfigPath(dir, "echo"))
+	out := readFile(t, pluginConfigPath(dir, testEchoID))
 	if !strings.Contains(out, "command: echo") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -403,22 +407,23 @@ func TestSyncPluginConfigEntriesSkipsDisabledUnknownPlugin(t *testing.T) {
 func TestSyncPluginConfigEntriesForLockSkipsExternalPlugins(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "echo", "enabled: false\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testEchoID, "enabled: false\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginConfigFile(dir, "weather", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testWeatherID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	result, err := SyncPluginConfigEntriesForLock(path, DefaultRegistry(), PluginLock{
-		Plugins: []PluginModule{{ID: "weather", Module: "github.com/acme/weather"}},
+	registry := testBuiltinRegistry(t, builtinInstall(testEchoID, "echo"))
+	result, err := SyncPluginConfigEntriesForLock(path, registry, PluginLock{
+		Plugins: []PluginInstall{{ID: testWeatherID, Module: "github.com/acme/weather"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Changed != 1 || len(result.Skipped) != 1 || result.Skipped[0] != "weather" {
+	if result.Changed != 1 || len(result.Skipped) != 1 || result.Skipped[0] != testWeatherID {
 		t.Fatalf("result = %#v", result)
 	}
-	out := readFile(t, pluginConfigPath(dir, "echo"))
+	out := readFile(t, pluginConfigPath(dir, testEchoID))
 	if !strings.Contains(out, "command: echo") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
@@ -427,10 +432,10 @@ func TestSyncPluginConfigEntriesForLockSkipsExternalPlugins(t *testing.T) {
 func TestSyncPluginConfigEntriesForLockRejectsUnknownConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	if err := writePluginConfigFile(dir, "missing", "enabled: true\nconfig: {}\n"); err != nil {
+	if err := writePluginConfigFile(dir, testGhostID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SyncPluginConfigEntriesForLock(path, DefaultRegistry(), PluginLock{}); err == nil {
+	if _, err := SyncPluginConfigEntriesForLock(path, EmptyRegistry(), PluginLock{}); err == nil {
 		t.Fatal("unknown plugin should be rejected")
 	}
 }

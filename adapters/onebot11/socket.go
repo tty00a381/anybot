@@ -135,6 +135,18 @@ func (p *socketPeer) replaceConn(conn *websocket.Conn) *websocket.Conn {
 	return old
 }
 
+func (p *socketPeer) disconnectConn(conn *websocket.Conn, err error) bool {
+	p.connMu.Lock()
+	if p.conn != conn {
+		p.connMu.Unlock()
+		return false
+	}
+	p.conn = nil
+	p.connMu.Unlock()
+	p.failPending(err)
+	return true
+}
+
 func (p *socketPeer) removePending(echo string) {
 	p.pendingMu.Lock()
 	delete(p.pending, echo)

@@ -9,7 +9,7 @@ import (
 	"text/template"
 )
 
-// RenderPluginHost 重写外部插件注册代码，并在缺失时创建最小生成宿主。
+// RenderPluginHost 重写生成宿主插件注册代码，并在缺失时创建最小生成宿主。
 func RenderPluginHost(dir string, lock PluginLock) error {
 	return renderPluginHost(dir, lock, false)
 }
@@ -46,7 +46,11 @@ func renderPlugins(lock PluginLock) string {
 	data := struct {
 		Plugins []pluginImport
 	}{}
-	for i, item := range lock.Plugins {
+	for _, item := range lock.Plugins {
+		if item.Module == "" {
+			continue
+		}
+		i := len(data.Plugins)
 		data.Plugins = append(data.Plugins, pluginImport{
 			Alias:  fmt.Sprintf("plugin%d", i),
 			ID:     item.ID,
@@ -88,7 +92,7 @@ import (
 	{{- end }}
 )
 
-func registerExternalPlugins(registry absdk.Registry) error {
+func registerGeneratedPlugins(registry absdk.Registry) error {
 	{{- range .Plugins }}
 	if err := registry.Register({{ .Alias }}.Plugin.Factory().WithPluginID({{ printf "%q" .ID }})); err != nil {
 		return err
@@ -116,8 +120,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	registry := host.DefaultRegistry()
-	if err := registerExternalPlugins(registry); err != nil {
+	external := host.EmptyRegistry()
+	if err := registerGeneratedPlugins(external); err != nil {
 		log.Fatal(err)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "plugin" {
@@ -126,7 +130,7 @@ func main() {
 			Output:     os.Stdout,
 			ConfigPath: "anybot.yaml",
 			LockPath:   host.PluginLockFile,
-			Registry:   registry,
+			Registry:   external,
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -141,7 +145,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	app, err := host.NewApp(cfg, registry, logger, host.WithConfigPath("anybot.yaml"), host.WithRuntimeState())
+	lock, err := host.LoadPluginLock(host.PluginLockFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	app, err := host.NewApp(cfg, external, logger, host.WithConfigPath("anybot.yaml"), host.WithRuntimeState(), host.WithPluginLock(lock))
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 
 func TestLoadConfigLoadsFixedPluginConfigDir(t *testing.T) {
 	dir := t.TempDir()
-	if err := writePluginConfigFile(dir, "weather", `enabled: true
+	if err := writePluginConfigFile(dir, testWeatherID, `enabled: true
 config:
   city: Hangzhou
 `); err != nil {
@@ -23,7 +23,7 @@ config:
 	if err != nil {
 		t.Fatal(err)
 	}
-	weather, ok := cfg.Plugins["weather"]
+	weather, ok := cfg.Plugins[testWeatherID]
 	if !ok || weather.Enabled == nil || !*weather.Enabled {
 		t.Fatalf("weather plugin = %#v", weather)
 	}
@@ -67,7 +67,7 @@ func TestLoadConfigAcceptsYMLExtension(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "plugins.d", "echo.yml"), []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "plugins.d", testEchoID+".yml"), []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	config := filepath.Join(dir, "anybot.yaml")
@@ -78,7 +78,7 @@ func TestLoadConfigAcceptsYMLExtension(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := cfg.Plugins["echo"]; !ok {
+	if _, ok := cfg.Plugins[testEchoID]; !ok {
 		t.Fatalf("echo plugin missing: %#v", cfg.Plugins)
 	}
 }

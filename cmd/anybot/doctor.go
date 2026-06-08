@@ -33,7 +33,11 @@ func runDoctor(args []string) error {
 	if _, err := host.NewLogger(cfg.Runtime.LogLevel, stderr); err != nil {
 		return err
 	}
-	if err := host.ValidateConfig(cfg, host.DefaultRegistry()); err != nil {
+	lock, err := host.LoadPluginLock(filepath.Join(filepath.Dir(*configPath), host.PluginLockFile))
+	if err != nil {
+		return err
+	}
+	if err := host.ValidateConfigWithLock(cfg, host.EmptyRegistry(), lock); err != nil {
 		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
 	adapterCfg := cfgAdapter(cfg)
@@ -48,7 +52,7 @@ func runDoctor(args []string) error {
 			return err
 		}
 	}
-	enabled, err := host.EnabledPlugins(cfg, host.DefaultRegistry())
+	enabled, err := host.EnabledPluginsWithLock(cfg, host.EmptyRegistry(), lock)
 	if err != nil {
 		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}

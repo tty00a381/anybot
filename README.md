@@ -29,7 +29,7 @@ anybot up
 
 - `anybot.yaml`：运行配置。
 - `plugins.d/<PluginID>.yaml`：每个插件的配置。
-- `anybot.lock`：外部插件锁，记录本地生成的 `PluginID`、插件来源、版本和本地替换路径。
+- `anybot.lock`：插件安装锁，记录本地生成的 `PluginID` 以及内置来源或外部 module 来源。
 - `plugins.gen.go`、`main.go`、`go.mod`：由 AnyBot 管理的可构建生成宿主。
 - `.anybot/`：运行时状态和插件私有数据目录，默认包含 `.anybot/store.json`。
 
@@ -54,7 +54,7 @@ anybot plugin enable <id>
 anybot up
 ```
 
-`anybot plugin add` 会生成本地 `PluginID`，并写入 `anybot.lock`。CLI 表格首列会显示 ID 的前缀；只要前缀唯一，就可以用它执行 `inspect`、`config`、`enable`、`disable`、`update` 和 `remove`。插件作者在 Manifest 里声明的 `Name` 只用于展示，不参与唯一标识。
+每个已安装插件只有一个身份：本地随机生成的 `PluginID`。`anybot plugin add` 会为外部插件生成新的 `PluginID` 并写入 `anybot.lock`；`anybot init` 也会为内置插件生成各自的 `PluginID`。CLI 表格首列会显示 ID 的前缀；只要前缀唯一，就可以用它执行 `inspect`、`config`、`enable`、`disable`、`update` 和 `remove`。插件作者在 Manifest 里声明的 `Name` 只用于展示，不参与唯一标识。
 
 ## 编写插件
 

@@ -10,7 +10,7 @@ AnyBot 的最终用户入口是一个工作目录。你日常操作的是配置�
 
 - `anybot.yaml`：框架配置，包含运行时、协议端和超级用户。
 - `plugins.d/<PluginID>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
-- `anybot.lock`：外部插件锁，记录本地生成的 `PluginID`、Go module、版本和本地替换路径。
+- `anybot.lock`：插件安装锁，记录本地生成的 `PluginID` 以及内置来源或外部 module 来源。
 - `plugins.gen.go`、`main.go`、`go.mod`：AnyBot 生成的可构建宿主。不要手动改，日常用命令更新。
 - `.anybot/`：运行时数据，默认包含 `.anybot/store.json` 会话状态文件和插件私有数据目录。
 
@@ -96,7 +96,7 @@ security:
 ### `runtime`
 
 - `log_level`：日志等级，常用 `debug`、`info`、`warn`、`error`。
-- `workers`：事件处理并发数。`auto` 使用默认并发；设为 `0` 或负数时走同步处理。
+- `workers`：事件处理并发数。`auto` 使用默认并发；`0` 走同步处理；正整数表示固定 worker 数量。
 - `buffer`：事件队列大小。
 - `serial`：串行化策略。`conversation` 表示同一自然会话内按顺序处理。
 - `data_dir`：运行时数据根目录。
@@ -207,6 +207,8 @@ anybot plugin add github.com/acme/anybot-weather@v0.1.0
 
 安装后先运行 `anybot plugin status` 查看首列 ID。CLI 支持使用唯一 ID 前缀操作插件；插件 Manifest 里的名称只用于展示。
 
+`PluginID` 是全框架唯一的插件身份概念。内置插件和外部插件都会在 `anybot.lock` 中拥有随机生成的 `PluginID`；`help`、`echo`、`admin`、`ratelimit` 只是内置来源名，不是命令目标 ID。
+
 启用或禁用：
 
 ```sh
@@ -253,7 +255,7 @@ anybot plugin update <id> -replace ../weather
 anybot plugin update <id> -clear-replace
 ```
 
-移除外部插件：
+移除插件安装实例：
 
 ```sh
 anybot plugin remove <id>
@@ -271,7 +273,7 @@ cd mybot
 anybot init
 ```
 
-2. 设置超级用户，启用 `admin` 和 `echo`。
+2. 设置超级用户，查看随机 `PluginID`，启用 `admin` 和 `echo` 对应的安装实例。
 
 ```yaml
 security:
@@ -279,8 +281,9 @@ security:
 ```
 
 ```sh
-anybot plugin enable admin
-anybot plugin enable echo
+anybot plugin status
+anybot plugin enable <admin-id>
+anybot plugin enable <echo-id>
 ```
 
 3. 检查。
@@ -358,7 +361,7 @@ ID 前缀写错、配置文件残留，或外部插件没有添加到插件锁�
 
 配置文件扩展名
 
-AnyBot 生成的新配置统一使用 `.yaml`。如果目录里已有 `.yml` 配置，读取时也会兼容。
+AnyBot 生成的新插件配置统一使用 `.yaml`。`plugins.d` 中已有 `.yml` 插件配置时读取和写回会兼容；主配置文件请使用 `anybot.yaml`。
 
 !env 报环境变量不存在
 

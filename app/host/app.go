@@ -41,8 +41,10 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 
 // AppOptions 描述框架运行时的附加参数。
 type AppOptions struct {
-	ConfigPath   string
-	RuntimeState bool
+	ConfigPath    string
+	RuntimeState  bool
+	PluginLock    PluginLock
+	HasPluginLock bool
 }
 
 // AppOption 调整框架运行时装配。
@@ -62,6 +64,14 @@ func WithRuntimeState() AppOption {
 	}
 }
 
+// WithPluginLock 注入当前工作目录的插件安装锁。
+func WithPluginLock(lock PluginLock) AppOption {
+	return func(opts *AppOptions) {
+		opts.PluginLock = lock
+		opts.HasPluginLock = true
+	}
+}
+
 // NewApp 根据框架配置和插件注册表创建 AnyBot 运行时。
 func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions ...AppOption) (*core.App, error) {
 	var hostOpts AppOptions
@@ -78,6 +88,14 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 	cfg.applyDefaults()
 	if logger == nil {
 		logger = slog.Default()
+	}
+	lock := hostOpts.PluginLock
+	if hostOpts.HasPluginLock {
+		var err error
+		registry, err = RegistryForLock(lock, registry)
+		if err != nil {
+			return nil, err
+		}
 	}
 	adapter, err := onebot11.AdapterFromConfig(cfg.onebotConfig(), onebot11.WithLogger(logger))
 	if err != nil {
@@ -120,7 +138,7 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 
 	app := core.New(opts...)
 	app.Use(core.Recover(logger), core.Trace(logger))
-	if err := InstallPlugins(app, cfg, registry, pluginEnv); err != nil {
+	if err := InstallPlugins(app, cfg, registry, lock, pluginEnv); err != nil {
 		return nil, err
 	}
 	return app, nil
@@ -128,9 +146,21 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 
 // ValidateConfig 静态校验框架配置，不执行插件安装逻辑。
 func ValidateConfig(cfg Config, registry absdk.Registry) error {
+	return ValidateConfigWithLock(cfg, registry, PluginLock{})
+}
+
+// ValidateConfigWithLock 静态校验框架配置，并按插件安装锁解析可加载插件。
+func ValidateConfigWithLock(cfg Config, registry absdk.Registry, lock PluginLock) error {
 	rawRuntime := cfg.Runtime
 	configPath := cfg.configPath
 	cfg.applyDefaults()
+	if len(lock.Plugins) > 0 {
+		var err error
+		registry, err = RegistryForLock(lock, registry)
+		if err != nil {
+			return err
+		}
+	}
 	if _, err := onebot11.AdapterFromConfig(cfg.onebotConfig()); err != nil {
 		return err
 	}
@@ -165,7 +195,8 @@ func ValidateConfig(cfg Config, registry absdk.Registry) error {
 }
 
 // InstallPlugins 按配置启用插件。
-func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absdk.Environment) error {
+func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, lock PluginLock, env absdk.Environment) error {
+	installs := pluginInstallMap(lock)
 	for _, id := range configuredPluginIDs(cfg) {
 		entry := cfg.Plugins[id]
 		if !pluginEnabled(entry) {
@@ -181,7 +212,7 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absd
 		}
 		pluginEnv := env
 		pluginEnv.PluginID = id
-		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(id)
+		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(installs[id].Builtin)
 		if err := absdk.InstallWith(app, pluginEnv, plugin); err != nil {
 			return err
 		}
@@ -191,6 +222,18 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absd
 
 // EnabledPlugins 返回按插件 ID 排序的已启用插件 ID。
 func EnabledPlugins(cfg Config, registry absdk.Registry) ([]string, error) {
+	return EnabledPluginsWithLock(cfg, registry, PluginLock{})
+}
+
+// EnabledPluginsWithLock 返回按插件 ID 排序的已启用插件 ID。
+func EnabledPluginsWithLock(cfg Config, registry absdk.Registry, lock PluginLock) ([]string, error) {
+	if len(lock.Plugins) > 0 {
+		var err error
+		registry, err = RegistryForLock(lock, registry)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var enabled []string
 	for _, id := range configuredPluginIDs(cfg) {
 		entry := cfg.Plugins[id]
@@ -203,6 +246,17 @@ func EnabledPlugins(cfg Config, registry absdk.Registry) ([]string, error) {
 		enabled = append(enabled, id)
 	}
 	return enabled, nil
+}
+
+func pluginInstallMap(lock PluginLock) map[string]PluginInstall {
+	lock.applyDefaults()
+	out := make(map[string]PluginInstall, len(lock.Plugins))
+	for _, item := range lock.Plugins {
+		if item.ID != "" {
+			out[item.ID] = item
+		}
+	}
+	return out
 }
 
 func configuredPluginIDs(cfg Config) []string {

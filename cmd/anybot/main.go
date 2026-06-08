@@ -73,8 +73,7 @@ func runInit(args []string) error {
 	}
 	files := []initFile{
 		{name: "anybot.yaml", content: defaultConfig},
-		{name: "plugins.d/help.yaml", content: defaultHelpPluginConfig},
-		{name: "plugins.d/echo.yaml", content: defaultEchoPluginConfig},
+		{name: host.PluginLockFile},
 		{name: ".env.example", content: "ONEBOT_ACCESS_TOKEN=\n"},
 		{name: "README.md", content: defaultReadme},
 	}
@@ -94,6 +93,22 @@ func runInit(args []string) error {
 	}
 	if err := os.MkdirAll(filepath.Join(*dir, "plugins.d"), 0o755); err != nil {
 		return err
+	}
+	lock, err := host.NewDefaultPluginLock()
+	if err != nil {
+		return err
+	}
+	if err := host.SavePluginLock(filepath.Join(*dir, host.PluginLockFile), lock); err != nil {
+		return err
+	}
+	for _, item := range lock.Plugins {
+		content := defaultBuiltinPluginConfig(item.Builtin)
+		if content == "" {
+			continue
+		}
+		if err := writeFile(filepath.Join(*dir, "plugins.d", item.ID+".yaml"), content, *force); err != nil {
+			return err
+		}
 	}
 	if _, err := host.EnsurePluginHostForce(*dir, *force); err != nil {
 		return err
@@ -162,11 +177,15 @@ func runHost(args []string) error {
 	if err != nil {
 		return err
 	}
+	lock, err := host.LoadPluginLock(filepath.Join(filepath.Dir(*configPath), host.PluginLockFile))
+	if err != nil {
+		return err
+	}
 	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
 	if err != nil {
 		return err
 	}
-	app, err := host.NewApp(cfg, host.DefaultRegistry(), logger, host.WithConfigPath(*configPath), host.WithRuntimeState())
+	app, err := host.NewApp(cfg, host.EmptyRegistry(), logger, host.WithConfigPath(*configPath), host.WithRuntimeState(), host.WithPluginLock(lock))
 	if err != nil {
 		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
@@ -200,7 +219,7 @@ func withExternalPluginHint(err error, dir string) error {
 		return err
 	}
 	for _, item := range lock.Plugins {
-		if item.ID == unknown.ID {
+		if item.ID == unknown.ID && item.Module != "" {
 			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
 		}
 	}

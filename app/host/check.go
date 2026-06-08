@@ -26,17 +26,12 @@ type PluginConfigCheck struct {
 // PluginConfigChecks 校验当前配置中的插件项。禁用插件只报告状态，不要求可加载。
 func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []PluginConfigCheck {
 	lock.applyDefaults()
-	external := map[string]PluginModule{}
-	for _, item := range lock.Plugins {
-		if item.ID != "" {
-			external[item.ID] = item
-		}
-	}
+	installs := pluginInstallMap(lock)
 
 	checks := make([]PluginConfigCheck, 0, len(cfg.Plugins))
 	for _, id := range configuredPluginIDs(cfg) {
 		entry := cfg.Plugins[id]
-		check := PluginConfigCheck{ID: id, Source: pluginCheckSource(id, registry, external)}
+		check := PluginConfigCheck{ID: id, Source: pluginCheckSource(id, registry, installs)}
 		if !pluginEnabled(entry) {
 			check.State = pluginCheckDisabled
 			checks = append(checks, check)
@@ -44,7 +39,7 @@ func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []
 		}
 		factory, ok := registry.Factory(id)
 		if !ok {
-			if _, ok := external[id]; ok {
+			if item, ok := installs[id]; ok && item.Module != "" {
 				check.State = pluginCheckUnavailable
 				check.Detail = "外部插件尚未构建到当前框架"
 			} else {
@@ -65,12 +60,15 @@ func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []
 	return checks
 }
 
-func pluginCheckSource(id string, registry absdk.Registry, external map[string]PluginModule) string {
-	if _, ok := external[id]; ok {
+func pluginCheckSource(id string, registry absdk.Registry, installs map[string]PluginInstall) string {
+	if item, ok := installs[id]; ok && item.Module != "" {
 		return "external"
 	}
-	if _, ok := registry.Factory(id); ok {
+	if item, ok := installs[id]; ok && item.Builtin != "" {
 		return "builtin"
+	}
+	if _, ok := registry.Factory(id); ok {
+		return "registry"
 	}
 	return "config"
 }

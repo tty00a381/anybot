@@ -21,7 +21,7 @@ CLI 入口包，不作为库导入。
 关键实现文件：
 
 - `main.go`：命令分发、`init`、`run`。
-- `plugin.go`：外部插件锁管理、失败回滚，并把配置类 plugin 子命令交给 `app/host`。
+- `plugin.go`：插件安装锁管理、失败回滚，并把配置类 plugin 子命令交给 `app/host`。
 - `build.go`：构建生成宿主、同步 `go.mod`。
 - `dev.go`：开发者脚手架。
 - `doctor.go`：配置检查。
@@ -46,16 +46,19 @@ CLI 入口包，不作为库导入。
 - `ValidateConfig(cfg Config, registry sdk.Registry) error`：静态校验配置和插件配置。
 - `NewLogger(level string, out io.Writer) (*slog.Logger, error)`：创建日志器。
 - `NewApp(cfg Config, registry sdk.Registry, logger *slog.Logger, opts ...AppOption) (*core.App, error)`：装配运行时。
-- `InstallPlugins(app *core.App, cfg Config, registry sdk.Registry, env sdk.Environment) error`：按配置安装插件。
-- `EnabledPlugins(cfg Config, registry sdk.Registry) ([]string, error)`：返回启用插件名。
+- `ValidateConfigWithLock(cfg Config, registry sdk.Registry, lock PluginLock) error`：静态校验配置，并按插件安装锁解析可加载插件。
+- `InstallPlugins(app *core.App, cfg Config, registry sdk.Registry, lock PluginLock, env sdk.Environment) error`：按配置安装插件。
+- `EnabledPlugins(cfg Config, registry sdk.Registry) ([]string, error)`：返回启用插件 ID。
+- `EnabledPluginsWithLock(cfg Config, registry sdk.Registry, lock PluginLock) ([]string, error)`：按插件安装锁返回启用插件 ID。
 
 App option：
 
-- `AppOptions`：`ConfigPath`、`RuntimeState`。
+- `AppOptions`：`ConfigPath`、`RuntimeState`、`PluginLock`、`HasPluginLock`。
 - `WithConfigPath(path string)`：注入配置写回路径。
 - `WithRuntimeState()`：启用文件存储和插件数据目录。
+- `WithPluginLock(lock PluginLock)`：注入当前工作目录的插件安装锁。
 
-### 外部插件锁与生成宿主
+### 插件安装锁与生成宿主
 
 常量：
 
@@ -64,26 +67,33 @@ App option：
 类型：
 
 - `PluginLock`：`Module`、`Plugins`。
-- `PluginModule`：`ID`、`Module`、`Version`、`Replace`。
-- `AddPluginOptions`
-- `UpdatePluginOptions`
-- `RemovePluginOptions`
+- `PluginInstall`：`ID`、`Builtin`、`Module`、`Version`、`Replace`。
+- `AddPluginInstallOptions`
+- `UpdatePluginInstallOptions`
+- `RemovePluginInstallOptions`
+- `BuiltinPlugin`：`Source`、`Factory`、`DefaultEnabled`。
 
 函数：
 
 - `EnsurePluginHost(dir string) (PluginLock, error)`：确保插件锁与生成宿主存在。
 - `EnsurePluginHostForce(dir string, force bool) (PluginLock, error)`：允许接管同名非生成文件。
+- `NewDefaultPluginLock() (PluginLock, error)`：创建带内置插件安装实例的新锁。
 - `LoadPluginLock(path string) (PluginLock, error)`：读取插件锁，文件不存在返回空锁。
 - `SavePluginLock(path string, lock PluginLock) error`：校验并原子写入插件锁。
 - `RenderPluginHost(dir string, lock PluginLock) error`：重写 `plugins.gen.go` 与生成的 `main.go`。
-- `AddPluginModule(opts AddPluginOptions) (PluginLock, error)`：添加外部插件。
-- `UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, bool, error)`：更新版本或替换路径。
-- `RemovePluginModule(opts RemovePluginOptions) (PluginModule, PluginLock, error)`：移除外部插件。
+- `AddPluginInstall(opts AddPluginInstallOptions) (PluginLock, error)`：添加插件安装实例，来源可以是 `Builtin` 或 `Module`。
+- `UpdatePluginInstall(opts UpdatePluginInstallOptions) (PluginInstall, PluginLock, bool, error)`：更新外部插件版本或替换路径。
+- `RemovePluginInstall(opts RemovePluginInstallOptions) (PluginInstall, PluginLock, error)`：移除插件安装实例。
 - `CheckGeneratedHostWritable(dir string, force bool) error`：检查生成文件是否可写。
 - `ParsePluginModuleSpec(spec string) (module, version string, err error)`：解析 `module@version`。
 - `ValidatePluginLock(lock PluginLock) error`
-- `ValidatePluginModule(item PluginModule) error`
+- `ValidatePluginInstall(item PluginInstall) error`
+- `ValidatePluginInstallSource(item PluginInstall) error`
 - `ValidatePluginID(id string) error`：委托 `sdk.ValidatePluginID`。
+- `NewPluginID() (string, error)`：生成随机 `PluginID`。
+- `EmptyRegistry() sdk.Registry`：返回空注册表。
+- `BuiltinPlugins() []BuiltinPlugin`：列出框架随发版提供的内置插件来源。
+- `RegistryForLock(lock PluginLock, external sdk.Registry) (sdk.Registry, error)`：按插件安装锁生成运行时注册表。
 
 实现文件：
 
@@ -116,13 +126,13 @@ App option：
 - `ParsePluginConfigPath(input string) ([]string, error)`：解析点分路径。
 - `ParsePluginConfigAssignment(input string) (PluginConfigAssignment, error)`：解析 `key=value`。
 - `ParsePluginConfigChanges(args []string) (PluginConfigChange, error)`：解析 CLI 参数。
-- `ApplyPluginConfigChange(path, name string, change PluginConfigChange) (PluginConfigChangeResult, error)`：应用设置或重置。
-- `EnsurePluginConfigEntry(path, name string) (bool, error)`：确保插件配置项存在。
-- `SetPluginEnabled(path, name string, enabled bool) (bool, error)`：启用或禁用。
-- `SetPluginConfigValues(path, name string, assignments []PluginConfigAssignment) (bool, error)`：写入配置值。
-- `RemovePluginConfigValues(path, name string, paths [][]string) (bool, error)`：删除配置字段覆盖。
-- `RemovePluginConfigEntry(path, name string) (bool, error)`：移除插件配置。
-- `SyncPluginConfigEntry(path string, registry sdk.Registry, name string) (PluginConfigEntrySyncResult, error)`：同步单个插件默认配置。
+- `ApplyPluginConfigChange(path, id string, change PluginConfigChange) (PluginConfigChangeResult, error)`：应用设置或重置。
+- `EnsurePluginConfigEntry(path, id string) (bool, error)`：确保插件配置项存在。
+- `SetPluginEnabled(path, id string, enabled bool) (bool, error)`：启用或禁用。
+- `SetPluginConfigValues(path, id string, assignments []PluginConfigAssignment) (bool, error)`：写入配置值。
+- `RemovePluginConfigValues(path, id string, paths [][]string) (bool, error)`：删除配置字段覆盖。
+- `RemovePluginConfigEntry(path, id string) (bool, error)`：移除插件配置。
+- `SyncPluginConfigEntry(path string, registry sdk.Registry, id string) (PluginConfigEntrySyncResult, error)`：同步单个插件默认配置。
 - `SyncPluginConfigEntries(path string, registry sdk.Registry) (int, error)`：同步注册表内插件。
 - `SyncPluginConfigEntriesForLock(path string, registry sdk.Registry, lock PluginLock) (PluginConfigSyncResult, error)`：允许外部插件待构建的同步。
 - `WritePluginConfigSyncSummary(w io.Writer, result PluginConfigSyncResult) error`。
@@ -147,9 +157,9 @@ App option：
 - `WritePluginInspect(w io.Writer, inspect PluginInspect) error`
 - `ResolvePluginID(cfg Config, registry sdk.Registry, lock PluginLock, target string, allowConfigured bool) (string, error)`
 
-### 内置插件注册表
+### 内置插件来源
 
-- `DefaultRegistry() sdk.Registry`：注册 `help`、`echo`、`admin`、`ratelimit`。
+- `help`、`echo`、`admin`、`ratelimit` 是内置来源名。它们进入某个机器人目录后仍会被安装为随机 `PluginID`，由 `anybot.lock` 绑定来源和 ID。
 
 ## `app/plugins/help`
 

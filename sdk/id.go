@@ -6,7 +6,12 @@ import (
 	"strings"
 )
 
-// ValidatePluginID 校验本地插件 ID 能安全用于锁文件、配置文件、状态前缀和数据目录。
+const (
+	pluginIDPrefix       = "plg_"
+	pluginIDRandomLength = 26
+)
+
+// ValidatePluginID 校验 PluginID 是否符合 AnyBot 生成的随机安装 ID 形态。
 func ValidatePluginID(id string) error {
 	if id == "" {
 		return fmt.Errorf("plugin id is required")
@@ -19,24 +24,20 @@ func ValidatePluginID(id string) error {
 		strings.HasPrefix(id, ".") {
 		return fmt.Errorf("plugin id %q is invalid", id)
 	}
-	if !validPluginIdentifier(id) {
-		return fmt.Errorf("plugin id %q is invalid: use lowercase letters, digits, and underscores; start with a letter", id)
+	if !strings.HasPrefix(id, pluginIDPrefix) || len(strings.TrimPrefix(id, pluginIDPrefix)) != pluginIDRandomLength {
+		return fmt.Errorf("plugin id %q is invalid: use an AnyBot-generated random PluginID", id)
+	}
+	if !validPluginIDRandomPart(strings.TrimPrefix(id, pluginIDPrefix)) {
+		return fmt.Errorf("plugin id %q is invalid: generated PluginID contains invalid characters", id)
 	}
 	return nil
 }
 
-func validPluginIdentifier(id string) bool {
-	for i, r := range id {
+func validPluginIDRandomPart(id string) bool {
+	for _, r := range id {
 		switch {
 		case r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9':
-			if i == 0 {
-				return false
-			}
-		case r == '_':
-			if i == 0 {
-				return false
-			}
+		case r >= '2' && r <= '7':
 		default:
 			return false
 		}

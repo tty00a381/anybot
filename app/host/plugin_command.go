@@ -46,6 +46,10 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	if err != nil {
 		return err
 	}
+	registry, err = RegistryForLock(lock, registry)
+	if err != nil {
+		return err
+	}
 	switch opts.Args[0] {
 	case "sync":
 		result, err := SyncPluginConfigEntriesForLock(configPath, registry, lock)

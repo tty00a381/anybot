@@ -10,7 +10,10 @@ import (
 	"github.com/tty00a381/anybot/sdk/message"
 )
 
-const defaultProtocol sdk.Protocol = "test"
+const (
+	defaultProtocol sdk.Protocol = "test"
+	defaultPluginID              = "plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"
+)
 
 // ErrAppUnavailable 表示测试运行时不可用。
 var ErrAppUnavailable = errors.New("anybot testkit: app is unavailable")
@@ -20,6 +23,7 @@ type Option func(*options)
 
 type options struct {
 	superUsers []string
+	pluginID   string
 }
 
 // WithSuperUsers 配置测试运行时的超级用户。
@@ -29,10 +33,18 @@ func WithSuperUsers(ids ...string) Option {
 	}
 }
 
+// WithPluginID 配置测试安装实例使用的 PluginID。
+func WithPluginID(id string) Option {
+	return func(opts *options) {
+		opts.pluginID = strings.TrimSpace(id)
+	}
+}
+
 // App 是插件测试用运行时，记录插件通过 Reply 或 Send 发出的消息。
 type App struct {
-	runtime *sdk.App
-	client  *Client
+	runtime  *sdk.App
+	client   *Client
+	pluginID string
 }
 
 // NewApp 创建带记录客户端的测试运行时。
@@ -48,9 +60,14 @@ func NewApp(opts ...Option) *App {
 	if len(cfg.superUsers) > 0 {
 		runtimeOptions = append(runtimeOptions, sdk.WithSuperUsers(cfg.superUsers...))
 	}
+	pluginID := cfg.pluginID
+	if pluginID == "" {
+		pluginID = defaultPluginID
+	}
 	return &App{
-		runtime: sdk.NewApp(runtimeOptions...),
-		client:  client,
+		runtime:  sdk.NewApp(runtimeOptions...),
+		client:   client,
+		pluginID: pluginID,
 	}
 }
 
@@ -68,7 +85,7 @@ func (app *App) InstallDefault(definitions ...sdk.Definition) error {
 		if definition == nil {
 			continue
 		}
-		if err := sdk.InstallDefaultWith(app.Runtime(), sdk.Environment{PluginID: testPluginID(definition.Manifest())}, definition); err != nil {
+		if err := sdk.InstallDefaultWith(app.Runtime(), sdk.Environment{PluginID: app.pluginID}, definition); err != nil {
 			return err
 		}
 	}
@@ -81,19 +98,11 @@ func (app *App) Install(plugins ...sdk.Plugin) error {
 		if plugin == nil {
 			continue
 		}
-		if err := sdk.InstallWith(app.Runtime(), sdk.Environment{PluginID: testPluginID(plugin.Manifest())}, plugin); err != nil {
+		if err := sdk.InstallWith(app.Runtime(), sdk.Environment{PluginID: app.pluginID}, plugin); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func testPluginID(manifest sdk.Manifest) string {
-	id := strings.TrimSpace(manifest.Name)
-	if err := sdk.ValidatePluginID(id); err == nil {
-		return id
-	}
-	return "test_plugin"
 }
 
 // DispatchText 投递一条消息事件。

@@ -68,9 +68,12 @@ func Timeout(timeout time.Duration) Middleware {
 			}
 			ctx, cancel := context.WithTimeout(c.Context, timeout)
 			defer cancel()
-			child := *c
-			child.Context = ctx
-			return next(&child)
+			original := c.Context
+			c.Context = ctx
+			defer func() {
+				c.Context = original
+			}()
+			return next(c)
 		}
 	}
 }

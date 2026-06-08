@@ -71,7 +71,7 @@ func TestManifestNameIsDisplayOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallWith(core.New(), Environment{PluginID: "weather"}, plugin); err != nil {
+	if err := InstallWith(core.New(), Environment{PluginID: testPluginID}, plugin); err != nil {
 		t.Fatal(err)
 	}
 	if seen != "天气/每日" {
@@ -79,13 +79,13 @@ func TestManifestNameIsDisplayOnly(t *testing.T) {
 	}
 }
 
-func TestValidatePluginIDRequiresStableIdentifier(t *testing.T) {
-	for _, id := range []string{"weather", "anybot_weather", "weather2", "plg_abc123"} {
+func TestValidatePluginIDRequiresGeneratedIdentifier(t *testing.T) {
+	for _, id := range []string{testPluginID, "plg_bbbbbbbbbbbbbbbbbbbbbbbbbb"} {
 		if err := ValidatePluginID(id); err != nil {
 			t.Fatalf("ValidatePluginID(%q) = %v", id, err)
 		}
 	}
-	for _, id := range []string{"Weather", "weather-bot", "2weather", "天气", "weather.bot", "weather bot", "../weather"} {
+	for _, id := range []string{"weather", "anybot_weather", "weather2", "plg_abc123", "Weather", "weather-bot", "2weather", "天气", "weather.bot", "weather bot", "../weather"} {
 		if err := ValidatePluginID(id); err == nil {
 			t.Fatalf("ValidatePluginID(%q) should fail", id)
 		}
@@ -137,8 +137,8 @@ func TestFactoryWithPluginIDLeavesManifestUntouched(t *testing.T) {
 		contextID = ctx.PluginID()
 		return nil
 	})
-	factory := definition.Factory().WithPluginID("daily_weather")
-	if factory.Info.Name != "weather" || factory.PluginID != "daily_weather" || factory.Info.Version != "1.0.0" {
+	factory := definition.Factory().WithPluginID(testPluginID)
+	if factory.Info.Name != "weather" || factory.PluginID != testPluginID || factory.Info.Version != "1.0.0" {
 		t.Fatalf("factory info = %#v", factory.Info)
 	}
 	plugin, err := factory.Build(yaml.Node{})
@@ -152,10 +152,12 @@ func TestFactoryWithPluginIDLeavesManifestUntouched(t *testing.T) {
 	if err := InstallWith(app, Environment{PluginID: factory.PluginID}, plugin); err != nil {
 		t.Fatal(err)
 	}
-	if contextName != "weather" || contextID != "daily_weather" {
+	if contextName != "weather" || contextID != testPluginID {
 		t.Fatalf("context manifest=%q id=%q", contextName, contextID)
 	}
 }
+
+const testPluginID = "plg_aaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func TestDefinitionFactoryResolvesEnvConfig(t *testing.T) {
 	type config struct {
