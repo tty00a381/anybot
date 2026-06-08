@@ -10,11 +10,11 @@ import (
 
 // PluginCommandOptions 描述生成运行框架内置 plugin 子命令的运行参数。
 type PluginCommandOptions struct {
-	Args          []string
-	Output        io.Writer
-	ConfigPath    string
-	WorkspacePath string
-	Registry      absdk.Registry
+	Args       []string
+	Output     io.Writer
+	ConfigPath string
+	LockPath   string
+	Registry   absdk.Registry
 }
 
 // RunPluginCommand 执行生成运行框架内置的 plugin 子命令。
@@ -33,30 +33,30 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	if configPath == "" {
 		configPath = "anybot.yaml"
 	}
-	workspacePath := strings.TrimSpace(opts.WorkspacePath)
-	if workspacePath == "" {
-		workspacePath = PluginWorkspaceFile
+	lockPath := strings.TrimSpace(opts.LockPath)
+	if lockPath == "" {
+		lockPath = PluginLockFile
 	}
 	registry := opts.Registry
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return err
 	}
-	workspace, err := LoadPluginWorkspace(workspacePath)
+	lock, err := LoadPluginLock(lockPath)
 	if err != nil {
 		return err
 	}
 	switch opts.Args[0] {
 	case "sync":
-		result, err := SyncPluginConfigEntriesForWorkspace(configPath, registry, workspace)
+		result, err := SyncPluginConfigEntriesForLock(configPath, registry, lock)
 		if err != nil {
 			return err
 		}
 		return WritePluginConfigSyncSummary(output, result)
 	case "status":
-		return WritePluginStatusTable(output, PluginStatuses(cfg, registry, workspace))
+		return WritePluginStatusTable(output, PluginStatuses(cfg, registry, lock))
 	case "inspect":
-		inspect, err := InspectPlugin(configPath, registry, workspace, opts.Args[1])
+		inspect, err := InspectPlugin(configPath, registry, lock, opts.Args[1])
 		if err != nil {
 			return err
 		}
@@ -66,7 +66,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 			return fmt.Errorf("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
 		}
 		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, registry, workspace, name, true); err != nil {
+		if err := EnsureKnownPluginTarget(cfg, registry, lock, name, true); err != nil {
 			return err
 		}
 		change, err := ParsePluginConfigChanges(opts.Args[2:])
@@ -81,7 +81,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	case "enable", "disable":
 		enabled := opts.Args[0] == "enable"
 		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, registry, workspace, name, !enabled); err != nil {
+		if err := EnsureKnownPluginTarget(cfg, registry, lock, name, !enabled); err != nil {
 			return err
 		}
 		changed, err := SetPluginEnabled(configPath, name, enabled)
@@ -90,7 +90,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 		}
 		return writePluginEnabledResult(output, configPath, registry, name, enabled, changed)
 	case "check":
-		checks := PluginConfigChecks(cfg, registry, workspace)
+		checks := PluginConfigChecks(cfg, registry, lock)
 		if err := WritePluginConfigCheckTable(output, checks); err != nil {
 			return err
 		}

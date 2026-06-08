@@ -467,7 +467,7 @@ plugins:
 	}
 }
 
-func TestNewAppUsesPluginAliasForDataDir(t *testing.T) {
+func TestNewAppUsesPluginInstanceIDForDataDir(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "anybot.yaml")
 	if err := os.WriteFile(configPath, []byte(`adapter:
@@ -499,7 +499,7 @@ plugins:
 	if _, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState()); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(dir, ".anybot", "plugins", "mc_admin")
+	want := filepath.Join(dir, ".anybot", "plugins", "minecraft")
 	if dataDir != want {
 		t.Fatalf("dataDir = %q, want %q", dataDir, want)
 	}

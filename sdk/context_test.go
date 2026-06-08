@@ -145,6 +145,20 @@ func TestContextSessionsArePluginScoped(t *testing.T) {
 	}
 }
 
+func TestContextUsesInstanceIDForStateNamespace(t *testing.T) {
+	app := core.New()
+	ctx := NewContext(app, Manifest{Name: "weather"}, WithConfigName("daily_weather"), WithInstanceID("weather_12345678"))
+	if ctx.ConfigName() != "daily_weather" {
+		t.Fatalf("config name = %q", ctx.ConfigName())
+	}
+	if ctx.InstanceID() != "weather_12345678" {
+		t.Fatalf("instance id = %q", ctx.InstanceID())
+	}
+	if key := ctx.SessionBy("settings").Key(); key != "weather_12345678.settings" {
+		t.Fatalf("session key = %q", key)
+	}
+}
+
 func TestTypedStateUsesEventContext(t *testing.T) {
 	type profile struct {
 		Name string `json:"name"`
@@ -224,7 +238,7 @@ func TestTypedStateUnavailable(t *testing.T) {
 func TestContextConfigWritesThroughStore(t *testing.T) {
 	store := &sdkConfigStore{}
 	app := core.New()
-	ctx := NewContext(app, Manifest{Name: "minecraft"}, WithConfigStore(store))
+	ctx := NewContext(app, Manifest{Name: "minecraft"}, WithConfigName("mc_admin"), WithConfigStore(store))
 	if !ctx.Config().Available() {
 		t.Fatal("config handle should be available")
 	}
@@ -233,7 +247,7 @@ func TestContextConfigWritesThroughStore(t *testing.T) {
 	}
 	if !reflect.DeepEqual(store.assignments, []ConfigAssignment{
 		{Path: []string{"bridge", "group_to_game"}, Value: "prefix"},
-	}) || store.plugin != "minecraft" {
+	}) || store.plugin != "mc_admin" {
 		t.Fatalf("store plugin=%q assignments=%#v", store.plugin, store.assignments)
 	}
 	if err := ctx.Config().Reset(context.Background(), "bridge.group_to_game"); err != nil {
@@ -275,6 +289,19 @@ func TestContextDataDirUsesPluginNamespace(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Fatalf("%s is not a directory", dir)
+	}
+}
+
+func TestContextDataDirUsesInstanceID(t *testing.T) {
+	root := t.TempDir()
+	ctx := NewContext(core.New(), Manifest{Name: "weather"}, WithDataDir(root), WithConfigName("daily_weather"), WithInstanceID("weather_12345678"))
+	dir, err := ctx.DataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "plugins", "weather_12345678")
+	if dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
 	}
 }
 

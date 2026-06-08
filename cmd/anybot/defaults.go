@@ -71,13 +71,13 @@ const defaultReadme = `# AnyBot
 ` + "```sh" + `
 anybot doctor
 anybot run
-# 或使用本目录的可构建运行框架：
+# 或使用本目录的生成宿主：
 anybot up
 ` + "```" + `
 
 默认使用 OneBot v11 反向 WebSocket，请让协议端连接 ` + "`ws://127.0.0.1:6700/`" + `。
 
-` + "`anybot init`" + ` 已生成 ` + "`anybot.plugins.yaml`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成框架入口 ` + "`main.go`" + ` 由 anybot 管理，日常主要编辑 ` + "`anybot.yaml`" + ` 和 ` + "`plugins.d/*.yaml`" + `。运行时状态默认保存到 ` + "`.anybot/`" + `，包括框架托管的会话存储和插件私有数据目录。
+` + "`anybot init`" + ` 已生成 ` + "`anybot.lock`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主入口 ` + "`main.go`" + ` 由 anybot 管理，日常主要编辑 ` + "`anybot.yaml`" + ` 和 ` + "`plugins.d/*.yaml`" + `。` + "`anybot.lock`" + ` 会记录外部插件的配置名和稳定实例 ID；运行时状态默认保存到 ` + "`.anybot/`" + `，包括 ` + "`.anybot/store.json`" + ` 和插件私有数据目录。
 
 ## 外部插件
 
@@ -90,5 +90,5 @@ anybot plugin enable anybot_weather
 anybot up
 ` + "```" + `
 
-命令会更新外部插件注册代码，并在 ` + "`plugins.d/<name>.yaml`" + ` 中加入默认禁用的插件配置项；可用 ` + "`module@version`" + ` 或 ` + "`-version`" + ` 固定版本，省略版本或使用 ` + "`latest`" + ` 时会解析并记录具体版本。本地开发时可加 ` + "`-replace ../path/to/plugin`" + `，它按当前命令目录解析并写成相对机器人目录的路径，不解析远端版本；没有版本时生成框架会按模块主版本写入占位 ` + "`require`" + `，例如普通模块使用 ` + "`v0.0.0`" + `，` + "`/v2`" + ` 模块使用 ` + "`v2.0.0`" + `。确认配置后用 ` + "`anybot plugin enable`" + ` 启用插件，` + "`anybot plugin config <name> key=value`" + ` 调整配置；要撤回某个字段的本地覆盖并回到 typed config 默认值，用 ` + "`anybot plugin config <name> -reset key`" + `。基础 ` + "`anybot plugin inspect`" + ` 和 ` + "`anybot plugin check`" + ` 可以发现外部插件待构建；` + "`anybot up`" + ` 会构建运行框架、同步并检查插件配置，然后运行。构建后，` + "`./anybot-bot plugin inspect`" + ` 和 ` + "`./anybot-bot plugin check`" + ` 会使用完整插件注册表做最终校验。要调整外部插件版本、导出符号或本地替换路径，可使用 ` + "`anybot plugin update <name>`" + `，它不会改写插件配置。` + "`anybot build/up`" + ` 也会固定生成框架对 AnyBot 自身的依赖，源码开发版会使用本地源码 ` + "`replace`" + `，发布版会使用当前框架版本。移除外部插件可使用 ` + "`anybot plugin remove <name>`" + `。
+命令会更新外部插件注册代码，并在 ` + "`plugins.d/<name>.yaml`" + ` 中加入默认禁用的插件配置项；可用 ` + "`module@version`" + ` 或 ` + "`-version`" + ` 固定版本，省略版本或使用 ` + "`latest`" + ` 时会解析并记录具体版本。本地开发时可加 ` + "`-replace ../path/to/plugin`" + `，它按当前命令目录解析并写成相对机器人目录的路径，不解析远端版本；没有版本时生成宿主会按模块主版本写入占位 ` + "`require`" + `，例如普通模块使用 ` + "`v0.0.0`" + `，` + "`/v2`" + ` 模块使用 ` + "`v2.0.0`" + `。` + "`-name`" + ` 是配置名，不是展示昵称；持久化实例 ID 会写入 ` + "`anybot.lock`" + `。确认配置后用 ` + "`anybot plugin enable`" + ` 启用插件，` + "`anybot plugin config <name> key=value`" + ` 调整配置；要撤回某个字段的本地覆盖并回到 typed config 默认值，用 ` + "`anybot plugin config <name> -reset key`" + `。基础 ` + "`anybot plugin inspect`" + ` 和 ` + "`anybot plugin check`" + ` 可以发现外部插件待构建；` + "`anybot up`" + ` 会构建生成宿主、同步并检查插件配置，然后运行。构建后，` + "`./anybot-bot plugin inspect`" + ` 和 ` + "`./anybot-bot plugin check`" + ` 会使用完整插件注册表做最终校验。要调整外部插件版本、导出符号或本地替换路径，可使用 ` + "`anybot plugin update <name>`" + `，它不会改写插件配置。` + "`anybot build/up`" + ` 也会固定生成宿主对 AnyBot 自身的依赖，源码开发版会使用本地源码 ` + "`replace`" + `，发布版会使用当前框架版本。移除外部插件可使用 ` + "`anybot plugin remove <name>`" + `。
 `

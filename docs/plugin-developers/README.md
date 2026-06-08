@@ -91,7 +91,14 @@ var Plugin = absdk.Define(
 
 插件对外导出的是 `Plugin`。最终用户添加插件时，`-symbol` 默认就是 `Plugin`。
 
-`Manifest.Name` 是插件在运行框架里的稳定名字，会用于配置键、`plugins.d/<name>.yaml`、日志、路由命名空间和插件数据目录。名字只能使用小写字母、数字和下划线，并且必须以字母开头，例如 `weather`、`group_memo`。
+`Manifest.Name` 是插件作者声明的默认插件键，不是展示名。它会作为直接安装插件时的配置名和持久化实例 ID；运行框架安装外部插件时，也可以为同一个插件注入独立的配置名和实例 ID。名字只能使用小写字母、数字和下划线，并且必须以字母开头，例如 `weather`、`group_memo`。
+
+不要把 `Manifest.Name` 当成可以随手更改的昵称。改名等同于迁移配置和数据；需要换展示文案时，把展示文案写在 `Description`、配置项或回复文本里。
+
+插件需要区分当前安装身份时，可以读取：
+
+- `ctx.ConfigName()`：当前配置名，用于 CLI、`plugins.d/<name>.yaml`、配置写回和用户可见诊断。
+- `ctx.InstanceID()`：当前稳定实例 ID，用于 `Session`/`State` 命名空间和私有数据目录。
 
 ## 安装到本地机器人工作目录
 
@@ -239,9 +246,19 @@ _, err := c.Reply(message.New(
 ))
 ```
 
-## 会话存储
+## 运行时状态
 
-插件应优先使用 SDK 的 typed state helper，让状态自动落在当前插件命名空间：
+插件里有三类常见数据：
+
+- typed config：部署期配置，例如命令名、白名单、默认城市、管理员列表。
+- runtime state：运行时产生并需要保存的小状态，例如用户绑定、群便签、对话进度、开关状态。
+- private data：插件自己管理的文件、缓存、索引或数据库。
+
+运行时通过群聊指令改动的内容，默认应放进 `Session`/`State` 或插件自己的 `DataDir()`，而不是直接写回 typed config。`ctx.Config()` 只适合显式修改插件部署配置的管理命令，例如超级用户在群里调整一个长期配置项，并且插件作者愿意让这个改动体现在 YAML 配置文件中。
+
+### Session 与 State
+
+插件应优先使用 SDK 的 typed state helper，让状态自动落在当前插件实例命名空间：
 
 ```go
 state, err := absdk.UserState[State](ctx, c, "state").LoadOr(State{})
@@ -272,7 +289,7 @@ state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour,
 - `ctx.GroupSession(c)`：群或频道维度。
 - `ctx.SessionBy("key")`：插件自定义维度。
 
-底层 `Session` 仍可用于原始字节或特殊 JSON 读写。默认运行框架使用文件存储，位置在 `runtime.data_dir/store.path`。
+底层 `Session` 仍可用于原始字节或特殊 JSON 读写。默认运行框架使用文件存储，位置在 `runtime.data_dir/store.path`，也就是默认的 `.anybot/store.json`。如果运行时把 `runtime.store.type` 设成 `memory`，这些状态只保存在进程内，重启后会丢失。
 
 ## 多轮对话
 
@@ -352,15 +369,15 @@ if err != nil {
 path := filepath.Join(dir, "cache.json")
 ```
 
-运行框架会创建：
+运行框架会在插件第一次调用 `DataDir()` 时创建：
 
 ```text
-runtime.data_dir/plugins/<插件名>/
+runtime.data_dir/plugins/<插件实例ID>/
 ```
 
-小型状态优先使用 `Session`，只有需要控制文件格式或接入外部存储时再用 `DataDir()`。
+小型状态优先使用 `Session`/`State`，只有需要控制文件格式、保存大量数据或接入外部存储时再用 `DataDir()`。框架不会在禁用或移除插件时自动删除这个目录；删除数据应当是用户显式操作，或插件提供清晰的迁移/清理流程。
 
-## 运行期写回配置
+## 配置写回
 
 插件可以写回自己的 `config` 字段：
 
@@ -388,7 +405,7 @@ err := ctx.Config().SetAll(c.Context,
 err := ctx.Config().Reset(c.Context, "city.default")
 ```
 
-写回能力只在运行框架注入配置存储时可用。测试或直接核心库嵌入场景可能不可用，要检查 `Available()` 或处理 `ErrConfigStoreUnavailable`。
+写回能力只在运行框架注入配置存储时可用。测试或直接核心库嵌入场景可能不可用，要检查 `Available()` 或处理 `ErrConfigStoreUnavailable`。不要把高频状态、用户内容或大对象写进配置文件；这类数据应使用 `State` 或 `DataDir()`。
 
 ## 权限与安全
 

@@ -78,19 +78,18 @@ func TestLoadConfigIgnoresMissingPluginConfigDir(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsYMLExtension(t *testing.T) {
+func TestLoadConfigAcceptsYMLExtension(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yml")
 	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := LoadConfig(config)
-	if err == nil || !strings.Contains(err.Error(), "必须使用 .yaml 扩展名") {
-		t.Fatalf("err = %v", err)
+	if _, err := LoadConfig(config); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestLoadConfigRejectsSplitYMLExtension(t *testing.T) {
+func TestLoadConfigAcceptsSplitYMLExtension(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
 		t.Fatal(err)
@@ -102,8 +101,11 @@ func TestLoadConfigRejectsSplitYMLExtension(t *testing.T) {
 	if err := os.WriteFile(config, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := LoadConfig(config)
-	if err == nil || !strings.Contains(err.Error(), "必须使用 .yaml 扩展名") {
-		t.Fatalf("err = %v", err)
+	cfg, err := LoadConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Plugins["echo"]; !ok {
+		t.Fatalf("echo plugin missing: %#v", cfg.Plugins)
 	}
 }

@@ -13,11 +13,11 @@ func TestRunPluginCommandStatus(t *testing.T) {
 	configPath := writePluginCommandConfig(t, dir, "plugins:\n  help:\n    enabled: true\n    config: {}\n")
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
-		Args:          []string{"status"},
-		Output:        &out,
-		ConfigPath:    configPath,
-		WorkspacePath: filepath.Join(dir, PluginWorkspaceFile),
-		Registry:      DefaultRegistry(),
+		Args:       []string{"status"},
+		Output:     &out,
+		ConfigPath: configPath,
+		LockPath:   filepath.Join(dir, PluginLockFile),
+		Registry:   DefaultRegistry(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestRunPluginCommandStatus(t *testing.T) {
 	}
 }
 
-func TestRunPluginCommandUsageDoesNotRequireWorkspace(t *testing.T) {
+func TestRunPluginCommandUsageDoesNotRequireLock(t *testing.T) {
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
 		Args:   []string{"inspect"},
@@ -42,7 +42,7 @@ func TestRunPluginCommandUsageDoesNotRequireWorkspace(t *testing.T) {
 	}
 }
 
-func TestRunPluginCommandUnknownDoesNotRequireWorkspace(t *testing.T) {
+func TestRunPluginCommandUnknownDoesNotRequireLock(t *testing.T) {
 	err := RunPluginCommand(PluginCommandOptions{Args: []string{"missing"}})
 	if err == nil || !strings.Contains(err.Error(), `未知插件命令 "missing"`) {
 		t.Fatalf("err = %v", err)
@@ -54,11 +54,11 @@ func TestRunPluginCommandEnableSyncsDefaultConfig(t *testing.T) {
 	configPath := writePluginCommandConfig(t, dir, "plugins: {}\n")
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
-		Args:          []string{"enable", "help"},
-		Output:        &out,
-		ConfigPath:    configPath,
-		WorkspacePath: filepath.Join(dir, PluginWorkspaceFile),
-		Registry:      DefaultRegistry(),
+		Args:       []string{"enable", "help"},
+		Output:     &out,
+		ConfigPath: configPath,
+		LockPath:   filepath.Join(dir, PluginLockFile),
+		Registry:   DefaultRegistry(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -84,11 +84,11 @@ func TestRunPluginCommandConfigUpdatesPluginConfig(t *testing.T) {
 `)
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
-		Args:          []string{"config", "help", "command=assist"},
-		Output:        &out,
-		ConfigPath:    configPath,
-		WorkspacePath: filepath.Join(dir, PluginWorkspaceFile),
-		Registry:      DefaultRegistry(),
+		Args:       []string{"config", "help", "command=assist"},
+		Output:     &out,
+		ConfigPath: configPath,
+		LockPath:   filepath.Join(dir, PluginLockFile),
+		Registry:   DefaultRegistry(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -106,11 +106,11 @@ func TestRunPluginCommandCheckReportsFailures(t *testing.T) {
 	configPath := writePluginCommandConfig(t, dir, "plugins:\n  ghost:\n    enabled: true\n    config: {}\n")
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
-		Args:          []string{"check"},
-		Output:        &out,
-		ConfigPath:    configPath,
-		WorkspacePath: filepath.Join(dir, PluginWorkspaceFile),
-		Registry:      DefaultRegistry(),
+		Args:       []string{"check"},
+		Output:     &out,
+		ConfigPath: configPath,
+		LockPath:   filepath.Join(dir, PluginLockFile),
+		Registry:   DefaultRegistry(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "插件配置检查失败") {
 		t.Fatalf("err = %v", err)

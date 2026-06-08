@@ -9,48 +9,50 @@ import (
 	"text/template"
 )
 
-// RenderPluginWorkspace 重写外部插件注册代码，并在缺失时创建最小框架 main.go 和 go.mod。
-func RenderPluginWorkspace(dir string, workspace PluginWorkspace) error {
-	return renderPluginWorkspace(dir, workspace, false)
+// RenderPluginHost 重写外部插件注册代码，并在缺失时创建最小生成宿主。
+func RenderPluginHost(dir string, lock PluginLock) error {
+	return renderPluginHost(dir, lock, false)
 }
 
-func renderPluginWorkspace(dir string, workspace PluginWorkspace, force bool) error {
+func renderPluginHost(dir string, lock PluginLock, force bool) error {
 	if dir == "" {
 		dir = "."
 	}
-	workspace.applyDefaults()
-	if err := ValidatePluginWorkspace(workspace); err != nil {
+	lock.applyDefaults()
+	if err := ValidatePluginLock(lock); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := CheckPluginWorkspaceWritable(dir, force); err != nil {
+	if err := CheckGeneratedHostWritable(dir, force); err != nil {
 		return err
 	}
-	if err := writeGenerated(filepath.Join(dir, generatedPlugins), renderPlugins(workspace), force); err != nil {
+	if err := writeGenerated(filepath.Join(dir, generatedPlugins), renderPlugins(lock), force); err != nil {
 		return err
 	}
 	if err := writeGenerated(filepath.Join(dir, generatedMain), renderMain(), force); err != nil {
 		return err
 	}
-	return writeIfMissing(filepath.Join(dir, "go.mod"), "module "+workspace.Module+"\n\ngo 1.24\n")
+	return writeIfMissing(filepath.Join(dir, "go.mod"), "module "+lock.Module+"\n\ngo 1.24\n")
 }
 
-func renderPlugins(workspace PluginWorkspace) string {
+func renderPlugins(lock PluginLock) string {
 	type pluginImport struct {
 		Alias  string
 		Name   string
+		ID     string
 		Module string
 		Symbol string
 	}
 	data := struct {
 		Plugins []pluginImport
 	}{}
-	for i, item := range workspace.Plugins {
+	for i, item := range lock.Plugins {
 		data.Plugins = append(data.Plugins, pluginImport{
 			Alias:  fmt.Sprintf("plugin%d", i),
 			Name:   item.Name,
+			ID:     item.ID,
 			Module: item.Module,
 			Symbol: item.Symbol,
 		})
@@ -63,7 +65,7 @@ func renderMain() string {
 }
 
 func executeTemplate(src string, data any) string {
-	tpl := template.Must(template.New("workspace").Parse(src))
+	tpl := template.Must(template.New("lock").Parse(src))
 	var buf bytes.Buffer
 	if err := tpl.Execute(&buf, data); err != nil {
 		panic(err)
@@ -92,7 +94,7 @@ import (
 
 func registerExternalPlugins(registry absdk.Registry) error {
 	{{- range .Plugins }}
-	if err := registry.Register({{ .Alias }}.{{ .Symbol }}.Factory().WithName({{ printf "%q" .Name }})); err != nil {
+	if err := registry.Register({{ .Alias }}.{{ .Symbol }}.Factory().WithName({{ printf "%q" .Name }}).WithInstanceID({{ printf "%q" .ID }})); err != nil {
 		return err
 	}
 	{{- end }}
@@ -127,6 +129,7 @@ func main() {
 			Args:       os.Args[2:],
 			Output:     os.Stdout,
 			ConfigPath: "anybot.yaml",
+			LockPath:   host.PluginLockFile,
 			Registry:   registry,
 		}); err != nil {
 			log.Fatal(err)

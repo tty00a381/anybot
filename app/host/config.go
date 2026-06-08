@@ -60,9 +60,6 @@ func LoadConfig(path string) (Config, error) {
 	if path == "" {
 		path = "anybot.yaml"
 	}
-	if err := requireYAMLFile(path, "配置文件"); err != nil {
-		return Config{}, err
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
@@ -173,10 +170,7 @@ func (cfg *Config) loadPluginConfigDir(configPath string) error {
 
 func pluginConfigName(file string) (string, bool, error) {
 	ext := filepath.Ext(file)
-	if ext == ".yml" {
-		return "", false, fmt.Errorf("插件配置 %s 必须使用 .yaml 扩展名", file)
-	}
-	if ext != ".yaml" {
+	if ext != ".yaml" && ext != ".yml" {
 		return "", false, nil
 	}
 	name := strings.TrimSuffix(file, ext)
@@ -184,13 +178,6 @@ func pluginConfigName(file string) (string, bool, error) {
 		return "", false, nil
 	}
 	return name, true, nil
-}
-
-func requireYAMLFile(path, kind string) error {
-	if filepath.Ext(path) != ".yaml" {
-		return fmt.Errorf("%s %s 必须使用 .yaml 扩展名", kind, path)
-	}
-	return nil
 }
 
 func resolveConfigRelativePath(configPath, value string) string {

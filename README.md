@@ -29,9 +29,9 @@ anybot up
 
 - `anybot.yaml`：运行配置。
 - `plugins.d/*.yaml`：每个插件的配置。
-- `anybot.plugins.yaml`：外部插件清单。
-- `plugins.gen.go`、`main.go`、`go.mod`：由 AnyBot 管理的可构建运行框架。
-- `.anybot/`：运行时状态和插件私有数据目录。
+- `anybot.lock`：外部插件锁，记录配置名、稳定实例 ID、插件来源、版本、本地替换路径和导出符号。
+- `plugins.gen.go`、`main.go`、`go.mod`：由 AnyBot 管理的可构建生成宿主。
+- `.anybot/`：运行时状态和插件私有数据目录，默认包含 `.anybot/store.json`。
 
 ## 安装插件
 
@@ -53,7 +53,7 @@ anybot plugin enable weather
 anybot up
 ```
 
-插件配置名只能使用小写字母、数字和下划线，并且必须以字母开头。省略 `-name` 时，模块名末尾的短横线会自动转换为下划线，例如 `anybot-weather` 会得到 `anybot_weather`。
+插件配置名只能使用小写字母、数字和下划线，并且必须以字母开头。省略 `-name` 时，模块名末尾的短横线会自动转换为下划线，例如 `anybot-weather` 会得到 `anybot_weather`。配置名用于 CLI 和 `plugins.d/<name>.yaml`；持久化实例 ID 会单独写入 `anybot.lock`。
 
 ## 编写插件
 
@@ -91,7 +91,7 @@ go run .
 ## 包结构
 
 - `cmd/anybot`：统一 CLI。
-- `app/host`：配置、插件工作区、运行框架装配。
+- `app/host`：配置、插件锁、生成宿主和运行框架装配。
 - `app/plugins/*`：内置插件。
 - `sdk`：插件 SDK。
 - `core`：协议无关核心库。

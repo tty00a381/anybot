@@ -166,14 +166,12 @@ func EnsurePluginConfigEntry(path, name string) (bool, error) {
 	if dir, ok, err := pluginConfigDir(root, path); err != nil {
 		return false, err
 	} else if ok {
-		entryPath, err := pluginConfigEntryPath(dir, name)
+		entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
 		if err != nil {
 			return false, err
 		}
-		if _, err := os.Stat(entryPath); err == nil {
+		if exists {
 			return false, nil
-		} else if !os.IsNotExist(err) {
-			return false, err
 		}
 		doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{pluginEntryNode(emptyConfigNode())}}
 		if err := saveYAMLDocument(entryPath, doc); err != nil {
@@ -217,7 +215,7 @@ func SetPluginEnabled(path, name string, enabled bool) (bool, error) {
 		if dir, ok, err := pluginConfigDir(root, path); err != nil {
 			return false, err
 		} else if ok {
-			entryPath, err := pluginConfigEntryPath(dir, name)
+			entryPath, _, err := pluginConfigEntryPathForUpdate(dir, name)
 			if err != nil {
 				return false, err
 			}
@@ -275,7 +273,7 @@ func SetPluginConfigValues(path, name string, assignments []PluginConfigAssignme
 		if dir, ok, err := pluginConfigDir(root, path); err != nil {
 			return false, err
 		} else if ok {
-			entryPath, err := pluginConfigEntryPath(dir, name)
+			entryPath, _, err := pluginConfigEntryPathForUpdate(dir, name)
 			if err != nil {
 				return false, err
 			}
@@ -337,9 +335,12 @@ func removePluginConfigValues(path, name string, paths [][]string) (int, error) 
 		if dir, ok, err := pluginConfigDir(root, path); err != nil {
 			return 0, err
 		} else if ok {
-			entryPath, err := pluginConfigEntryPath(dir, name)
+			entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
 			if err != nil {
 				return 0, err
+			}
+			if !exists {
+				return 0, nil
 			}
 			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
 			if err != nil {
@@ -392,14 +393,15 @@ func RemovePluginConfigEntry(path, name string) (bool, error) {
 		changed = true
 	}
 	if split {
-		entryPath, err := pluginConfigEntryPath(dir, name)
+		entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
 		if err != nil {
 			return false, err
 		}
-		if err := os.Remove(entryPath); err == nil {
+		if exists {
+			if err := os.Remove(entryPath); err != nil {
+				return false, err
+			}
 			changed = true
-		} else if !os.IsNotExist(err) {
-			return false, err
 		}
 	}
 	if !changed {
@@ -414,11 +416,11 @@ func SyncPluginConfigEntries(path string, registry absdk.Registry) (int, error) 
 	return result.Changed, err
 }
 
-// SyncPluginConfigEntriesForWorkspace 同步插件配置，并允许工作区里的外部插件等待生成框架补全默认配置。
-func SyncPluginConfigEntriesForWorkspace(path string, registry absdk.Registry, workspace PluginWorkspace) (PluginConfigSyncResult, error) {
-	workspace.applyDefaults()
+// SyncPluginConfigEntriesForLock 同步插件配置，并允许插件锁中的外部插件等待生成宿主补全默认配置。
+func SyncPluginConfigEntriesForLock(path string, registry absdk.Registry, lock PluginLock) (PluginConfigSyncResult, error) {
+	lock.applyDefaults()
 	allowUnavailable := map[string]struct{}{}
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		if item.Name != "" {
 			allowUnavailable[item.Name] = struct{}{}
 		}
@@ -459,14 +461,12 @@ func SyncPluginConfigEntry(path string, registry absdk.Registry, name string) (P
 		if dir, ok, err := pluginConfigDir(root, path); err != nil {
 			return PluginConfigEntrySyncResult{}, err
 		} else if ok {
-			entryPath, err := pluginConfigEntryPath(dir, name)
+			entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
 			if err != nil {
 				return PluginConfigEntrySyncResult{}, err
 			}
-			if _, err := os.Stat(entryPath); os.IsNotExist(err) {
+			if !exists {
 				return PluginConfigEntrySyncResult{Available: true}, nil
-			} else if err != nil {
-				return PluginConfigEntrySyncResult{}, err
 			}
 			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
 			if err != nil {
@@ -685,6 +685,29 @@ func pluginConfigEntryPath(dir, name string) (string, error) {
 	return filepath.Join(dir, name+".yaml"), nil
 }
 
+func pluginConfigEntryPathForUpdate(dir, name string) (string, bool, error) {
+	defaultPath, err := pluginConfigEntryPath(dir, name)
+	if err != nil {
+		return "", false, err
+	}
+	for _, candidate := range pluginConfigEntryCandidates(defaultPath) {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true, nil
+		} else if !os.IsNotExist(err) {
+			return "", false, err
+		}
+	}
+	return defaultPath, false, nil
+}
+
+func pluginConfigEntryCandidates(path string) []string {
+	candidates := []string{path}
+	if filepath.Ext(path) == ".yaml" {
+		candidates = append(candidates, strings.TrimSuffix(path, ".yaml")+".yml")
+	}
+	return candidates
+}
+
 func ensureMapping(root *yaml.Node, key string) (*yaml.Node, error) {
 	value := mappingValue(root, key)
 	if value == nil {
@@ -901,9 +924,6 @@ func removeMappingKey(mapping *yaml.Node, key string) bool {
 }
 
 func loadYAMLDocument(path string) (yaml.Node, error) {
-	if err := requireYAMLFile(path, "配置文件"); err != nil {
-		return yaml.Node{}, err
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return yaml.Node{}, err
@@ -916,9 +936,6 @@ func loadYAMLDocument(path string) (yaml.Node, error) {
 }
 
 func saveYAMLDocument(path string, doc yaml.Node) error {
-	if err := requireYAMLFile(path, "配置文件"); err != nil {
-		return err
-	}
 	var out bytes.Buffer
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)

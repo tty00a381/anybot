@@ -11,16 +11,16 @@ import (
 // ErrDataDirUnavailable 表示当前运行时没有配置插件数据目录。
 var ErrDataDirUnavailable = errors.New("anybot: plugin data dir unavailable")
 
-// DataDir 返回当前插件的私有数据目录，并确保目录已创建。
+// DataDir 返回当前插件实例的私有数据目录，并确保目录已创建。
 func (c *Context) DataDir() (string, error) {
-	if c == nil || c.app == nil || c.manifest.Name == "" {
+	if c == nil || c.app == nil || c.InstanceID() == "" {
 		return "", ErrDataDirUnavailable
 	}
 	rootPath := strings.TrimSpace(c.env.DataDir)
 	if rootPath == "" {
 		return "", ErrDataDirUnavailable
 	}
-	dir, err := pluginDataDir(rootPath, c.manifest.Name)
+	dir, err := pluginDataDir(rootPath, c.InstanceID())
 	if err != nil {
 		return "", err
 	}

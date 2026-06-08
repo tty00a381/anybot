@@ -14,6 +14,7 @@ import (
 // PluginInspect 是单个插件面向用户的完整配置视图。
 type PluginInspect struct {
 	Name              string
+	InstanceID        string
 	Source            string
 	Version           string
 	Description       string
@@ -30,8 +31,8 @@ type PluginInspect struct {
 	CheckDetail       string
 }
 
-// InspectPlugin 合并注册表、工作区和配置文件，返回单个插件的可读视图。
-func InspectPlugin(configPath string, registry absdk.Registry, workspace PluginWorkspace, name string) (PluginInspect, error) {
+// InspectPlugin 合并注册表、外部插件锁和配置文件，返回单个插件的可读视图。
+func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, name string) (PluginInspect, error) {
 	if configPath == "" {
 		configPath = "anybot.yaml"
 	}
@@ -42,12 +43,13 @@ func InspectPlugin(configPath string, registry absdk.Registry, workspace PluginW
 	if err != nil {
 		return PluginInspect{}, err
 	}
-	status, ok := pluginStatusByName(cfg, registry, workspace, name)
+	status, ok := pluginStatusByName(cfg, registry, lock, name)
 	if !ok {
 		return PluginInspect{}, fmt.Errorf("unknown plugin %q", name)
 	}
 	inspect := PluginInspect{
 		Name:        status.Name,
+		InstanceID:  status.InstanceID,
 		Source:      status.Source,
 		Version:     status.Version,
 		Description: status.Description,
@@ -81,7 +83,7 @@ func InspectPlugin(configPath string, registry absdk.Registry, workspace PluginW
 		inspect.DefaultAvailable = true
 		inspect.DefaultConfigYAML = defaultYAML
 	}
-	for _, check := range PluginConfigChecks(cfg, registry, workspace) {
+	for _, check := range PluginConfigChecks(cfg, registry, lock) {
 		if check.Name == name {
 			inspect.CheckState = check.State
 			inspect.CheckDetail = check.Detail
@@ -95,6 +97,7 @@ func InspectPlugin(configPath string, registry absdk.Registry, workspace PluginW
 func WritePluginInspect(w io.Writer, inspect PluginInspect) error {
 	lines := []string{
 		"名称：" + displayValue(inspect.Name),
+		"实例ID：" + displayValue(inspect.InstanceID),
 		"来源：" + sourceLabel(inspect.Source),
 		"配置：" + boolLabel(inspect.Configured),
 		"启用：" + boolLabel(inspect.Enabled),
@@ -141,8 +144,8 @@ func WritePluginInspect(w io.Writer, inspect PluginInspect) error {
 	return err
 }
 
-func pluginStatusByName(cfg Config, registry absdk.Registry, workspace PluginWorkspace, name string) (PluginStatus, bool) {
-	for _, status := range PluginStatuses(cfg, registry, workspace) {
+func pluginStatusByName(cfg Config, registry absdk.Registry, lock PluginLock, name string) (PluginStatus, bool) {
+	for _, status := range PluginStatuses(cfg, registry, lock) {
 		if status.Name == name {
 			return status, true
 		}
@@ -177,10 +180,12 @@ func pluginConfigLocationPath(configPath, name string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if _, err := os.Stat(entryPath); err == nil {
-		return entryPath, true, nil
-	} else if err != nil && !os.IsNotExist(err) {
-		return "", false, err
+	for _, candidate := range pluginConfigEntryCandidates(entryPath) {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true, nil
+		} else if err != nil && !os.IsNotExist(err) {
+			return "", false, err
+		}
 	}
 	return "", false, nil
 }

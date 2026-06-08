@@ -34,7 +34,7 @@ func runDoctor(args []string) error {
 		return err
 	}
 	if err := host.ValidateConfig(cfg, host.DefaultRegistry()); err != nil {
-		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
+		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
 	adapterCfg := cfgAdapter(cfg)
 	if err := checkListen(adapterCfg); err != nil {
@@ -50,7 +50,7 @@ func runDoctor(args []string) error {
 	}
 	enabled, err := host.EnabledPlugins(cfg, host.DefaultRegistry())
 	if err != nil {
-		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
+		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
 	abs, _ := filepath.Abs(*configPath)
 	printSummary(abs, cfg, enabled)

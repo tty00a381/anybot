@@ -45,7 +45,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 	if errOut.Len() != 0 {
 		t.Fatalf("doctor stderr:\n%s", errOut.String())
 	}
-	for _, name := range []string{host.PluginWorkspaceFile, "plugins.gen.go", "main.go", "go.mod", "plugins.d"} {
+	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "plugins.d"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("%s was not generated: %v", name, err)
 		}
@@ -85,7 +85,7 @@ func TestRunInitRejectsUnmanagedGeneratedFilesWithoutPartialWrite(t *testing.T) 
 	}
 }
 
-func TestRunInitForceTakesOverGeneratedWorkspaceFiles(t *testing.T) {
+func TestRunInitForceTakesOverGeneratedHostFiles(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -385,9 +385,9 @@ func TestRunPluginAddAndList(t *testing.T) {
 	if !strings.Contains(pluginConfig, "enabled: false") || !strings.Contains(pluginConfig, "config: {}") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.2.3") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.2.3") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 	out.Reset()
 	if err := run([]string{"plugin", "list", "-dir", dir}); err != nil {
@@ -428,9 +428,9 @@ func TestRunPluginAddWithReplaceDoesNotResolveLatest(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if strings.Contains(manifest, "version:") || !strings.Contains(manifest, "replace: ../weather") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if strings.Contains(lockText, "version:") || !strings.Contains(lockText, "replace: ../weather") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -464,11 +464,11 @@ func TestRunPluginAddWithReplaceUsesPathMajorPlaceholder(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather/v2 => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "name: weather") ||
-		strings.Contains(manifest, "version:") ||
-		!strings.Contains(manifest, "module: github.com/acme/weather/v2") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "name: weather") ||
+		strings.Contains(lockText, "version:") ||
+		!strings.Contains(lockText, "module: github.com/acme/weather/v2") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -488,8 +488,8 @@ func TestRunPluginAddReportsVersionResolutionErrorWithoutPartialWrite(t *testing
 		!strings.Contains(err.Error(), "module not found") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginWorkspaceFile)); !os.IsNotExist(err) {
-		t.Fatalf("workspace should not be created, err=%v", err)
+	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); !os.IsNotExist(err) {
+		t.Fatalf("lock should not be created, err=%v", err)
 	}
 }
 
@@ -519,7 +519,7 @@ func TestRunPluginAddRollsBackAfterConfigFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
 		t.Fatalf("err = %v", err)
 	}
-	for _, name := range []string{host.PluginWorkspaceFile, "plugins.gen.go", "main.go", "go.mod", "anybot.yaml"} {
+	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "anybot.yaml"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s should be rolled back, err=%v", name, err)
 		}
@@ -570,9 +570,9 @@ func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3 => ../weather.Plugin)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.2.3") || !strings.Contains(manifest, "replace: ../weather") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.2.3") || !strings.Contains(lockText, "replace: ../weather") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -611,11 +611,11 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.3.0.Weather)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.3.0") ||
-		strings.Contains(manifest, "replace:") ||
-		!strings.Contains(manifest, "symbol: Weather") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.3.0") ||
+		strings.Contains(lockText, "replace:") ||
+		!strings.Contains(lockText, "symbol: Weather") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 	if config := readTestFile(t, pluginConfig); !strings.Contains(config, "city: Hangzhou") {
 		t.Fatalf("plugin config should be preserved:\n%s", config)
@@ -643,8 +643,8 @@ func TestRunPluginUpdateRollsBackAfterGoModFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(dir, host.PluginWorkspaceFile)
-	beforeManifest := readTestFile(t, manifestPath)
+	lockPath := filepath.Join(dir, host.PluginLockFile)
+	beforeLockText := readTestFile(t, lockPath)
 	beforeGenerated := readTestFile(t, filepath.Join(dir, "plugins.gen.go"))
 	beforeMain := readTestFile(t, filepath.Join(dir, "main.go"))
 	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
@@ -652,8 +652,8 @@ func TestRunPluginUpdateRollsBackAfterGoModFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
 		t.Fatalf("err = %v", err)
 	}
-	if got := readTestFile(t, manifestPath); got != beforeManifest {
-		t.Fatalf("manifest should roll back:\n%s", got)
+	if got := readTestFile(t, lockPath); got != beforeLockText {
+		t.Fatalf("lockText should roll back:\n%s", got)
 	}
 	if got := readTestFile(t, filepath.Join(dir, "plugins.gen.go")); got != beforeGenerated {
 		t.Fatalf("plugins.gen.go should roll back:\n%s", got)
@@ -704,9 +704,9 @@ func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.4.0") || strings.Contains(manifest, "latest") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.4.0") || strings.Contains(lockText, "latest") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -748,10 +748,10 @@ func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.4.0") ||
-		strings.Contains(manifest, "replace:") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.4.0") ||
+		strings.Contains(lockText, "replace:") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -785,10 +785,10 @@ func TestRunPluginUpdateVersionResolutionErrorDoesNotWrite(t *testing.T) {
 		!strings.Contains(err.Error(), "module not found") {
 		t.Fatalf("err = %v", err)
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if !strings.Contains(manifest, "version: v1.2.3") ||
-		strings.Contains(manifest, "latest") {
-		t.Fatalf("manifest should remain unchanged:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if !strings.Contains(lockText, "version: v1.2.3") ||
+		strings.Contains(lockText, "latest") {
+		t.Fatalf("lockText should remain unchanged:\n%s", lockText)
 	}
 }
 
@@ -889,8 +889,8 @@ func TestRunPluginAddRejectsBuiltinNameCollision(t *testing.T) {
 		!strings.Contains(err.Error(), "-name") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginWorkspaceFile)); !os.IsNotExist(err) {
-		t.Fatalf("workspace should not be created, err=%v", err)
+	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); !os.IsNotExist(err) {
+		t.Fatalf("lock should not be created, err=%v", err)
 	}
 }
 
@@ -1025,9 +1025,9 @@ func TestRunPluginRemove(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plugins.d", "weather.yaml")); !os.IsNotExist(err) {
 		t.Fatalf("plugin config should be removed: %v", err)
 	}
-	manifest := readTestFile(t, filepath.Join(dir, host.PluginWorkspaceFile))
-	if strings.Contains(manifest, "github.com/acme/weather") {
-		t.Fatalf("manifest:\n%s", manifest)
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if strings.Contains(lockText, "github.com/acme/weather") {
+		t.Fatalf("lockText:\n%s", lockText)
 	}
 }
 
@@ -1090,16 +1090,16 @@ func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("plugins:\n  weather:\n    enabled: true\n    config:\n      city: Hangzhou\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(dir, host.PluginWorkspaceFile)
-	beforeManifest := readTestFile(t, manifestPath)
+	lockPath := filepath.Join(dir, host.PluginLockFile)
+	beforeLockText := readTestFile(t, lockPath)
 	beforeConfig := readTestFile(t, configPath)
 	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
 	err := run([]string{"plugin", "remove", "weather", "-dir", dir})
 	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
 		t.Fatalf("err = %v", err)
 	}
-	if got := readTestFile(t, manifestPath); got != beforeManifest {
-		t.Fatalf("manifest should roll back:\n%s", got)
+	if got := readTestFile(t, lockPath); got != beforeLockText {
+		t.Fatalf("lockText should roll back:\n%s", got)
 	}
 	if got := readTestFile(t, configPath); got != beforeConfig {
 		t.Fatalf("config should roll back:\n%s", got)
@@ -1167,7 +1167,7 @@ func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 	}
 }
 
-func TestRunPluginSyncSkipsExternalWorkspacePlugin(t *testing.T) {
+func TestRunPluginSyncSkipsExternalLockPlugin(t *testing.T) {
 	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
 		if module != "github.com/acme/weather" || query != "latest" {
 			t.Fatalf("resolve %s@%s", module, query)
@@ -1280,7 +1280,7 @@ func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
 	}
 }
 
-func TestRunPluginConfigResetWorkspacePluginWaitsForGeneratedHost(t *testing.T) {
+func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
 	if err := os.WriteFile(config, []byte(`plugins:
@@ -1418,7 +1418,7 @@ func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 	}
 }
 
-func TestRunPluginEnableAllowsWorkspacePlugin(t *testing.T) {
+func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
 	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
@@ -1441,7 +1441,7 @@ func TestRunPluginEnableAllowsWorkspacePlugin(t *testing.T) {
 	}
 }
 
-func TestRunDoctorHintsExternalWorkspacePlugin(t *testing.T) {
+func TestRunDoctorHintsExternalLockPlugin(t *testing.T) {
 	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
 		if module != "github.com/acme/weather" || query != "latest" {
 			t.Fatalf("resolve %s@%s", module, query)
@@ -1461,7 +1461,7 @@ func TestRunDoctorHintsExternalWorkspacePlugin(t *testing.T) {
 	if err == nil {
 		t.Fatal("doctor should reject external plugin in base binary")
 	}
-	if !strings.Contains(err.Error(), "weather 是工作区外部插件") || !strings.Contains(err.Error(), "anybot up") {
+	if !strings.Contains(err.Error(), "weather 是插件锁中的外部插件") || !strings.Contains(err.Error(), "anybot up") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1491,12 +1491,12 @@ func TestRunBuildInvokesGoTool(t *testing.T) {
 	if !strings.Contains(out.String(), "构建完成："+filepath.Join(dir, "bot")) {
 		t.Fatalf("build output:\n%s", out.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginWorkspaceFile)); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestRunBuildSyncsWorkspaceGoMod(t *testing.T) {
+func TestRunBuildSyncsPluginHostGoMod(t *testing.T) {
 	setTestFrameworkDependencies(t, releaseFrameworkDependencies("v9.9.9"))
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
@@ -1602,7 +1602,7 @@ func TestBinaryPathHelpers(t *testing.T) {
 			command: "." + string(filepath.Separator) + "anybot-bot",
 		},
 		{
-			name:    "relative workspace output",
+			name:    "relative lock output",
 			dir:     "bot",
 			output:  "anybot-bot",
 			built:   filepath.Join("bot", "anybot-bot"),
@@ -1617,7 +1617,7 @@ func TestBinaryPathHelpers(t *testing.T) {
 		},
 		{
 			name:    "absolute output",
-			dir:     "/workspace",
+			dir:     "/lock",
 			output:  absOutput,
 			built:   absOutput,
 			command: absOutput,

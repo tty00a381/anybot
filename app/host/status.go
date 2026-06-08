@@ -11,6 +11,7 @@ import (
 // PluginStatus 是 anybot 对一个插件的运行视图。
 type PluginStatus struct {
 	Name        string
+	InstanceID  string
 	Source      string
 	Version     string
 	Description string
@@ -21,26 +22,30 @@ type PluginStatus struct {
 	Available   bool
 }
 
-// PluginStatuses 合并注册表、外部插件工作区和配置文件，生成稳定排序的插件状态。
-func PluginStatuses(cfg Config, registry absdk.Registry, workspace PluginWorkspace) []PluginStatus {
-	workspace.applyDefaults()
+// PluginStatuses 合并注册表、外部插件锁和配置文件，生成稳定排序的插件状态。
+func PluginStatuses(cfg Config, registry absdk.Registry, lock PluginLock) []PluginStatus {
+	lock.applyDefaults()
 	statuses := map[string]PluginStatus{}
 	external := map[string]PluginModule{}
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		if item.Name == "" {
 			continue
 		}
 		external[item.Name] = item
 		statuses[item.Name] = PluginStatus{
-			Name:   item.Name,
-			Source: "external",
-			Module: pluginModuleRef(item),
-			Symbol: item.Symbol,
+			Name:       item.Name,
+			InstanceID: item.ID,
+			Source:     "external",
+			Module:     pluginModuleRef(item),
+			Symbol:     item.Symbol,
 		}
 	}
 	for _, manifest := range registry.Plugins() {
 		status := statuses[manifest.Name]
 		status.Name = manifest.Name
+		if factory, ok := registry.Factory(manifest.Name); ok {
+			status.InstanceID = factory.StorageName()
+		}
 		if _, ok := external[manifest.Name]; ok {
 			status.Source = "external"
 		} else {
@@ -73,8 +78,8 @@ func PluginStatuses(cfg Config, registry absdk.Registry, workspace PluginWorkspa
 	return out
 }
 
-// EnsureKnownPluginTarget 确认插件名指向内置插件、外部工作区插件，或一个允许编辑的既有配置项。
-func EnsureKnownPluginTarget(cfg Config, registry absdk.Registry, workspace PluginWorkspace, name string, allowConfigured bool) error {
+// EnsureKnownPluginTarget 确认插件名指向内置插件、外部插件锁中的插件，或一个允许编辑的既有配置项。
+func EnsureKnownPluginTarget(cfg Config, registry absdk.Registry, lock PluginLock, name string, allowConfigured bool) error {
 	if name == "" {
 		return fmt.Errorf("plugin name is required")
 	}
@@ -86,8 +91,8 @@ func EnsureKnownPluginTarget(cfg Config, registry absdk.Registry, workspace Plug
 	if _, ok := registry.Factory(name); ok {
 		return nil
 	}
-	workspace.applyDefaults()
-	for _, item := range workspace.Plugins {
+	lock.applyDefaults()
+	for _, item := range lock.Plugins {
 		if item.Name == name {
 			return nil
 		}

@@ -10,7 +10,7 @@ import (
 	"github.com/tty00a381/anybot/core"
 )
 
-// Manifest 描述插件名称、版本和说明。
+// Manifest 描述插件稳定键、版本和说明。
 type Manifest struct {
 	Name        string
 	Version     string
@@ -20,6 +20,8 @@ type Manifest struct {
 // Environment 描述运行框架授予插件的宿主能力。
 type Environment struct {
 	DataDir               string
+	ConfigName            string
+	InstanceID            string
 	ConfigStore           ConfigStore
 	AllowGlobalMiddleware bool
 }
@@ -35,14 +37,34 @@ func WithEnvironment(env Environment) InstallOption {
 		}
 		*target = env
 		target.DataDir = strings.TrimSpace(target.DataDir)
+		target.ConfigName = strings.TrimSpace(target.ConfigName)
+		target.InstanceID = strings.TrimSpace(target.InstanceID)
 	}
 }
 
-// WithDataDir 注入插件数据根目录；运行框架会在其下为每个插件创建独立目录。
+// WithDataDir 注入插件数据根目录；运行框架会在其下为每个实例 ID 创建独立目录。
 func WithDataDir(root string) InstallOption {
 	return func(env *Environment) {
 		if env != nil {
 			env.DataDir = strings.TrimSpace(root)
+		}
+	}
+}
+
+// WithConfigName 注入当前插件的配置名；配置写回会使用这个名字定位插件配置。
+func WithConfigName(name string) InstallOption {
+	return func(env *Environment) {
+		if env != nil {
+			env.ConfigName = strings.TrimSpace(name)
+		}
+	}
+}
+
+// WithInstanceID 注入当前插件的稳定实例 ID；Store 和 DataDir 会使用它作为持久化命名空间。
+func WithInstanceID(id string) InstallOption {
+	return func(env *Environment) {
+		if env != nil {
+			env.InstanceID = strings.TrimSpace(id)
 		}
 	}
 }
@@ -88,6 +110,8 @@ func InstallWith(app *App, env Environment, plugins ...Plugin) error {
 		return fmt.Errorf("anybot: app is nil")
 	}
 	env.DataDir = strings.TrimSpace(env.DataDir)
+	env.ConfigName = strings.TrimSpace(env.ConfigName)
+	env.InstanceID = strings.TrimSpace(env.InstanceID)
 	for _, plugin := range plugins {
 		if plugin == nil {
 			continue

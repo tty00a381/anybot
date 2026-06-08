@@ -124,6 +124,35 @@ func TestSetPluginEnabledUsesPluginConfigDir(t *testing.T) {
 	}
 }
 
+func TestSetPluginEnabledUpdatesExistingSplitYMLConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anybot.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", "weather.yml")
+	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := SetPluginEnabled(path, "weather", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("existing .yml config should be changed")
+	}
+	out := readFile(t, pluginPath)
+	if !strings.Contains(out, "enabled: true") {
+		t.Fatalf("plugin config:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins.d", "weather.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("new .yaml config should not be created: %v", err)
+	}
+}
+
 func TestSetPluginEnabledCreatesEntry(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
@@ -290,6 +319,31 @@ func TestRemovePluginConfigEntryUsesPluginConfigDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
 	pluginPath := filepath.Join(dir, "plugins.d", "weather.yaml")
+	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := RemovePluginConfigEntry(path, "weather")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("entry should be removed")
+	}
+	if _, err := os.Stat(pluginPath); !os.IsNotExist(err) {
+		t.Fatalf("plugin config should be removed: %v", err)
+	}
+}
+
+func TestRemovePluginConfigEntryRemovesExistingSplitYMLConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "anybot.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", "weather.yml")
 	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -603,7 +657,7 @@ func TestSyncPluginConfigEntriesSkipsDisabledUnknownPlugin(t *testing.T) {
 	}
 }
 
-func TestSyncPluginConfigEntriesForWorkspaceSkipsExternalPlugins(t *testing.T) {
+func TestSyncPluginConfigEntriesForLockSkipsExternalPlugins(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
 	data := []byte(`plugins:
@@ -617,7 +671,7 @@ func TestSyncPluginConfigEntriesForWorkspaceSkipsExternalPlugins(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := SyncPluginConfigEntriesForWorkspace(path, DefaultRegistry(), PluginWorkspace{
+	result, err := SyncPluginConfigEntriesForLock(path, DefaultRegistry(), PluginLock{
 		Plugins: []PluginModule{{Name: "weather", Module: "github.com/acme/weather", Symbol: "Module"}},
 	})
 	if err != nil {
@@ -632,13 +686,13 @@ func TestSyncPluginConfigEntriesForWorkspaceSkipsExternalPlugins(t *testing.T) {
 	}
 }
 
-func TestSyncPluginConfigEntriesForWorkspaceRejectsUnknownConfig(t *testing.T) {
+func TestSyncPluginConfigEntriesForLockRejectsUnknownConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
 	if err := os.WriteFile(path, []byte("plugins:\n  missing:\n    enabled: true\n    config: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SyncPluginConfigEntriesForWorkspace(path, DefaultRegistry(), PluginWorkspace{}); err == nil {
+	if _, err := SyncPluginConfigEntriesForLock(path, DefaultRegistry(), PluginLock{}); err == nil {
 		t.Fatal("unknown plugin should be rejected")
 	}
 }

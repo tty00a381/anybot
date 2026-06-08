@@ -86,14 +86,14 @@ func buildHost(opts buildOptions) error {
 	if opts.output == "" {
 		opts.output = "anybot-bot"
 	}
-	workspace, err := host.EnsurePluginWorkspace(opts.dir)
+	lock, err := host.EnsurePluginHost(opts.dir)
 	if err != nil {
 		return err
 	}
 	if err := syncFrameworkGoMod(opts.dir); err != nil {
 		return err
 	}
-	if err := syncWorkspaceGoMod(opts.dir, workspace); err != nil {
+	if err := syncPluginHostGoMod(opts.dir, lock); err != nil {
 		return err
 	}
 	if !opts.skipTidy {
@@ -163,8 +163,8 @@ func resolveModuleVersion(module, query string) (string, error) {
 	return version, nil
 }
 
-func syncWorkspaceGoMod(dir string, workspace host.PluginWorkspace) error {
-	for _, plugin := range workspace.Plugins {
+func syncPluginHostGoMod(dir string, lock host.PluginLock) error {
+	for _, plugin := range lock.Plugins {
 		if err := syncPluginGoMod(dir, plugin); err != nil {
 			return err
 		}

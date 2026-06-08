@@ -79,7 +79,7 @@ func runInit(args []string) error {
 	if err := checkInitFiles(*dir, files, *force); err != nil {
 		return err
 	}
-	if err := host.CheckPluginWorkspaceWritable(*dir, *force); err != nil {
+	if err := host.CheckGeneratedHostWritable(*dir, *force); err != nil {
 		return err
 	}
 	if err := checkInitDir(*dir, "plugins.d"); err != nil {
@@ -93,7 +93,7 @@ func runInit(args []string) error {
 	if err := os.MkdirAll(filepath.Join(*dir, "plugins.d"), 0o755); err != nil {
 		return err
 	}
-	if _, err := host.EnsurePluginWorkspaceForce(*dir, *force); err != nil {
+	if _, err := host.EnsurePluginHostForce(*dir, *force); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(*dir))
@@ -166,7 +166,7 @@ func runHost(args []string) error {
 	}
 	app, err := host.NewApp(cfg, host.DefaultRegistry(), logger, host.WithConfigPath(*configPath), host.WithRuntimeState())
 	if err != nil {
-		return withWorkspacePluginHint(err, filepath.Dir(*configPath))
+		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -188,18 +188,18 @@ func writeFile(path, content string, force bool) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func withWorkspacePluginHint(err error, dir string) error {
+func withExternalPluginHint(err error, dir string) error {
 	var unknown host.UnknownPluginError
 	if !errors.As(err, &unknown) {
 		return err
 	}
-	workspace, workspaceErr := host.LoadPluginWorkspace(filepath.Join(dir, host.PluginWorkspaceFile))
-	if workspaceErr != nil {
+	lock, lockErr := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	if lockErr != nil {
 		return err
 	}
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		if item.Name == unknown.Name {
-			return fmt.Errorf("%w；%s 是工作区外部插件，请使用 anybot up 构建并运行生成框架，或先执行 anybot plugin disable %s", err, unknown.Name, unknown.Name)
+			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.Name, unknown.Name)
 		}
 	}
 	return err

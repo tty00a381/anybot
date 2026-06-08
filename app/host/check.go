@@ -24,10 +24,10 @@ type PluginConfigCheck struct {
 }
 
 // PluginConfigChecks 校验当前配置中的插件项。禁用插件只报告状态，不要求可加载。
-func PluginConfigChecks(cfg Config, registry absdk.Registry, workspace PluginWorkspace) []PluginConfigCheck {
-	workspace.applyDefaults()
+func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []PluginConfigCheck {
+	lock.applyDefaults()
 	external := map[string]PluginModule{}
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		if item.Name != "" {
 			external[item.Name] = item
 		}

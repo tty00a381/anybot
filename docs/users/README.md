@@ -9,10 +9,10 @@ AnyBot 的最终用户入口是一个工作目录。你日常操作的是配置�
 工作目录里最重要的文件：
 
 - `anybot.yaml`：框架配置，包含运行时、协议端、超级用户、插件目录。
-- `plugins.d/<插件名>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
-- `anybot.plugins.yaml`：外部插件清单，记录 Go module、版本、本地替换路径和导出符号。
-- `plugins.gen.go`、`main.go`、`go.mod`：AnyBot 生成的可构建运行框架。不要手动改，日常用命令更新。
-- `.anybot/`：运行时数据，默认包含会话状态文件和插件私有数据目录。
+- `plugins.d/<配置名>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
+- `anybot.lock`：外部插件锁，记录配置名、稳定实例 ID、Go module、版本、本地替换路径和导出符号。
+- `plugins.gen.go`、`main.go`、`go.mod`：AnyBot 生成的可构建宿主。不要手动改，日常用命令更新。
+- `.anybot/`：运行时数据，默认包含 `.anybot/store.json` 会话状态文件和插件私有数据目录。
 
 ## 初始化
 
@@ -52,7 +52,7 @@ anybot up
 
 `anybot up` 会做这些事：
 
-1. 生成或更新外部插件工作区。
+1. 生成或更新插件锁和生成宿主。
 2. 同步 `go.mod` 中 AnyBot 与外部插件依赖。
 3. 执行 `go mod tidy`。
 4. 构建 `anybot-bot`。
@@ -134,7 +134,7 @@ plugins:
 
 ### 插件配置
 
-插件默认放在 `plugins.d/<插件名>.yaml`：
+插件默认放在 `plugins.d/<配置名>.yaml`：
 
 ```yaml
 enabled: true
@@ -214,7 +214,7 @@ anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
 
 常用参数：
 
-- `-name weather`：指定配置名，只能使用小写字母、数字和下划线，并且必须以字母开头。省略时从 module 末尾推导，短横线会转换为下划线。
+- `-name weather`：指定配置名，只能使用小写字母、数字和下划线，并且必须以字母开头。省略时从 module 末尾推导，短横线会转换为下划线。配置名用于 `plugins.d/<name>.yaml` 和 CLI 命令；持久化实例 ID 会写入 `anybot.lock`，不要把配置名当成展示昵称频繁改。
 - `-symbol Plugin`：插件 module 导出的 `sdk.Definition` 变量名，默认 `Plugin`。
 - `-version v0.1.0`：指定版本。也可写成 `module@version`。
 - `-replace ../plugin`：使用本地插件目录，适合本地开发和调试。
@@ -335,7 +335,7 @@ anybot plugin status
 anybot plugin inspect weather
 ```
 
-这时插件通常会显示为外部、待构建。基础 `anybot` 命令只知道工作区清单，完整默认配置要等生成后的运行框架加载外部插件后才能同步。
+这时插件通常会显示为外部、待构建。基础 `anybot` 命令只知道插件锁，完整默认配置要等生成宿主加载外部插件后才能同步。
 
 3. 启用。
 
@@ -362,15 +362,15 @@ anybot build
 
 外部插件尚未构建到当前框架
 
-说明插件已经写入 `anybot.plugins.yaml`，但当前运行的基础 `anybot` 二进制没有编进这个外部插件。执行 `anybot up`，或先 `anybot build` 后运行 `./anybot-bot plugin check`。
+说明插件已经写入 `anybot.lock`，但当前运行的基础 `anybot` 二进制没有编进这个外部插件。执行 `anybot up`，或先 `anybot build` 后运行 `./anybot-bot plugin check`。
 
 unknown plugin
 
-插件名写错、配置文件残留，或外部插件没有添加到工作区。先运行 `anybot plugin status` 看真实名字。
+配置名写错、配置文件残留，或外部插件没有添加到插件锁。先运行 `anybot plugin status` 看真实名字。
 
-.yml 文件不被读取
+配置文件扩展名
 
-插件配置必须使用 `.yaml` 扩展名。
+AnyBot 生成的新配置统一使用 `.yaml`。如果目录里已有 `.yml` 配置，读取时也会兼容。
 
 !env 报环境变量不存在
 

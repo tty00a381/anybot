@@ -10,45 +10,39 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadPluginWorkspace 读取外部插件工作区清单；文件不存在时返回空工作区。
-func LoadPluginWorkspace(path string) (PluginWorkspace, error) {
+// LoadPluginLock 读取外部插件锁；文件不存在时返回空锁。
+func LoadPluginLock(path string) (PluginLock, error) {
 	if path == "" {
-		path = PluginWorkspaceFile
-	}
-	if err := requireYAMLFile(path, "插件工作区清单"); err != nil {
-		return PluginWorkspace{}, err
+		path = PluginLockFile
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return defaultPluginWorkspace(), nil
+		return defaultPluginLock(), nil
 	}
 	if err != nil {
-		return PluginWorkspace{}, err
+		return PluginLock{}, err
 	}
-	var workspace PluginWorkspace
-	if err := yaml.Unmarshal(data, &workspace); err != nil {
-		return PluginWorkspace{}, err
+	var lock PluginLock
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return PluginLock{}, err
 	}
-	workspace.applyDefaults()
-	if err := ValidatePluginWorkspace(workspace); err != nil {
-		return PluginWorkspace{}, err
+	lock.applyDefaults()
+	if err := ValidatePluginLock(lock); err != nil {
+		return PluginLock{}, err
 	}
-	return workspace, nil
+	return lock, nil
 }
 
-// SavePluginWorkspace 写入外部插件工作区清单。
-func SavePluginWorkspace(path string, workspace PluginWorkspace) error {
+// SavePluginLock 写入外部插件锁。
+func SavePluginLock(path string, lock PluginLock) error {
 	if path == "" {
-		path = PluginWorkspaceFile
+		path = PluginLockFile
 	}
-	if err := requireYAMLFile(path, "插件工作区清单"); err != nil {
+	lock.applyDefaults()
+	if err := ValidatePluginLock(lock); err != nil {
 		return err
 	}
-	workspace.applyDefaults()
-	if err := ValidatePluginWorkspace(workspace); err != nil {
-		return err
-	}
-	data, err := yaml.Marshal(workspace)
+	data, err := yaml.Marshal(lock)
 	if err != nil {
 		return err
 	}
@@ -58,8 +52,8 @@ func SavePluginWorkspace(path string, workspace PluginWorkspace) error {
 	return writeFileAtomic(path, data, 0o644)
 }
 
-// CheckPluginWorkspaceWritable 检查 anybot 生成文件是否可安全写入。
-func CheckPluginWorkspaceWritable(dir string, force bool) error {
+// CheckGeneratedHostWritable 检查 anybot 生成文件是否可安全写入。
+func CheckGeneratedHostWritable(dir string, force bool) error {
 	if dir == "" {
 		dir = "."
 	}

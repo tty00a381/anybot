@@ -8,17 +8,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestPluginStatusesMergesRegistryWorkspaceAndConfig(t *testing.T) {
+func TestPluginStatusesMergesRegistryLockAndConfig(t *testing.T) {
 	yes := true
 	cfg := Config{Plugins: map[string]PluginEntry{
 		"help":    {Enabled: &yes},
 		"weather": {Enabled: &yes},
 		"ghost":   {Enabled: &yes},
 	}}
-	workspace := PluginWorkspace{Plugins: []PluginModule{
+	lock := PluginLock{Plugins: []PluginModule{
 		{Name: "weather", Module: "github.com/acme/weather", Version: "v1.2.3", Replace: "../weather", Symbol: "Module"},
 	}}
-	statuses := PluginStatuses(cfg, DefaultRegistry(), workspace)
+	statuses := PluginStatuses(cfg, DefaultRegistry(), lock)
 	byName := map[string]PluginStatus{}
 	for _, status := range statuses {
 		byName[status.Name] = status
@@ -58,10 +58,10 @@ func TestPluginConfigChecks(t *testing.T) {
 		"legacy":    {Enabled: &no},
 		"ghost":     {Enabled: &yes},
 	}}
-	workspace := PluginWorkspace{Plugins: []PluginModule{
+	lock := PluginLock{Plugins: []PluginModule{
 		{Name: "weather", Module: "github.com/acme/weather", Symbol: "Module"},
 	}}
-	checks := PluginConfigChecks(cfg, DefaultRegistry(), workspace)
+	checks := PluginConfigChecks(cfg, DefaultRegistry(), lock)
 	byName := map[string]PluginConfigCheck{}
 	for _, check := range checks {
 		byName[check.Name] = check

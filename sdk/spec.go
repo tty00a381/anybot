@@ -35,7 +35,7 @@ func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
 	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
 }
 
-// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志、路由命名空间和数据目录。
+// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志、路由命名空间和实例 ID。
 func ValidatePluginName(name string) error {
 	if name == "" {
 		return fmt.Errorf("plugin name is required")

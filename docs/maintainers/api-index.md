@@ -11,7 +11,7 @@ CLI 入口包，不作为库导入。
 - `anybot init [-dir 目录] [-force]`：生成最终用户工作目录。
 - `anybot run [-config anybot.yaml]`：按配置运行基础框架。
 - `anybot doctor [-config anybot.yaml] [-connect]`：静态检查配置，可选连接检查。
-- `anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]`：构建包含外部插件的运行框架。
+- `anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]`：构建包含外部插件的生成宿主。
 - `anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]`：构建、同步、检查并运行。
 - `anybot plugins`：列出基础二进制内置插件。
 - `anybot plugin add/update/remove/list/status/inspect/config/check/sync/enable/disable`：管理插件。
@@ -21,8 +21,8 @@ CLI 入口包，不作为库导入。
 关键实现文件：
 
 - `main.go`：命令分发、`init`、`run`。
-- `plugin.go`：插件工作区管理、失败回滚，并把配置类 plugin 子命令交给 `app/host`。
-- `build.go`：构建生成框架、同步 `go.mod`。
+- `plugin.go`：外部插件锁管理、失败回滚，并把配置类 plugin 子命令交给 `app/host`。
+- `build.go`：构建生成宿主、同步 `go.mod`。
 - `dev.go`：开发者脚手架。
 - `doctor.go`：配置检查。
 - `defaults.go`：CLI 帮助、默认配置、工作目录 README。
@@ -42,7 +42,7 @@ CLI 入口包，不作为库导入。
 
 函数：
 
-- `LoadConfig(path string) (Config, error)`：读取 `.yaml`，应用默认值并加载 `plugins.d`。
+- `LoadConfig(path string) (Config, error)`：读取 YAML 配置，应用默认值并加载 `plugins.d`。
 - `ValidateConfig(cfg Config, registry sdk.Registry) error`：静态校验配置和插件配置。
 - `NewLogger(level string, out io.Writer) (*slog.Logger, error)`：创建日志器。
 - `NewApp(cfg Config, registry sdk.Registry, logger *slog.Logger, opts ...AppOption) (*core.App, error)`：装配运行时。
@@ -55,52 +55,53 @@ App option：
 - `WithConfigPath(path string)`：注入配置写回路径。
 - `WithRuntimeState()`：启用文件存储和插件数据目录。
 
-### 外部插件工作区
+### 外部插件锁与生成宿主
 
 常量：
 
-- `PluginWorkspaceFile = "anybot.plugins.yaml"`。
+- `PluginLockFile = "anybot.lock"`。
 
 类型：
 
-- `PluginWorkspace`：`Module`、`Plugins`。
-- `PluginModule`：`Name`、`Module`、`Version`、`Replace`、`Symbol`。
+- `PluginLock`：`Module`、`Plugins`。
+- `PluginModule`：`Name`、`ID`、`Module`、`Version`、`Replace`、`Symbol`。
 - `AddPluginOptions`
 - `UpdatePluginOptions`
 - `RemovePluginOptions`
 
 函数：
 
-- `EnsurePluginWorkspace(dir string) (PluginWorkspace, error)`：确保工作区与生成文件存在。
-- `EnsurePluginWorkspaceForce(dir string, force bool) (PluginWorkspace, error)`：允许接管同名非生成文件。
-- `LoadPluginWorkspace(path string) (PluginWorkspace, error)`：读取清单，文件不存在返回空工作区。
-- `SavePluginWorkspace(path string, workspace PluginWorkspace) error`：校验并原子写入清单。
-- `RenderPluginWorkspace(dir string, workspace PluginWorkspace) error`：重写 `plugins.gen.go` 与 `main.go`。
-- `AddPluginModule(opts AddPluginOptions) (PluginWorkspace, error)`：添加外部插件。
-- `UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginWorkspace, bool, error)`：更新版本、替换路径或符号。
-- `RemovePluginModule(opts RemovePluginOptions) (PluginModule, PluginWorkspace, error)`：移除外部插件。
-- `CheckPluginWorkspaceWritable(dir string, force bool) error`：检查生成文件是否可写。
+- `EnsurePluginHost(dir string) (PluginLock, error)`：确保插件锁与生成宿主存在。
+- `EnsurePluginHostForce(dir string, force bool) (PluginLock, error)`：允许接管同名非生成文件。
+- `LoadPluginLock(path string) (PluginLock, error)`：读取插件锁，文件不存在返回空锁。
+- `SavePluginLock(path string, lock PluginLock) error`：校验并原子写入插件锁。
+- `RenderPluginHost(dir string, lock PluginLock) error`：重写 `plugins.gen.go` 与生成的 `main.go`。
+- `AddPluginModule(opts AddPluginOptions) (PluginLock, error)`：添加外部插件。
+- `UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, bool, error)`：更新版本、替换路径或符号。
+- `RemovePluginModule(opts RemovePluginOptions) (PluginModule, PluginLock, error)`：移除外部插件。
+- `CheckGeneratedHostWritable(dir string, force bool) error`：检查生成文件是否可写。
 - `ParsePluginModuleSpec(spec string) (module, version string, err error)`：解析 `module@version`。
-- `DefaultPluginName(module string) string`：从 module 推导插件名。
-- `ValidatePluginWorkspace(workspace PluginWorkspace) error`
+- `DefaultPluginName(module string) string`：从 module 推导配置名。
+- `DefaultPluginInstanceID(module, symbol string) string`：从 module 和导出符号推导稳定实例 ID。
+- `ValidatePluginLock(lock PluginLock) error`
 - `ValidatePluginModule(item PluginModule) error`
-- `ValidatePluginName(name string) error`：委托 `sdk.ValidatePluginName`，保持注册名、配置名和数据目录规则一致。
+- `ValidatePluginName(name string) error`：委托 `sdk.ValidatePluginName`，保持注册名、配置名和实例 ID 规则一致。
 
 实现文件：
 
-- `workspace.go`：工作区模型、增删改和校验。
-- `workspace_io.go`：清单读写、生成文件写入保护。
-- `workspace_render.go`：`plugins.gen.go`、生成 `main.go` 和 `go.mod` 的渲染。
+- `plugin_lock.go`：插件锁模型、增删改和校验。
+- `plugin_lock_io.go`：插件锁读写、生成文件写入保护。
+- `plugin_host_render.go`：`plugins.gen.go`、生成 `main.go` 和 `go.mod` 的渲染。
 
-### 生成框架内置命令
+### 生成宿主内置命令
 
 类型：
 
-- `PluginCommandOptions`：`Args`、`Output`、`ConfigPath`、`WorkspacePath`、`Registry`。
+- `PluginCommandOptions`：`Args`、`Output`、`ConfigPath`、`LockPath`、`Registry`。
 
 函数：
 
-- `RunPluginCommand(opts PluginCommandOptions) error`：执行 `sync/status/inspect/config/check/enable/disable`。顶层 CLI 和生成运行框架共用这一套实现。
+- `RunPluginCommand(opts PluginCommandOptions) error`：执行 `sync/status/inspect/config/check/enable/disable`。顶层 CLI 和生成宿主共用这一套实现。
 
 ### 插件配置更新
 
@@ -125,7 +126,7 @@ App option：
 - `RemovePluginConfigEntry(path, name string) (bool, error)`：移除插件配置。
 - `SyncPluginConfigEntry(path string, registry sdk.Registry, name string) (PluginConfigEntrySyncResult, error)`：同步单个插件默认配置。
 - `SyncPluginConfigEntries(path string, registry sdk.Registry) (int, error)`：同步注册表内插件。
-- `SyncPluginConfigEntriesForWorkspace(path string, registry sdk.Registry, workspace PluginWorkspace) (PluginConfigSyncResult, error)`：允许外部插件待构建的同步。
+- `SyncPluginConfigEntriesForLock(path string, registry sdk.Registry, lock PluginLock) (PluginConfigSyncResult, error)`：允许外部插件待构建的同步。
 - `WritePluginConfigSyncSummary(w io.Writer, result PluginConfigSyncResult) error`。
 
 ### 插件状态、检查、详情
@@ -139,14 +140,14 @@ App option：
 
 函数：
 
-- `PluginStatuses(cfg Config, registry sdk.Registry, workspace PluginWorkspace) []PluginStatus`
+- `PluginStatuses(cfg Config, registry sdk.Registry, lock PluginLock) []PluginStatus`
 - `WritePluginStatusTable(w io.Writer, statuses []PluginStatus) error`
-- `PluginConfigChecks(cfg Config, registry sdk.Registry, workspace PluginWorkspace) []PluginConfigCheck`
+- `PluginConfigChecks(cfg Config, registry sdk.Registry, lock PluginLock) []PluginConfigCheck`
 - `PluginConfigCheckFailed(checks []PluginConfigCheck) bool`
 - `WritePluginConfigCheckTable(w io.Writer, checks []PluginConfigCheck) error`
-- `InspectPlugin(configPath string, registry sdk.Registry, workspace PluginWorkspace, name string) (PluginInspect, error)`
+- `InspectPlugin(configPath string, registry sdk.Registry, lock PluginLock, name string) (PluginInspect, error)`
 - `WritePluginInspect(w io.Writer, inspect PluginInspect) error`
-- `EnsureKnownPluginTarget(cfg Config, registry sdk.Registry, workspace PluginWorkspace, name string, allowConfigured bool) error`
+- `EnsureKnownPluginTarget(cfg Config, registry sdk.Registry, lock PluginLock, name string, allowConfigured bool) error`
 
 ### 内置插件注册表
 
@@ -209,7 +210,7 @@ App option：
 - `Definition.Manifest() Manifest`
 - `Definition.Build() (Plugin, error)`：按默认配置构建插件实例。
 - `Definition.Factory() Factory`：转为运行框架可注册工厂。
-- `Environment`：`DataDir`、`ConfigStore`、`AllowGlobalMiddleware`。
+- `Environment`：`DataDir`、`ConfigName`、`InstanceID`、`ConfigStore`、`AllowGlobalMiddleware`。
 - `Install(app *App, plugins ...Plugin) error`：把已配置插件实例安装到运行时。
 - `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件实例。
 - `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
@@ -217,8 +218,10 @@ App option：
 
 ### 注册表
 
-- `Factory`：`Info`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
+- `Factory`：`Info`、`InstanceID`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
 - `Factory.WithName(name string) Factory`：为外部插件配置别名。
+- `Factory.WithInstanceID(id string) Factory`：为外部插件固定持久化实例 ID。
+- `Factory.StorageName() string`：返回 Store/DataDir 使用的持久化命名空间。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
 - `Registry.Register(factory Factory) error`
@@ -230,6 +233,8 @@ App option：
 - `Context`：插件安装上下文。
 - `NewContext(app *App, manifest Manifest, opts ...InstallOption) *Context`
 - `Context.Manifest() Manifest`
+- `Context.ConfigName() string`
+- `Context.InstanceID() string`
 - `Context.Logger() *slog.Logger`
 - `Context.Store() Store`
 - `Context.Client() ActionClient`
@@ -265,6 +270,8 @@ App option：
 - `State.Save(value T, ttl time.Duration) error`
 - `State.Delete() error`
 - `WithDataDir(root string) InstallOption`
+- `WithConfigName(name string) InstallOption`
+- `WithInstanceID(id string) InstallOption`
 - `Context.DataDir() (string, error)`
 - `ErrDataDirUnavailable`
 

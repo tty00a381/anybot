@@ -9,15 +9,19 @@ import (
 
 // Factory 根据框架配置创建插件实例。
 type Factory struct {
-	Info    Manifest
-	Default any
-	Build   func(yaml.Node) (Plugin, error)
+	Info       Manifest
+	InstanceID string
+	Default    any
+	Build      func(yaml.Node) (Plugin, error)
 }
 
-// WithName 返回使用指定注册名的工厂，适合运行框架为外部插件提供配置别名。
+// WithName 返回使用指定配置名的工厂，适合运行框架为外部插件提供安装别名。
 func (f Factory) WithName(name string) Factory {
 	if name == "" {
 		return f
+	}
+	if f.InstanceID == "" {
+		f.InstanceID = f.Info.Name
 	}
 	if err := ValidatePluginName(name); err != nil {
 		f.Info.Name = name
@@ -41,6 +45,28 @@ func (f Factory) WithName(name string) Factory {
 	return f
 }
 
+// WithInstanceID 返回使用指定稳定实例 ID 的工厂，适合运行框架为外部插件固定持久化命名空间。
+func (f Factory) WithInstanceID(id string) Factory {
+	if id == "" {
+		return f
+	}
+	f.InstanceID = id
+	if err := ValidatePluginName(id); err != nil {
+		f.Build = func(yaml.Node) (Plugin, error) {
+			return nil, err
+		}
+	}
+	return f
+}
+
+// StorageName 返回当前工厂用于 Store/DataDir 的持久化命名空间。
+func (f Factory) StorageName() string {
+	if f.InstanceID != "" {
+		return f.InstanceID
+	}
+	return f.Info.Name
+}
+
 // Registry 保存运行框架可加载的插件工厂。
 type Registry struct {
 	factories map[string]Factory
@@ -58,6 +84,11 @@ func (r Registry) Register(factory Factory) error {
 	}
 	if err := ValidatePluginName(factory.Info.Name); err != nil {
 		return err
+	}
+	if factory.InstanceID != "" {
+		if err := ValidatePluginName(factory.InstanceID); err != nil {
+			return err
+		}
 	}
 	if factory.Build == nil {
 		return fmt.Errorf("plugin %s build function is required", factory.Info.Name)

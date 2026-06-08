@@ -129,7 +129,7 @@ func runPluginAdd(args []string) (err error) {
 	defer func() {
 		joinRollbackError(&err, committed, rollback)
 	}()
-	workspace, err := host.AddPluginModule(host.AddPluginOptions{
+	lock, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     *dir,
 		Name:    pluginName,
 		Module:  modulePath,
@@ -141,7 +141,7 @@ func runPluginAdd(args []string) (err error) {
 		return err
 	}
 	var item host.PluginModule
-	for _, plugin := range workspace.Plugins {
+	for _, plugin := range lock.Plugins {
 		if plugin.Module == modulePath {
 			item = plugin
 			break
@@ -175,15 +175,15 @@ func pluginAddTouchedFiles(dir, name string) []string {
 	if dir == "" {
 		dir = "."
 	}
-	return append(pluginWorkspaceTouchedFiles(dir), pluginConfigTouchedFiles(filepath.Join(dir, "anybot.yaml"), name)...)
+	return append(pluginHostTouchedFiles(dir), pluginConfigTouchedFiles(filepath.Join(dir, "anybot.yaml"), name)...)
 }
 
-func pluginWorkspaceTouchedFiles(dir string) []string {
+func pluginHostTouchedFiles(dir string) []string {
 	if dir == "" {
 		dir = "."
 	}
 	return []string{
-		filepath.Join(dir, host.PluginWorkspaceFile),
+		filepath.Join(dir, host.PluginLockFile),
 		filepath.Join(dir, "plugins.gen.go"),
 		filepath.Join(dir, "main.go"),
 		filepath.Join(dir, "go.mod"),
@@ -199,7 +199,11 @@ func pluginConfigTouchedFiles(configPath, name string) []string {
 	if base == "" {
 		base = "."
 	}
-	files = append(files, filepath.Join(base, "plugins.d"), filepath.Join(base, "plugins.d", name+".yaml"))
+	files = append(files,
+		filepath.Join(base, "plugins.d"),
+		filepath.Join(base, "plugins.d", name+".yaml"),
+		filepath.Join(base, "plugins.d", name+".yml"),
+	)
 	if _, err := os.Stat(configPath); err != nil {
 		return files
 	}
@@ -211,7 +215,11 @@ func pluginConfigTouchedFiles(configPath, name string) []string {
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(base, dir)
 	}
-	files = append(files, dir, filepath.Join(dir, name+".yaml"))
+	files = append(files,
+		dir,
+		filepath.Join(dir, name+".yaml"),
+		filepath.Join(dir, name+".yml"),
+	)
 	return files
 }
 
@@ -374,7 +382,7 @@ func runPluginUpdate(args []string) (err error) {
 		updateVersion = pinnedVersion
 		updateSetVersion = true
 	}
-	rollback, err := snapshotFiles(pluginWorkspaceTouchedFiles(*dir))
+	rollback, err := snapshotFiles(pluginHostTouchedFiles(*dir))
 	if err != nil {
 		return err
 	}
@@ -429,7 +437,7 @@ func runPluginRemove(args []string) (err error) {
 	if configPath == "" {
 		configPath = filepath.Join(*dir, "anybot.yaml")
 	}
-	rollback, err := snapshotFiles(append(pluginWorkspaceTouchedFiles(*dir), pluginConfigTouchedFiles(configPath, name)...))
+	rollback, err := snapshotFiles(append(pluginHostTouchedFiles(*dir), pluginConfigTouchedFiles(configPath, name)...))
 	if err != nil {
 		return err
 	}
@@ -471,13 +479,13 @@ func previewPluginModuleUpdate(opts host.UpdatePluginOptions) (host.PluginModule
 	if opts.SetReplace && opts.ClearReplace {
 		return host.PluginModule{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
 	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(opts.Dir, host.PluginWorkspaceFile))
+	lock, err := host.LoadPluginLock(filepath.Join(opts.Dir, host.PluginLockFile))
 	if err != nil {
 		return host.PluginModule{}, err
 	}
 	var updated host.PluginModule
 	found := false
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		if item.Name == opts.Name {
 			updated = item
 			found = true
@@ -669,15 +677,15 @@ func runPluginList(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	workspace, err := host.LoadPluginWorkspace(filepath.Join(*dir, host.PluginWorkspaceFile))
+	lock, err := host.LoadPluginLock(filepath.Join(*dir, host.PluginLockFile))
 	if err != nil {
 		return err
 	}
-	if len(workspace.Plugins) == 0 {
+	if len(lock.Plugins) == 0 {
 		fmt.Fprintln(stdout, "外部插件：无")
 		return nil
 	}
-	for _, item := range workspace.Plugins {
+	for _, item := range lock.Plugins {
 		fmt.Fprintf(stdout, "%s\t%s\t%s\n", item.Name, pluginModuleRef(item), item.Symbol)
 	}
 	return nil
@@ -700,11 +708,11 @@ func runHostPluginCommand(args []string) error {
 		return err
 	}
 	return host.RunPluginCommand(host.PluginCommandOptions{
-		Args:          commandArgs,
-		Output:        stdout,
-		ConfigPath:    configPath,
-		WorkspacePath: filepath.Join(dir, host.PluginWorkspaceFile),
-		Registry:      host.DefaultRegistry(),
+		Args:       commandArgs,
+		Output:     stdout,
+		ConfigPath: configPath,
+		LockPath:   filepath.Join(dir, host.PluginLockFile),
+		Registry:   host.DefaultRegistry(),
 	})
 }
 
