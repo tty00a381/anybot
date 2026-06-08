@@ -25,7 +25,7 @@ type PluginConfigEntrySyncResult struct {
 	Available bool
 }
 
-// PluginConfigAssignment 描述一次 plugins.<name>.config 下的字段写入。
+// PluginConfigAssignment 描述一次插件 config 下的字段写入。
 type PluginConfigAssignment struct {
 	Path  []string
 	Value yaml.Node
@@ -99,16 +99,16 @@ func ParsePluginConfigChanges(args []string) (PluginConfigChange, error) {
 }
 
 // ApplyPluginConfigChange 执行一次插件配置写入或重置。
-func ApplyPluginConfigChange(path, name string, change PluginConfigChange) (PluginConfigChangeResult, error) {
+func ApplyPluginConfigChange(path, id string, change PluginConfigChange) (PluginConfigChangeResult, error) {
 	if len(change.Assignments) > 0 && len(change.ResetPaths) > 0 {
 		return PluginConfigChangeResult{}, fmt.Errorf("不能同时设置和重置插件配置")
 	}
 	if len(change.ResetPaths) > 0 {
-		count, err := removePluginConfigValues(path, name, change.ResetPaths)
+		count, err := removePluginConfigValues(path, id, change.ResetPaths)
 		return PluginConfigChangeResult{Reset: true, Changed: count > 0, Count: count}, err
 	}
 	if len(change.Assignments) > 0 {
-		changed, err := SetPluginConfigValues(path, name, change.Assignments)
+		changed, err := SetPluginConfigValues(path, id, change.Assignments)
 		return PluginConfigChangeResult{Changed: changed, Count: len(change.Assignments)}, err
 	}
 	return PluginConfigChangeResult{}, fmt.Errorf("plugin config change is required")
@@ -131,286 +131,102 @@ func ParsePluginConfigAssignment(input string) (PluginConfigAssignment, error) {
 	return PluginConfigAssignment{Path: path, Value: *node}, nil
 }
 
-// ParsePluginConfigPath 解析 plugins.<name>.config 下的点分路径。
+// ParsePluginConfigPath 解析插件 config 下的点分路径。
 func ParsePluginConfigPath(input string) ([]string, error) {
 	return absdk.ParseConfigPath(input)
 }
 
-// EnsurePluginConfigEntry 确保 anybot 配置里存在 plugins.<name> 占位项。
-func EnsurePluginConfigEntry(path, name string) (bool, error) {
-	if path == "" {
-		path = "anybot.yaml"
-	}
-	if name == "" {
-		return false, fmt.Errorf("plugin name is required")
-	}
-	doc, err := loadYAMLDocument(path)
-	if err != nil {
+// EnsurePluginConfigEntry 确保 plugins.d/<id>.yaml 占位项存在。
+func EnsurePluginConfigEntry(path, id string) (bool, error) {
+	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
+	if err != nil || exists {
 		return false, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		root.Kind = yaml.MappingNode
-		root.Tag = "!!map"
-	}
-	if root.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
-	if err != nil {
-		return false, err
-	}
-	if mappingValue(plugins, name) != nil {
-		return false, nil
-	}
-	if dir, ok, err := pluginConfigDir(root, path); err != nil {
-		return false, err
-	} else if ok {
-		entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
-		if err != nil {
-			return false, err
-		}
-		if exists {
-			return false, nil
-		}
-		doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{pluginEntryNode(emptyConfigNode())}}
-		if err := saveYAMLDocument(entryPath, doc); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-	plugins.Content = append(plugins.Content, scalar(name), pluginEntryNode(emptyConfigNode()))
-	if err := saveYAMLDocument(path, doc); err != nil {
+	doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{pluginEntryNode(emptyConfigNode())}}
+	if err := saveYAMLDocument(entryPath, doc); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// SetPluginEnabled 设置 anybot 配置里 plugins.<name>.enabled。
-func SetPluginEnabled(path, name string, enabled bool) (bool, error) {
-	if path == "" {
-		path = "anybot.yaml"
-	}
-	if name == "" {
-		return false, fmt.Errorf("plugin name is required")
-	}
-	doc, err := loadYAMLDocument(path)
+// SetPluginEnabled 设置 plugins.d/<id>.yaml 中的 enabled。
+func SetPluginEnabled(path, id string, enabled bool) (bool, error) {
+	entryPath, _, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
 		return false, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		root.Kind = yaml.MappingNode
-		root.Tag = "!!map"
-	}
-	if root.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
+	doc, entry, err := loadPluginEntryDocument(entryPath)
 	if err != nil {
 		return false, err
 	}
-	entry := mappingValue(plugins, name)
-	if entry == nil {
-		if dir, ok, err := pluginConfigDir(root, path); err != nil {
-			return false, err
-		} else if ok {
-			entryPath, _, err := pluginConfigEntryPathForUpdate(dir, name)
-			if err != nil {
-				return false, err
-			}
-			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
-			if err != nil {
-				return false, err
-			}
-			changed, err := setPluginEntryEnabled(entryRoot, name, enabled)
-			if err != nil || !changed {
-				return changed, err
-			}
-			return true, saveYAMLDocument(entryPath, entryDoc)
-		}
-	}
-	if entry == nil {
-		entry = pluginEntryNode(emptyConfigNode())
-		plugins.Content = append(plugins.Content, scalar(name), entry)
-	}
-	changed, err := setPluginEntryEnabled(entry, name, enabled)
+	changed, err := setPluginEntryEnabled(entry, id, enabled)
 	if err != nil || !changed {
 		return changed, err
 	}
-	return true, saveYAMLDocument(path, doc)
+	return true, saveYAMLDocument(entryPath, doc)
 }
 
-// SetPluginConfigValues 写入 anybot 配置里 plugins.<name>.config 的字段。
-func SetPluginConfigValues(path, name string, assignments []PluginConfigAssignment) (bool, error) {
-	if path == "" {
-		path = "anybot.yaml"
-	}
-	if name == "" {
-		return false, fmt.Errorf("plugin name is required")
-	}
+// SetPluginConfigValues 写入 plugins.d/<id>.yaml 中的 config 字段。
+func SetPluginConfigValues(path, id string, assignments []PluginConfigAssignment) (bool, error) {
 	if len(assignments) == 0 {
 		return false, fmt.Errorf("plugin config assignment is required")
 	}
-	doc, err := loadYAMLDocument(path)
+	entryPath, _, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
 		return false, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		root.Kind = yaml.MappingNode
-		root.Tag = "!!map"
-	}
-	if root.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
+	doc, entry, err := loadPluginEntryDocument(entryPath)
 	if err != nil {
 		return false, err
 	}
-	entry := mappingValue(plugins, name)
-	if entry == nil {
-		if dir, ok, err := pluginConfigDir(root, path); err != nil {
-			return false, err
-		} else if ok {
-			entryPath, _, err := pluginConfigEntryPathForUpdate(dir, name)
-			if err != nil {
-				return false, err
-			}
-			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
-			if err != nil {
-				return false, err
-			}
-			changed, err := setPluginConfigAssignments(name, entryRoot, assignments)
-			if err != nil || !changed {
-				return changed, err
-			}
-			return true, saveYAMLDocument(entryPath, entryDoc)
-		}
-	}
-	if entry == nil {
-		entry = pluginEntryNode(emptyConfigNode())
-		plugins.Content = append(plugins.Content, scalar(name), entry)
-	}
-	changed, err := setPluginConfigAssignments(name, entry, assignments)
+	changed, err := setPluginConfigAssignments(id, entry, assignments)
 	if err != nil || !changed {
 		return changed, err
 	}
-	return true, saveYAMLDocument(path, doc)
+	return true, saveYAMLDocument(entryPath, doc)
 }
 
-// RemovePluginConfigValues 删除 anybot 配置里 plugins.<name>.config 的字段覆盖。
-func RemovePluginConfigValues(path, name string, paths [][]string) (bool, error) {
-	count, err := removePluginConfigValues(path, name, paths)
+// RemovePluginConfigValues 删除 plugins.d/<id>.yaml 里的 config 字段覆盖。
+func RemovePluginConfigValues(path, id string, paths [][]string) (bool, error) {
+	count, err := removePluginConfigValues(path, id, paths)
 	return count > 0, err
 }
 
-func removePluginConfigValues(path, name string, paths [][]string) (int, error) {
-	if path == "" {
-		path = "anybot.yaml"
-	}
-	if name == "" {
-		return 0, fmt.Errorf("plugin name is required")
-	}
+func removePluginConfigValues(path, id string, paths [][]string) (int, error) {
 	if len(paths) == 0 {
 		return 0, fmt.Errorf("plugin config path is required")
 	}
-	doc, err := loadYAMLDocument(path)
+	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
 		return 0, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
+	if !exists {
 		return 0, nil
 	}
-	if root.Kind != yaml.MappingNode {
-		return 0, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
+	doc, entry, err := loadPluginEntryDocument(entryPath)
 	if err != nil {
 		return 0, err
 	}
-	entry := mappingValue(plugins, name)
-	if entry == nil {
-		if dir, ok, err := pluginConfigDir(root, path); err != nil {
-			return 0, err
-		} else if ok {
-			entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
-			if err != nil {
-				return 0, err
-			}
-			if !exists {
-				return 0, nil
-			}
-			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
-			if err != nil {
-				return 0, err
-			}
-			count, err := removePluginConfigPaths(name, entryRoot, paths)
-			if err != nil || count == 0 {
-				return count, err
-			}
-			return count, saveYAMLDocument(entryPath, entryDoc)
-		}
-		return 0, nil
-	}
-	count, err := removePluginConfigPaths(name, entry, paths)
+	count, err := removePluginConfigPaths(id, entry, paths)
 	if err != nil || count == 0 {
 		return count, err
 	}
-	return count, saveYAMLDocument(path, doc)
+	return count, saveYAMLDocument(entryPath, doc)
 }
 
-// RemovePluginConfigEntry 删除 anybot 配置里的 plugins.<name>。
-func RemovePluginConfigEntry(path, name string) (bool, error) {
-	if path == "" {
-		path = "anybot.yaml"
-	}
-	if name == "" {
-		return false, fmt.Errorf("plugin name is required")
-	}
-	doc, err := loadYAMLDocument(path)
+// RemovePluginConfigEntry 删除 plugins.d/<id>.yaml。
+func RemovePluginConfigEntry(path, id string) (bool, error) {
+	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
 		return false, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
+	if !exists {
 		return false, nil
 	}
-	if root.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	dir, split, err := pluginConfigDir(root, path)
-	if err != nil {
-		return false, err
-	}
-	plugins := mappingValue(root, "plugins")
-	if plugins != nil && plugins.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("plugins must be a YAML mapping")
-	}
-	changed := false
-	if removeMappingKey(plugins, name) {
-		changed = true
-	}
-	if split {
-		entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
-		if err != nil {
-			return false, err
-		}
-		if exists {
-			if err := os.Remove(entryPath); err != nil {
-				return false, err
-			}
-			changed = true
-		}
-	}
-	if !changed {
-		return false, nil
-	}
-	return true, saveYAMLDocument(path, doc)
+	return true, os.Remove(entryPath)
 }
 
-// SyncPluginConfigEntries 把 registry 中的插件默认配置同步到 anybot 配置文件。
+// SyncPluginConfigEntries 把 registry 中的插件默认配置同步到插件配置文件。
 func SyncPluginConfigEntries(path string, registry absdk.Registry) (int, error) {
 	result, err := syncPluginConfigEntries(path, registry, nil)
 	return result.Changed, err
@@ -421,76 +237,45 @@ func SyncPluginConfigEntriesForLock(path string, registry absdk.Registry, lock P
 	lock.applyDefaults()
 	allowUnavailable := map[string]struct{}{}
 	for _, item := range lock.Plugins {
-		if item.Name != "" {
-			allowUnavailable[item.Name] = struct{}{}
+		if item.ID != "" {
+			allowUnavailable[item.ID] = struct{}{}
 		}
 	}
 	return syncPluginConfigEntries(path, registry, allowUnavailable)
 }
 
 // SyncPluginConfigEntry 同步单个可加载插件的默认配置。
-func SyncPluginConfigEntry(path string, registry absdk.Registry, name string) (PluginConfigEntrySyncResult, error) {
+func SyncPluginConfigEntry(path string, registry absdk.Registry, id string) (PluginConfigEntrySyncResult, error) {
 	if path == "" {
 		path = "anybot.yaml"
 	}
-	if name == "" {
-		return PluginConfigEntrySyncResult{}, fmt.Errorf("plugin name is required")
+	if id == "" {
+		return PluginConfigEntrySyncResult{}, fmt.Errorf("plugin id is required")
 	}
-	factory, ok := registry.Factory(name)
+	if err := ValidatePluginID(id); err != nil {
+		return PluginConfigEntrySyncResult{}, err
+	}
+	factory, ok := registry.Factory(id)
 	if !ok {
 		return PluginConfigEntrySyncResult{}, nil
 	}
-	doc, err := loadYAMLDocument(path)
+	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
 		return PluginConfigEntrySyncResult{}, err
 	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		root.Kind = yaml.MappingNode
-		root.Tag = "!!map"
-	}
-	if root.Kind != yaml.MappingNode {
-		return PluginConfigEntrySyncResult{}, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
-	if err != nil {
-		return PluginConfigEntrySyncResult{}, err
-	}
-	entry := mappingValue(plugins, name)
-	if entry == nil {
-		if dir, ok, err := pluginConfigDir(root, path); err != nil {
-			return PluginConfigEntrySyncResult{}, err
-		} else if ok {
-			entryPath, exists, err := pluginConfigEntryPathForUpdate(dir, name)
-			if err != nil {
-				return PluginConfigEntrySyncResult{}, err
-			}
-			if !exists {
-				return PluginConfigEntrySyncResult{Available: true}, nil
-			}
-			entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
-			if err != nil {
-				return PluginConfigEntrySyncResult{}, err
-			}
-			changed, err := syncPluginConfigNode(name, entryRoot, factory)
-			if err != nil {
-				return PluginConfigEntrySyncResult{}, err
-			}
-			if changed {
-				if err := saveYAMLDocument(entryPath, entryDoc); err != nil {
-					return PluginConfigEntrySyncResult{}, err
-				}
-			}
-			return PluginConfigEntrySyncResult{Changed: changed, Available: true}, nil
-		}
+	if !exists {
 		return PluginConfigEntrySyncResult{Available: true}, nil
 	}
-	changed, err := syncPluginConfigNode(name, entry, factory)
+	doc, entry, err := loadPluginEntryDocument(entryPath)
+	if err != nil {
+		return PluginConfigEntrySyncResult{}, err
+	}
+	changed, err := syncPluginConfigNode(id, entry, factory)
 	if err != nil {
 		return PluginConfigEntrySyncResult{}, err
 	}
 	if changed {
-		if err := saveYAMLDocument(path, doc); err != nil {
+		if err := saveYAMLDocument(entryPath, doc); err != nil {
 			return PluginConfigEntrySyncResult{}, err
 		}
 	}
@@ -501,62 +286,36 @@ func syncPluginConfigEntries(path string, registry absdk.Registry, allowUnavaila
 	if path == "" {
 		path = "anybot.yaml"
 	}
-	doc, err := loadYAMLDocument(path)
-	if err != nil {
-		return PluginConfigSyncResult{}, err
-	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		root.Kind = yaml.MappingNode
-		root.Tag = "!!map"
-	}
-	if root.Kind != yaml.MappingNode {
-		return PluginConfigSyncResult{}, fmt.Errorf("%s root must be a YAML mapping", path)
-	}
-	plugins, err := ensureMapping(root, "plugins")
-	if err != nil {
-		return PluginConfigSyncResult{}, err
-	}
-	locations, err := pluginConfigEntryLocations(path, &doc, root, plugins)
+	locations, err := pluginConfigEntryLocations(path)
 	if err != nil {
 		return PluginConfigSyncResult{}, err
 	}
 	var result PluginConfigSyncResult
-	mainChanged := false
 	changedFiles := map[string]*yaml.Node{}
 	for _, location := range locations {
-		factory, ok := registry.Factory(location.name)
+		factory, ok := registry.Factory(location.id)
 		if !ok {
-			if _, allowed := allowUnavailable[location.name]; allowed {
-				result.Skipped = append(result.Skipped, location.name)
+			if _, allowed := allowUnavailable[location.id]; allowed {
+				result.Skipped = append(result.Skipped, location.id)
 				continue
 			}
 			if pluginEntryDisabled(location.entry) {
-				result.UnknownDisabled = append(result.UnknownDisabled, location.name)
+				result.UnknownDisabled = append(result.UnknownDisabled, location.id)
 				continue
 			}
-			return PluginConfigSyncResult{}, fmt.Errorf("unknown plugin %q", location.name)
+			return PluginConfigSyncResult{}, fmt.Errorf("unknown plugin %q", location.id)
 		}
-		pluginChanged, err := syncPluginConfigNode(location.name, location.entry, factory)
+		pluginChanged, err := syncPluginConfigNode(location.id, location.entry, factory)
 		if err != nil {
 			return PluginConfigSyncResult{}, err
 		}
 		if pluginChanged {
 			result.Changed++
-			if location.main {
-				mainChanged = true
-			} else {
-				changedFiles[location.path] = location.doc
-			}
+			changedFiles[location.path] = location.doc
 		}
 	}
 	sort.Strings(result.Skipped)
 	sort.Strings(result.UnknownDisabled)
-	if mainChanged {
-		if err := saveYAMLDocument(path, doc); err != nil {
-			return PluginConfigSyncResult{}, err
-		}
-	}
 	paths := make([]string, 0, len(changedFiles))
 	for path := range changedFiles {
 		paths = append(paths, path)
@@ -571,79 +330,72 @@ func syncPluginConfigEntries(path string, registry absdk.Registry, allowUnavaila
 }
 
 type pluginConfigEntryLocation struct {
-	name  string
+	id    string
 	path  string
 	doc   *yaml.Node
 	entry *yaml.Node
-	main  bool
 }
 
-func pluginConfigEntryLocations(configPath string, doc *yaml.Node, root, plugins *yaml.Node) ([]pluginConfigEntryLocation, error) {
-	locations := make([]pluginConfigEntryLocation, 0, len(plugins.Content)/2)
-	mainEntries := map[string]struct{}{}
-	for _, name := range mappingKeys(plugins) {
-		mainEntries[name] = struct{}{}
-		locations = append(locations, pluginConfigEntryLocation{
-			name:  name,
-			path:  configPath,
-			doc:   doc,
-			entry: mappingValue(plugins, name),
-			main:  true,
-		})
-	}
-	dir, split, err := pluginConfigDir(root, configPath)
-	if err != nil || !split {
-		return locations, err
-	}
+func pluginConfigEntryLocations(configPath string) ([]pluginConfigEntryLocation, error) {
+	dir := PluginConfigDir(configPath)
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
-		return locations, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	locations := make([]pluginConfigEntryLocation, 0, len(entries))
+	seen := map[string]struct{}{}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		name, ok, err := pluginConfigName(entry.Name())
+		id, ok, err := pluginConfigID(entry.Name())
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		if _, exists := mainEntries[name]; exists {
-			return nil, fmt.Errorf("plugin %s is configured more than once", name)
+		if err := ValidatePluginID(id); err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Join(dir, entry.Name()), err)
 		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("plugin %s is configured more than once", id)
+		}
+		seen[id] = struct{}{}
 		entryPath := filepath.Join(dir, entry.Name())
 		entryDoc, entryRoot, err := loadPluginEntryDocument(entryPath)
 		if err != nil {
 			return nil, err
 		}
 		locations = append(locations, pluginConfigEntryLocation{
-			name:  name,
+			id:    id,
 			path:  entryPath,
 			doc:   &entryDoc,
 			entry: entryRoot,
 		})
 	}
+	sort.Slice(locations, func(i, j int) bool {
+		return locations[i].id < locations[j].id
+	})
 	return locations, nil
 }
 
-func syncPluginConfigNode(name string, entry *yaml.Node, factory absdk.Factory) (bool, error) {
+func syncPluginConfigNode(id string, entry *yaml.Node, factory absdk.Factory) (bool, error) {
 	defaultConfig, err := defaultConfigNode(factory.Default)
 	if err != nil {
-		return false, fmt.Errorf("plugin %s default config: %w", name, err)
+		return false, fmt.Errorf("plugin %s default config: %w", id, err)
 	}
 	pluginChanged := false
 	if filled, err := fillMissingPluginEnabled(entry); err != nil {
-		return false, fmt.Errorf("plugin %s enabled: %w", name, err)
+		return false, fmt.Errorf("plugin %s enabled: %w", id, err)
 	} else if filled {
 		pluginChanged = true
 	}
 	if filled, err := fillPluginConfigDefaults(entry, defaultConfig); err != nil {
-		return false, fmt.Errorf("plugin %s config: %w", name, err)
+		return false, fmt.Errorf("plugin %s config: %w", id, err)
 	} else if filled {
 		pluginChanged = true
 	}
@@ -660,33 +412,18 @@ func documentRoot(doc *yaml.Node) *yaml.Node {
 	return doc
 }
 
-func pluginConfigDir(root *yaml.Node, configPath string) (string, bool, error) {
-	node := mappingValue(root, "plugin_config_dir")
-	if node == nil || node.Kind == 0 || (node.Kind == yaml.ScalarNode && node.Tag == "!!null") {
-		return "", false, nil
+func pluginConfigEntryPath(dir, id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("plugin id is required")
 	}
-	if node.Kind != yaml.ScalarNode {
-		return "", false, fmt.Errorf("plugin_config_dir must be a string")
+	if err := ValidatePluginID(id); err != nil {
+		return "", fmt.Errorf("plugin id %q cannot be used as a config file name: %w", id, err)
 	}
-	dir := strings.TrimSpace(node.Value)
-	if dir == "" {
-		return "", false, nil
-	}
-	return resolveConfigRelativePath(configPath, dir), true, nil
+	return filepath.Join(dir, id+".yaml"), nil
 }
 
-func pluginConfigEntryPath(dir, name string) (string, error) {
-	if name == "" {
-		return "", fmt.Errorf("plugin name is required")
-	}
-	if strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
-		return "", fmt.Errorf("plugin name %q cannot be used as a config file name", name)
-	}
-	return filepath.Join(dir, name+".yaml"), nil
-}
-
-func pluginConfigEntryPathForUpdate(dir, name string) (string, bool, error) {
-	defaultPath, err := pluginConfigEntryPath(dir, name)
+func pluginConfigEntryPathForUpdate(dir, id string) (string, bool, error) {
+	defaultPath, err := pluginConfigEntryPath(dir, id)
 	if err != nil {
 		return "", false, err
 	}
@@ -759,9 +496,9 @@ func loadPluginEntryDocument(path string) (yaml.Node, *yaml.Node, error) {
 	return doc, root, nil
 }
 
-func setPluginEntryEnabled(entry *yaml.Node, name string, enabled bool) (bool, error) {
+func setPluginEntryEnabled(entry *yaml.Node, id string, enabled bool) (bool, error) {
 	if err := ensurePluginEntryMapping(entry); err != nil {
-		return false, fmt.Errorf("plugin %s entry must be a YAML mapping", name)
+		return false, fmt.Errorf("plugin %s entry must be a YAML mapping", id)
 	}
 	enabledNode := mappingValue(entry, "enabled")
 	if enabledNode != nil && enabledNode.Kind == yaml.ScalarNode && enabledNode.Tag == "!!bool" && enabledNode.Value == boolValue(enabled) {
@@ -775,9 +512,9 @@ func setPluginEntryEnabled(entry *yaml.Node, name string, enabled bool) (bool, e
 	return true, nil
 }
 
-func setPluginConfigAssignments(name string, entry *yaml.Node, assignments []PluginConfigAssignment) (bool, error) {
+func setPluginConfigAssignments(id string, entry *yaml.Node, assignments []PluginConfigAssignment) (bool, error) {
 	if err := ensurePluginEntryMapping(entry); err != nil {
-		return false, fmt.Errorf("plugin %s entry must be a YAML mapping", name)
+		return false, fmt.Errorf("plugin %s entry must be a YAML mapping", id)
 	}
 	config := mappingValue(entry, "config")
 	if emptyYAMLNode(config) {
@@ -789,7 +526,7 @@ func setPluginConfigAssignments(name string, entry *yaml.Node, assignments []Plu
 		}
 	}
 	if config.Kind != yaml.MappingNode {
-		return false, fmt.Errorf("plugin %s config must be a YAML mapping", name)
+		return false, fmt.Errorf("plugin %s config must be a YAML mapping", id)
 	}
 	var changed bool
 	for _, assignment := range assignments {
@@ -797,7 +534,7 @@ func setPluginConfigAssignments(name string, entry *yaml.Node, assignments []Plu
 			return false, fmt.Errorf("plugin config path is required")
 		}
 		if set, err := setMappingPath(config, assignment.Path, &assignment.Value); err != nil {
-			return false, fmt.Errorf("plugin %s config.%s: %w", name, strings.Join(assignment.Path, "."), err)
+			return false, fmt.Errorf("plugin %s config.%s: %w", id, strings.Join(assignment.Path, "."), err)
 		} else if set {
 			changed = true
 		}
@@ -805,16 +542,16 @@ func setPluginConfigAssignments(name string, entry *yaml.Node, assignments []Plu
 	return changed, nil
 }
 
-func removePluginConfigPaths(name string, entry *yaml.Node, paths [][]string) (int, error) {
+func removePluginConfigPaths(id string, entry *yaml.Node, paths [][]string) (int, error) {
 	if err := ensurePluginEntryMapping(entry); err != nil {
-		return 0, fmt.Errorf("plugin %s entry must be a YAML mapping", name)
+		return 0, fmt.Errorf("plugin %s entry must be a YAML mapping", id)
 	}
 	config := mappingValue(entry, "config")
 	if emptyYAMLNode(config) {
 		return 0, nil
 	}
 	if config.Kind != yaml.MappingNode {
-		return 0, fmt.Errorf("plugin %s config must be a YAML mapping", name)
+		return 0, fmt.Errorf("plugin %s config must be a YAML mapping", id)
 	}
 	var count int
 	for _, path := range paths {
@@ -822,7 +559,7 @@ func removePluginConfigPaths(name string, entry *yaml.Node, paths [][]string) (i
 			return 0, fmt.Errorf("plugin config path is required")
 		}
 		if removed, err := removeMappingPath(config, path); err != nil {
-			return 0, fmt.Errorf("plugin %s config.%s: %w", name, strings.Join(path, "."), err)
+			return 0, fmt.Errorf("plugin %s config.%s: %w", id, strings.Join(path, "."), err)
 		} else if removed {
 			count++
 		}

@@ -40,10 +40,8 @@ func renderPluginHost(dir string, lock PluginLock, force bool) error {
 func renderPlugins(lock PluginLock) string {
 	type pluginImport struct {
 		Alias  string
-		Name   string
 		ID     string
 		Module string
-		Symbol string
 	}
 	data := struct {
 		Plugins []pluginImport
@@ -51,10 +49,8 @@ func renderPlugins(lock PluginLock) string {
 	for i, item := range lock.Plugins {
 		data.Plugins = append(data.Plugins, pluginImport{
 			Alias:  fmt.Sprintf("plugin%d", i),
-			Name:   item.Name,
 			ID:     item.ID,
 			Module: item.Module,
-			Symbol: item.Symbol,
 		})
 	}
 	return mustFormat(executeTemplate(pluginsTemplate, data))
@@ -94,7 +90,7 @@ import (
 
 func registerExternalPlugins(registry absdk.Registry) error {
 	{{- range .Plugins }}
-	if err := registry.Register({{ .Alias }}.{{ .Symbol }}.Factory().WithName({{ printf "%q" .Name }}).WithInstanceID({{ printf "%q" .ID }})); err != nil {
+	if err := registry.Register({{ .Alias }}.Plugin.Factory().WithPluginID({{ printf "%q" .ID }})); err != nil {
 		return err
 	}
 	{{- end }}

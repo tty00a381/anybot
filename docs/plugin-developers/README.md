@@ -89,16 +89,11 @@ var Plugin = absdk.Define(
 )
 ```
 
-插件对外导出的是 `Plugin`。最终用户添加插件时，`-symbol` 默认就是 `Plugin`。
+插件对外固定导出 `Plugin`。最终用户安装插件时不需要指定导出符号。
 
-`Manifest.Name` 是插件作者声明的默认插件键，不是展示名。它会作为直接安装插件时的配置名和持久化实例 ID；运行框架安装外部插件时，也可以为同一个插件注入独立的配置名和实例 ID。名字只能使用小写字母、数字和下划线，并且必须以字母开头，例如 `weather`、`group_memo`。
+`Manifest.Name` 是插件作者声明的展示名。它可以是中文，也可以随产品表达调整；它不参与唯一标识、配置文件名、状态命名空间或数据目录命名。
 
-不要把 `Manifest.Name` 当成可以随手更改的昵称。改名等同于迁移配置和数据；需要换展示文案时，把展示文案写在 `Description`、配置项或回复文本里。
-
-插件需要区分当前安装身份时，可以读取：
-
-- `ctx.ConfigName()`：当前配置名，用于 CLI、`plugins.d/<name>.yaml`、配置写回和用户可见诊断。
-- `ctx.InstanceID()`：当前稳定实例 ID，用于 `Session`/`State` 命名空间和私有数据目录。
+运行框架在本地安装插件时生成 `PluginID`，并写入 `anybot.lock`。插件需要区分当前安装身份时读取 `ctx.PluginID()`；配置写回、`Session`/`State` 命名空间和私有数据目录都使用这个 ID。
 
 ## 安装到本地机器人工作目录
 
@@ -106,8 +101,9 @@ var Plugin = absdk.Define(
 
 ```sh
 cd ../mybot
-anybot plugin add github.com/acme/anybot-hello -name hello -replace ../anybot-hello
-anybot plugin enable hello
+anybot plugin add github.com/acme/anybot-hello -replace ../anybot-hello
+anybot plugin status
+anybot plugin enable <id>
 anybot up
 ```
 
@@ -116,14 +112,14 @@ anybot up
 ```sh
 ./anybot-bot plugin sync
 ./anybot-bot plugin check
-./anybot-bot plugin inspect hello
+./anybot-bot plugin inspect <id>
 ```
 
 原因是基础 `anybot` 二进制不能预先知道你的外部插件。`anybot up` 构建出的 `anybot-bot` 才包含完整插件注册表。
 
 ## 配置模型
 
-插件配置使用普通 Go struct，并通过 YAML 标签映射到 `plugins.d/<name>.yaml` 的 `config` 下。
+插件配置使用普通 Go struct，并通过 YAML 标签映射到 `plugins.d/<PluginID>.yaml` 的 `config` 下。
 
 ```go
 type Config struct {
@@ -258,7 +254,7 @@ _, err := c.Reply(message.New(
 
 ### Session 与 State
 
-插件应优先使用 SDK 的 typed state helper，让状态自动落在当前插件实例命名空间：
+插件应优先使用 SDK 的 typed state helper，让状态自动落在当前 PluginID 命名空间：
 
 ```go
 state, err := absdk.UserState[State](ctx, c, "state").LoadOr(State{})
@@ -372,7 +368,7 @@ path := filepath.Join(dir, "cache.json")
 运行框架会在插件第一次调用 `DataDir()` 时创建：
 
 ```text
-runtime.data_dir/plugins/<插件实例ID>/
+runtime.data_dir/plugins/<PluginID>/
 ```
 
 小型状态优先使用 `Session`/`State`，只有需要控制文件格式、保存大量数据或接入外部存储时再用 `DataDir()`。框架不会在禁用或移除插件时自动删除这个目录；删除数据应当是用户显式操作，或插件提供清晰的迁移/清理流程。
@@ -494,9 +490,9 @@ go test ./...
 
 - `go test ./...` 通过。
 - `go vet ./...` 没有明显问题。
-- `Plugin` 的 `Manifest.Name` 稳定，只使用小写字母、数字和下划线，且不随包名或仓库名随意变化。
+- `Plugin` 固定导出，`Manifest.Name` 适合用户展示。
 - 默认配置够保守，插件安装后默认禁用，由用户显式启用。
-- 配置项能通过 `anybot plugin inspect <name>` 看懂。
+- 配置项能通过 `anybot plugin inspect <id>` 看懂。
 - 外部服务密钥支持 `!env`，不要鼓励用户明文写进仓库。
 - 后台任务能响应 context 退出，不泄漏 goroutine。
 - 主动消息等待 `WaitActionReady`。

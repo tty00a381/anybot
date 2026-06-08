@@ -8,9 +8,9 @@ AnyBot 的最终用户入口是一个工作目录。你日常操作的是配置�
 
 工作目录里最重要的文件：
 
-- `anybot.yaml`：框架配置，包含运行时、协议端、超级用户、插件目录。
-- `plugins.d/<配置名>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
-- `anybot.lock`：外部插件锁，记录配置名、稳定实例 ID、Go module、版本、本地替换路径和导出符号。
+- `anybot.yaml`：框架配置，包含运行时、协议端和超级用户。
+- `plugins.d/<PluginID>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
+- `anybot.lock`：外部插件锁，记录本地生成的 `PluginID`、Go module、版本和本地替换路径。
 - `plugins.gen.go`、`main.go`、`go.mod`：AnyBot 生成的可构建宿主。不要手动改，日常用命令更新。
 - `.anybot/`：运行时数据，默认包含 `.anybot/store.json` 会话状态文件和插件私有数据目录。
 
@@ -91,18 +91,6 @@ adapter:
 
 security:
   superusers: []
-
-plugin_config_dir: plugins.d
-
-plugins:
-  help:
-    enabled: true
-    config:
-      command: help
-  echo:
-    enabled: false
-    config:
-      command: echo
 ```
 
 ### `runtime`
@@ -134,7 +122,7 @@ plugins:
 
 ### 插件配置
 
-插件默认放在 `plugins.d/<配置名>.yaml`：
+插件默认放在 `plugins.d/<PluginID>.yaml`：
 
 ```yaml
 enabled: true
@@ -209,27 +197,27 @@ anybot plugin status
 安装外部插件：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
+anybot plugin add github.com/acme/anybot-weather@v0.1.0
 ```
 
 常用参数：
 
-- `-name weather`：指定配置名，只能使用小写字母、数字和下划线，并且必须以字母开头。省略时从 module 末尾推导，短横线会转换为下划线。配置名用于 `plugins.d/<name>.yaml` 和 CLI 命令；持久化实例 ID 会写入 `anybot.lock`，不要把配置名当成展示昵称频繁改。
-- `-symbol Plugin`：插件 module 导出的 `sdk.Definition` 变量名，默认 `Plugin`。
 - `-version v0.1.0`：指定版本。也可写成 `module@version`。
 - `-replace ../plugin`：使用本地插件目录，适合本地开发和调试。
+
+安装后先运行 `anybot plugin status` 查看首列 ID。CLI 支持使用唯一 ID 前缀操作插件；插件 Manifest 里的名称只用于展示。
 
 启用或禁用：
 
 ```sh
-anybot plugin enable weather
-anybot plugin disable weather
+anybot plugin enable <id>
+anybot plugin disable <id>
 ```
 
 查看单个插件：
 
 ```sh
-anybot plugin inspect weather
+anybot plugin inspect <id>
 ```
 
 同步默认配置：
@@ -247,28 +235,28 @@ anybot plugin check
 修改配置：
 
 ```sh
-anybot plugin config weather command=weather
-anybot plugin config weather city.default=Shanghai
+anybot plugin config <id> command=weather
+anybot plugin config <id> city.default=Shanghai
 ```
 
 撤回某个字段，让它回到插件默认值：
 
 ```sh
-anybot plugin config weather -reset city.default
+anybot plugin config <id> -reset city.default
 ```
 
 更新外部插件元数据：
 
 ```sh
-anybot plugin update weather -version v0.2.0
-anybot plugin update weather -replace ../weather
-anybot plugin update weather -clear-replace
+anybot plugin update <id> -version v0.2.0
+anybot plugin update <id> -replace ../weather
+anybot plugin update <id> -clear-replace
 ```
 
 移除外部插件：
 
 ```sh
-anybot plugin remove weather
+anybot plugin remove <id>
 ```
 
 ## 两条真实流程
@@ -325,14 +313,14 @@ anybot run
 1. 添加插件。
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather -name weather -replace ../anybot-weather
+anybot plugin add github.com/acme/anybot-weather -replace ../anybot-weather
 ```
 
 2. 看状态。
 
 ```sh
 anybot plugin status
-anybot plugin inspect weather
+anybot plugin inspect <id>
 ```
 
 这时插件通常会显示为外部、待构建。基础 `anybot` 命令只知道插件锁，完整默认配置要等生成宿主加载外部插件后才能同步。
@@ -340,7 +328,7 @@ anybot plugin inspect weather
 3. 启用。
 
 ```sh
-anybot plugin enable weather
+anybot plugin enable <id>
 ```
 
 4. 构建、同步、检查、运行。
@@ -355,7 +343,7 @@ anybot up
 anybot build
 ./anybot-bot plugin sync
 ./anybot-bot plugin check
-./anybot-bot plugin inspect weather
+./anybot-bot plugin inspect <id>
 ```
 
 ## 常见问题
@@ -366,7 +354,7 @@ anybot build
 
 unknown plugin
 
-配置名写错、配置文件残留，或外部插件没有添加到插件锁。先运行 `anybot plugin status` 看真实名字。
+ID 前缀写错、配置文件残留，或外部插件没有添加到插件锁。先运行 `anybot plugin status` 看真实 ID。
 
 配置文件扩展名
 

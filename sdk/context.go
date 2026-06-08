@@ -44,28 +44,12 @@ func (c *Context) Manifest() Manifest {
 	return c.manifest
 }
 
-// ConfigName 返回当前插件在运行框架配置中的名字。
-func (c *Context) ConfigName() string {
+// PluginID 返回当前插件在本地机器人目录中的稳定安装 ID。
+func (c *Context) PluginID() string {
 	if c == nil {
 		return ""
 	}
-	name := strings.TrimSpace(c.env.ConfigName)
-	if name != "" {
-		return name
-	}
-	return c.manifest.Name
-}
-
-// InstanceID 返回当前插件用于持久化状态和私有数据目录的稳定实例 ID。
-func (c *Context) InstanceID() string {
-	if c == nil {
-		return ""
-	}
-	id := strings.TrimSpace(c.env.InstanceID)
-	if id != "" {
-		return id
-	}
-	return c.ConfigName()
+	return c.env.PluginID
 }
 
 // Logger 返回框架日志器。
@@ -74,11 +58,11 @@ func (c *Context) Logger() *slog.Logger {
 		return slog.Default()
 	}
 	logger := c.app.Logger()
-	name := c.ConfigName()
-	if name == "" {
+	id := c.PluginID()
+	if id == "" {
 		return logger
 	}
-	return logger.With("plugin", name)
+	return logger.With("plugin_id", id, "plugin_name", c.manifest.Name)
 }
 
 // Store 返回框架会话存储。
@@ -89,7 +73,7 @@ func (c *Context) Store() Store {
 	return c.app.Store()
 }
 
-// Session 返回当前插件实例命名空间下的会话存储视图。
+// Session 返回当前 PluginID 命名空间下的会话存储视图。
 func (c *Context) Session(event *EventContext) *Session {
 	if event == nil {
 		return c.SessionBy("session")
@@ -97,7 +81,7 @@ func (c *Context) Session(event *EventContext) *Session {
 	return c.SessionBy(event.ConversationID())
 }
 
-// UserSession 返回当前插件实例命名空间下的用户存储视图。
+// UserSession 返回当前 PluginID 命名空间下的用户存储视图。
 func (c *Context) UserSession(event *EventContext) *Session {
 	if event == nil {
 		return c.SessionBy("session:user")
@@ -105,7 +89,7 @@ func (c *Context) UserSession(event *EventContext) *Session {
 	return c.SessionBy(event.UserSession().Key())
 }
 
-// GroupSession 返回当前插件实例命名空间下的群或频道存储视图。
+// GroupSession 返回当前 PluginID 命名空间下的群或频道存储视图。
 func (c *Context) GroupSession(event *EventContext) *Session {
 	if event == nil {
 		return c.SessionBy("session:group")
@@ -113,12 +97,12 @@ func (c *Context) GroupSession(event *EventContext) *Session {
 	return c.SessionBy(event.GroupSession().Key())
 }
 
-// SessionBy 返回当前插件实例命名空间下的自定义存储视图。
+// SessionBy 返回当前 PluginID 命名空间下的自定义存储视图。
 func (c *Context) SessionBy(key string) *Session {
 	if key == "" {
 		key = "session"
 	}
-	return NewSession(c.Store(), scopedName(c.InstanceID(), key))
+	return NewSession(c.Store(), scopedName(c.PluginID(), key))
 }
 
 // Client 返回当前动作客户端。
@@ -196,14 +180,14 @@ func (c *Context) Observe(rules ...Rule) *Observer {
 // Go 注册生命周期托管的后台任务。
 func (c *Context) Go(name string, fn TaskFunc, opts ...TaskOption) {
 	if c != nil && c.app != nil {
-		c.app.Go(scopedName(c.ConfigName(), name), fn, opts...)
+		c.app.Go(scopedName(c.PluginID(), name), fn, opts...)
 	}
 }
 
 // Every 注册生命周期托管的周期任务。
 func (c *Context) Every(name string, interval time.Duration, fn TaskFunc, opts ...TaskOption) {
 	if c != nil && c.app != nil {
-		c.app.Every(scopedName(c.ConfigName(), name), interval, fn, opts...)
+		c.app.Every(scopedName(c.PluginID(), name), interval, fn, opts...)
 	}
 }
 
@@ -243,7 +227,7 @@ func (c *Context) OnAdapterState(hook AdapterStateHook) {
 	}
 }
 
-// Route 是插件配置名命名空间下的一条事件路由。
+// Route 是插件 ID 命名空间下的一条事件路由。
 type Route struct {
 	ctx   *Context
 	route *core.Route
@@ -292,10 +276,10 @@ func (r *Route) pluginName() string {
 	if r == nil || r.ctx == nil {
 		return ""
 	}
-	return r.ctx.ConfigName()
+	return r.ctx.PluginID()
 }
 
-// Observer 是插件配置名命名空间下的一条旁路事件观察规则。
+// Observer 是插件 ID 命名空间下的一条旁路事件观察规则。
 type Observer struct {
 	ctx      *Context
 	observer *core.Observer
@@ -328,7 +312,7 @@ func (o *Observer) pluginName() string {
 	if o == nil || o.ctx == nil {
 		return ""
 	}
-	return o.ctx.ConfigName()
+	return o.ctx.PluginID()
 }
 
 func scopedName(pluginName, name string) string {

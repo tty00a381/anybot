@@ -56,39 +56,43 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	case "status":
 		return WritePluginStatusTable(output, PluginStatuses(cfg, registry, lock))
 	case "inspect":
-		inspect, err := InspectPlugin(configPath, registry, lock, opts.Args[1])
+		id, err := ResolvePluginID(cfg, registry, lock, opts.Args[1], true)
+		if err != nil {
+			return err
+		}
+		inspect, err := InspectPlugin(configPath, registry, lock, id)
 		if err != nil {
 			return err
 		}
 		return WritePluginInspect(output, inspect)
 	case "config":
 		if len(opts.Args) < 3 {
-			return fmt.Errorf("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
+			return fmt.Errorf("用法：plugin config <id> <key=value>...，或 plugin config <id> -reset <key>...")
 		}
-		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, registry, lock, name, true); err != nil {
+		id, err := ResolvePluginID(cfg, registry, lock, opts.Args[1], true)
+		if err != nil {
 			return err
 		}
 		change, err := ParsePluginConfigChanges(opts.Args[2:])
 		if err != nil {
 			return err
 		}
-		result, err := ApplyPluginConfigChange(configPath, name, change)
+		result, err := ApplyPluginConfigChange(configPath, id, change)
 		if err != nil {
 			return err
 		}
-		return writePluginConfigChangeResult(output, configPath, registry, name, result)
+		return writePluginConfigChangeResult(output, configPath, registry, id, result)
 	case "enable", "disable":
 		enabled := opts.Args[0] == "enable"
-		name := opts.Args[1]
-		if err := EnsureKnownPluginTarget(cfg, registry, lock, name, !enabled); err != nil {
-			return err
-		}
-		changed, err := SetPluginEnabled(configPath, name, enabled)
+		id, err := ResolvePluginID(cfg, registry, lock, opts.Args[1], !enabled)
 		if err != nil {
 			return err
 		}
-		return writePluginEnabledResult(output, configPath, registry, name, enabled, changed)
+		changed, err := SetPluginEnabled(configPath, id, enabled)
+		if err != nil {
+			return err
+		}
+		return writePluginEnabledResult(output, configPath, registry, id, enabled, changed)
 	case "check":
 		checks := PluginConfigChecks(cfg, registry, lock)
 		if err := WritePluginConfigCheckTable(output, checks); err != nil {
@@ -111,11 +115,11 @@ func validatePluginCommandArgs(args []string) error {
 		}
 	case "inspect", "enable", "disable":
 		if len(args) != 2 {
-			return fmt.Errorf("用法：plugin %s <name>", args[0])
+			return fmt.Errorf("用法：plugin %s <id>", args[0])
 		}
 	case "config":
 		if len(args) < 3 {
-			return fmt.Errorf("用法：plugin config <name> <key=value>...，或 plugin config <name> -reset <key>...")
+			return fmt.Errorf("用法：plugin config <id> <key=value>...，或 plugin config <id> -reset <key>...")
 		}
 	default:
 		return fmt.Errorf("未知插件命令 %q", args[0])
@@ -123,53 +127,53 @@ func validatePluginCommandArgs(args []string) error {
 	return nil
 }
 
-func writePluginConfigChangeResult(output io.Writer, configPath string, registry absdk.Registry, name string, result PluginConfigChangeResult) error {
+func writePluginConfigChangeResult(output io.Writer, configPath string, registry absdk.Registry, id string, result PluginConfigChangeResult) error {
 	if result.Reset {
 		if result.Changed {
-			fmt.Fprintf(output, "插件配置已重置：%s（%d 项）\n", name, result.Count)
+			fmt.Fprintf(output, "插件配置已重置：%s（%d 项）\n", id, result.Count)
 		} else {
-			fmt.Fprintf(output, "插件配置未变化：%s\n", name)
+			fmt.Fprintf(output, "插件配置未变化：%s\n", id)
 		}
-		sync, err := SyncPluginConfigEntry(configPath, registry, name)
+		sync, err := SyncPluginConfigEntry(configPath, registry, id)
 		if err != nil {
 			return err
 		}
 		if sync.Changed {
 			fmt.Fprintln(output, "默认配置已同步：1 项更新")
 		} else if !sync.Available {
-			fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", name)
+			fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", id)
 		}
 		return nil
 	}
 	if result.Changed {
-		fmt.Fprintf(output, "插件配置已更新：%s（%d 项）\n", name, result.Count)
+		fmt.Fprintf(output, "插件配置已更新：%s（%d 项）\n", id, result.Count)
 	} else {
-		fmt.Fprintf(output, "插件配置未变化：%s\n", name)
+		fmt.Fprintf(output, "插件配置未变化：%s\n", id)
 	}
 	return nil
 }
 
-func writePluginEnabledResult(output io.Writer, configPath string, registry absdk.Registry, name string, enabled, changed bool) error {
+func writePluginEnabledResult(output io.Writer, configPath string, registry absdk.Registry, id string, enabled, changed bool) error {
 	action := "启用"
 	if !enabled {
 		action = "禁用"
 	}
 	if changed {
-		fmt.Fprintf(output, "插件已%s：%s\n", action, name)
+		fmt.Fprintf(output, "插件已%s：%s\n", action, id)
 	} else {
-		fmt.Fprintf(output, "插件已处于%s状态：%s\n", action, name)
+		fmt.Fprintf(output, "插件已处于%s状态：%s\n", action, id)
 	}
 	if !enabled {
 		return nil
 	}
-	result, err := SyncPluginConfigEntry(configPath, registry, name)
+	result, err := SyncPluginConfigEntry(configPath, registry, id)
 	if err != nil {
 		return err
 	}
 	if result.Changed {
 		fmt.Fprintln(output, "默认配置已同步：1 项更新")
 	} else if !result.Available {
-		fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", name)
+		fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", id)
 	}
 	return nil
 }

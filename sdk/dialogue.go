@@ -114,7 +114,7 @@ func (c *Context) Dialogue(name string, opts ...DialogueOption) *Dialogue {
 		dialogue.route = c.OnMessage(rules...)
 		if dialogue.route != nil {
 			dialogue.route.
-				Name(scopedName(c.ConfigName(), "dialogue:"+dialogue.name)).
+				Name(scopedName(c.PluginID(), "dialogue:"+dialogue.name)).
 				Priority(dialogue.priority).
 				Handle(dialogue.handle)
 		}

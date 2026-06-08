@@ -14,11 +14,11 @@ import (
 
 // UnknownPluginError 表示配置启用了当前注册表不可加载的插件。
 type UnknownPluginError struct {
-	Name string
+	ID string
 }
 
 func (err UnknownPluginError) Error() string {
-	return fmt.Sprintf("未知插件 %q", err.Name)
+	return fmt.Sprintf("未知插件 %q", err.ID)
 }
 
 // NewLogger 创建 anybot 使用的结构化日志器。
@@ -148,17 +148,17 @@ func ValidateConfig(cfg Config, registry absdk.Registry) error {
 	if _, _, err := runtimeDataDir(cfg.Runtime, rawRuntime, configPath); err != nil {
 		return err
 	}
-	for _, name := range configuredPluginNames(cfg) {
-		entry := cfg.Plugins[name]
+	for _, id := range configuredPluginIDs(cfg) {
+		entry := cfg.Plugins[id]
 		if !pluginEnabled(entry) {
 			continue
 		}
-		factory, ok := registry.Factory(name)
+		factory, ok := registry.Factory(id)
 		if !ok {
-			return UnknownPluginError{Name: name}
+			return UnknownPluginError{ID: id}
 		}
 		if _, err := factory.Build(entry.Config); err != nil {
-			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
+			return fmt.Errorf("插件 %s 配置无效: %w", id, err)
 		}
 	}
 	return nil
@@ -166,24 +166,22 @@ func ValidateConfig(cfg Config, registry absdk.Registry) error {
 
 // InstallPlugins 按配置启用插件。
 func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absdk.Environment) error {
-	names := configuredPluginNames(cfg)
-	for _, name := range names {
-		entry := cfg.Plugins[name]
+	for _, id := range configuredPluginIDs(cfg) {
+		entry := cfg.Plugins[id]
 		if !pluginEnabled(entry) {
 			continue
 		}
-		factory, ok := registry.Factory(name)
+		factory, ok := registry.Factory(id)
 		if !ok {
-			return UnknownPluginError{Name: name}
+			return UnknownPluginError{ID: id}
 		}
 		plugin, err := factory.Build(entry.Config)
 		if err != nil {
-			return fmt.Errorf("插件 %s 配置无效: %w", name, err)
+			return fmt.Errorf("插件 %s 配置无效: %w", id, err)
 		}
 		pluginEnv := env
-		pluginEnv.ConfigName = name
-		pluginEnv.InstanceID = factory.StorageName()
-		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(name)
+		pluginEnv.PluginID = id
+		pluginEnv.AllowGlobalMiddleware = pluginAllowsGlobalMiddleware(id)
 		if err := absdk.InstallWith(app, pluginEnv, plugin); err != nil {
 			return err
 		}
@@ -191,27 +189,27 @@ func InstallPlugins(app *core.App, cfg Config, registry absdk.Registry, env absd
 	return nil
 }
 
-// EnabledPlugins 返回按名称排序的已启用插件名。
+// EnabledPlugins 返回按插件 ID 排序的已启用插件 ID。
 func EnabledPlugins(cfg Config, registry absdk.Registry) ([]string, error) {
 	var enabled []string
-	for _, name := range configuredPluginNames(cfg) {
-		entry := cfg.Plugins[name]
+	for _, id := range configuredPluginIDs(cfg) {
+		entry := cfg.Plugins[id]
 		if !pluginEnabled(entry) {
 			continue
 		}
-		if _, ok := registry.Factory(name); !ok {
-			return nil, UnknownPluginError{Name: name}
+		if _, ok := registry.Factory(id); !ok {
+			return nil, UnknownPluginError{ID: id}
 		}
-		enabled = append(enabled, name)
+		enabled = append(enabled, id)
 	}
 	return enabled, nil
 }
 
-func configuredPluginNames(cfg Config) []string {
-	names := make([]string, 0, len(cfg.Plugins))
-	for name := range cfg.Plugins {
-		names = append(names, name)
+func configuredPluginIDs(cfg Config) []string {
+	ids := make([]string, 0, len(cfg.Plugins))
+	for id := range cfg.Plugins {
+		ids = append(ids, id)
 	}
-	sort.Strings(names)
-	return names
+	sort.Strings(ids)
+	return ids
 }

@@ -7,7 +7,7 @@
 AnyBot 由四层组成：
 
 1. `core`：核心库。
-2. `sdk`：插件作者 SDK。它在 `core` 上提供 typed config、插件实例命名空间、配置写回、私有数据目录、多轮对话和插件友好的路由入口。
+2. `sdk`：插件作者 SDK。它在 `core` 上提供 typed config、PluginID 命名空间、配置写回、私有数据目录、多轮对话和插件友好的路由入口。
 3. `app/host`：运行框架层。它读取 `anybot.yaml`，装配适配器、存储、内置插件和外部插件，维护插件锁、生成宿主和用户配置。
 4. `cmd/anybot`：用户入口。它把工作目录、插件安装、构建、检查、运行和开发脚手架串成用户可执行的命令。
 
@@ -187,14 +187,12 @@ core 不依赖 sdk、app/host、cmd
 - `runtime`：日志、worker、buffer、串行、数据目录、状态存储。
 - `adapter`：协议与传输。
 - `security`：超级用户。
-- `plugin_config_dir`：拆分插件配置目录。
-- `plugins`：内联插件配置。
 
 加载逻辑：
 
 - 命令生成的新配置统一使用 `.yaml`。
 - 读取配置时兼容 `.yaml` 和 `.yml`，不要把生成风格变成输入限制。
-- 如果同一个插件同时出现在 `plugins` 和 `plugins.d`，报重复配置。
+- 插件配置固定从 `plugins.d/<PluginID>.yaml` 读取，`anybot.yaml` 不承载插件配置字段。
 - `enabled` 省略时视为启用。
 
 typed config：
@@ -212,27 +210,23 @@ typed config：
 ```yaml
 module: anybot.local/bot
 plugins:
-  - name: weather
-    id: weather_12345678
+  - id: weather
     module: github.com/acme/anybot-weather
     version: v0.1.0
     replace: ../anybot-weather
-    symbol: Plugin
 ```
 
 `PluginModule` 校验：
 
-- `name` 是用户可见配置名，必须非空，不能带路径分隔符，不能是隐藏名、`.`、`..`。
-- `id` 是稳定插件实例 ID，用于 Store 前缀和插件私有数据目录；缺省时从 module 与 symbol 推导，写入锁后不随配置名变化。
+- `id` 是本地安装生成的 `PluginID`，用于 CLI 目标、`plugins.d/<PluginID>.yaml`、Store 前缀和插件私有数据目录。
 - `module` 必须是合法 Go module path。
 - `version` 非空时必须能通过 Go module 版本校验。
-- `symbol` 必须是导出的 Go 标识符。
-- 名称、实例 ID 和 module 不能重复。
+- `id` 和 `module` 不能重复。
 
 生成代码：
 
 - `plugins.gen.go` import 每个外部插件 module。
-- 注册外部插件时同时注入配置名和实例 ID，配置写回走配置名，`Session`/`DataDir` 走实例 ID。
+- 外部插件固定导出 `Plugin`；注册时注入锁文件中的 `PluginID`。
 - `main.go` 只负责创建 registry、注册外部插件、分派生成宿主内置的 `plugin` 子命令并启动运行框架。
 - 生成宿主内置的 `plugin` 子命令由 `host.RunPluginCommand` 承载，避免业务逻辑散落在模板里。
 - 生成文件用原子写入。
@@ -319,7 +313,7 @@ OneBot 专属能力不要上提到 `core`。只有协议无关的动作抽象，
 
 注意当前语义：
 
-- `anybot dev plugin <name>` 默认生成独立插件 module。
+- `anybot dev plugin <name>` 默认生成独立插件 module；这里的 `<name>` 是脚手架项目名，不参与安装后的插件识别。
 - 项目内插件必须显式 `-in-project`。
 - 独立插件默认 module 是 `example.com/anybot-plugin/<名称>`，交给别人使用前应改成自己的 module。
 
@@ -347,10 +341,11 @@ root=$(mktemp -d)
 /tmp/anybot-cli dev plugin buddy -dir "$root/buddy"
 (cd "$root/buddy" && go test ./...)
 /tmp/anybot-cli init -dir "$root/bot"
-/tmp/anybot-cli plugin add example.com/anybot-plugin/buddy -name buddy -replace "$root/buddy" -dir "$root/bot"
-/tmp/anybot-cli plugin enable buddy -dir "$root/bot"
+/tmp/anybot-cli plugin add example.com/anybot-plugin/buddy -replace "$root/buddy" -dir "$root/bot"
+/tmp/anybot-cli plugin status -dir "$root/bot"
+/tmp/anybot-cli plugin enable <id> -dir "$root/bot"
 /tmp/anybot-cli build -dir "$root/bot" -o anybot-bot
-(cd "$root/bot" && ./anybot-bot plugin sync && ./anybot-bot plugin check && ./anybot-bot plugin inspect buddy)
+(cd "$root/bot" && ./anybot-bot plugin sync && ./anybot-bot plugin check && ./anybot-bot plugin inspect <id>)
 ```
 
 ## 设计检查清单
@@ -372,9 +367,8 @@ root=$(mktemp -d)
 - “插件 SDK”：`sdk`。
 - “运行框架”：最终用户通过 `anybot` 使用的框架层，以及生成后的 `anybot-bot`。
 - “机器人目录”：最终用户执行 `anybot init` 后日常操作的目录。
-- “配置名”：用户在 `plugins.d/<name>.yaml`、CLI 和状态表中看到的插件安装名。
-- “插件实例 ID”：`anybot.lock` 中的 `id`，用于 Store 前缀和插件私有数据目录；它比配置名更稳定。
-- “插件锁”：`anybot.lock`，记录外部插件配置名、实例 ID、来源、版本、本地替换路径和导出符号。
+- “PluginID”：`anybot.lock` 中的 `id`，用于 CLI 目标、`plugins.d/<PluginID>.yaml`、Store 前缀和插件私有数据目录。
+- “插件锁”：`anybot.lock`，记录外部插件 `PluginID`、来源、版本和本地替换路径。
 - “生成宿主”：`plugins.gen.go`、生成的 `main.go` 和 `go.mod` 组成的可构建 Go 程序。
 - “外部插件”：通过 Go module 安装到机器人目录的插件。
 - “项目内 SDK 插件”：直接核心库项目里的 `plugins/` 目录插件，仍然使用 `sdk.Plugin`。

@@ -17,8 +17,10 @@ func runPlugins(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	for _, manifest := range host.DefaultRegistry().Plugins() {
-		fmt.Fprintf(stdout, "%s\t%s\t%s\n", manifest.Name, manifest.Version, manifest.Description)
+	registry := host.DefaultRegistry()
+	for _, id := range registry.PluginIDs() {
+		factory, _ := registry.Factory(id)
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", id, factory.Info.Name, factory.Info.Version, factory.Info.Description)
 	}
 	return nil
 }
@@ -37,19 +39,7 @@ func runPlugin(args []string) error {
 		return runPluginRemove(args[1:])
 	case "list":
 		return runPluginList(args[1:])
-	case "status":
-		return runHostPluginCommand(args)
-	case "inspect":
-		return runHostPluginCommand(args)
-	case "config":
-		return runHostPluginCommand(args)
-	case "check":
-		return runHostPluginCommand(args)
-	case "sync":
-		return runHostPluginCommand(args)
-	case "enable":
-		return runHostPluginCommand(args)
-	case "disable":
+	case "status", "inspect", "config", "check", "sync", "enable", "disable":
 		return runHostPluginCommand(args)
 	case "help", "-h", "--help":
 		pluginUsage()
@@ -61,28 +51,26 @@ func runPlugin(args []string) error {
 
 func pluginUsage() {
 	fmt.Fprintln(stdout, `anybot plugin 命令：
-  anybot plugin add <module[@version]> [-name 名称] [-symbol Plugin] [-version 版本] [-replace 本地路径] [-dir 目录]
-  anybot plugin update <name> [-version 版本] [-symbol Plugin] [-replace 本地路径|-clear-replace] [-dir 目录]
-  anybot plugin remove <name> [-dir 目录] [-config anybot.yaml]
+  anybot plugin add <module[@version]> [-version 版本] [-replace 本地路径] [-dir 目录]
+  anybot plugin update <id> [-version 版本] [-replace 本地路径|-clear-replace] [-dir 目录]
+  anybot plugin remove <id> [-dir 目录] [-config anybot.yaml]
   anybot plugin list [-dir 目录]
   anybot plugin status [-dir 目录] [-config anybot.yaml]
-  anybot plugin inspect <name> [-dir 目录] [-config anybot.yaml]
-  anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]
-  anybot plugin config <name> -reset <key>... [-dir 目录] [-config anybot.yaml]
+  anybot plugin inspect <id> [-dir 目录] [-config anybot.yaml]
+  anybot plugin config <id> <key=value>... [-dir 目录] [-config anybot.yaml]
+  anybot plugin config <id> -reset <key>... [-dir 目录] [-config anybot.yaml]
   anybot plugin check [-dir 目录] [-config anybot.yaml]
   anybot plugin sync [-dir 目录] [-config anybot.yaml]
-  anybot plugin enable <name> [-dir 目录] [-config anybot.yaml]
-  anybot plugin disable <name> [-dir 目录] [-config anybot.yaml]`)
+  anybot plugin enable <id> [-dir 目录] [-config anybot.yaml]
+  anybot plugin disable <id> [-dir 目录] [-config anybot.yaml]`)
 }
 
 func runPluginAdd(args []string) (err error) {
 	fs := flag.NewFlagSet("plugin add", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标目录")
-	name := fs.String("name", "", "插件配置名称")
-	symbol := fs.String("symbol", "Plugin", "插件模块导出的 Definition 变量名")
 	version := fs.String("version", "", "插件模块版本")
 	replace := fs.String("replace", "", "本地模块替换路径")
-	module, flagArgs, err := splitPluginAddArgs(args)
+	module, flagArgs, err := splitPluginModuleArgs(args)
 	if err != nil {
 		return err
 	}
@@ -90,7 +78,7 @@ func runPluginAdd(args []string) (err error) {
 		return err
 	}
 	if module == "" {
-		return fmt.Errorf("用法：anybot plugin add <module[@version]> [-name 名称] [-symbol Plugin] [-version 版本] [-replace 本地路径] [-dir 目录]")
+		return fmt.Errorf("用法：anybot plugin add <module[@version]> [-version 版本] [-replace 本地路径] [-dir 目录]")
 	}
 	modulePath, moduleVersion, err := host.ParsePluginModuleSpec(module)
 	if err != nil {
@@ -106,22 +94,16 @@ func runPluginAdd(args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	pluginName := *name
-	if pluginName == "" {
-		pluginName = host.DefaultPluginName(modulePath)
-	}
-	if _, exists := host.DefaultRegistry().Factory(pluginName); exists {
-		return fmt.Errorf("插件名 %q 已被内置插件占用；请使用 -name 指定其他名称", pluginName)
-	}
-	if err := host.ValidatePluginName(pluginName); err != nil {
-		return err
-	}
 	pinnedVersion, err := pinPluginModuleVersion(modulePath, *version, replacePath)
 	if err != nil {
 		return err
 	}
-	*version = pinnedVersion
-	rollback, err := snapshotFiles(pluginAddTouchedFiles(*dir, pluginName))
+	pluginID, err := host.NewPluginID()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(*dir, "anybot.yaml")
+	rollback, err := snapshotFiles(pluginAddTouchedFiles(*dir, configPath, pluginID))
 	if err != nil {
 		return err
 	}
@@ -131,26 +113,21 @@ func runPluginAdd(args []string) (err error) {
 	}()
 	lock, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     *dir,
-		Name:    pluginName,
+		ID:      pluginID,
 		Module:  modulePath,
-		Version: *version,
+		Version: pinnedVersion,
 		Replace: replacePath,
-		Symbol:  *symbol,
 	})
 	if err != nil {
 		return err
 	}
-	var item host.PluginModule
-	for _, plugin := range lock.Plugins {
-		if plugin.Module == modulePath {
-			item = plugin
-			break
-		}
+	item, ok := pluginModuleByID(lock, pluginID)
+	if !ok {
+		return fmt.Errorf("plugin %s not found after add", pluginID)
 	}
 	if err := syncPluginGoMod(*dir, item); err != nil {
 		return err
 	}
-	configPath := filepath.Join(*dir, "anybot.yaml")
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		if err := writeFile(configPath, defaultConfig, false); err != nil {
 			return err
@@ -158,24 +135,250 @@ func runPluginAdd(args []string) (err error) {
 	} else if err != nil {
 		return err
 	}
-	changed, err := host.EnsurePluginConfigEntry(configPath, item.Name)
+	changed, err := host.EnsurePluginConfigEntry(configPath, item.ID)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "插件已添加：%s (%s.%s)\n", item.Name, pluginModuleRef(item), item.Symbol)
+	fmt.Fprintf(stdout, "插件已添加：%s (%s)\n", item.ID, pluginModuleRef(item))
 	if changed {
-		fmt.Fprintf(stdout, "配置已添加：%s（默认禁用）\n", item.Name)
+		fmt.Fprintf(stdout, "配置已添加：%s（默认禁用）\n", pluginConfigDisplayPath(configPath, item.ID))
 	}
-	printNextSteps(*dir, "anybot plugin enable "+item.Name, "anybot up")
+	printNextSteps(*dir, "anybot plugin enable "+host.ShortPluginID(item.ID), "anybot up")
 	committed = true
 	return nil
 }
 
-func pluginAddTouchedFiles(dir, name string) []string {
+func runPluginUpdate(args []string) (err error) {
+	fs := flag.NewFlagSet("plugin update", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "目标目录")
+	version := fs.String("version", "", "插件模块版本")
+	replace := fs.String("replace", "", "本地模块替换路径")
+	clearReplace := fs.Bool("clear-replace", false, "清除本地模块替换路径")
+	target, flagArgs, err := splitPluginIDArgs(args)
+	if err != nil {
+		return err
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	if target == "" {
+		return fmt.Errorf("用法：anybot plugin update <id> [-version 版本] [-replace 本地路径|-clear-replace] [-dir 目录]")
+	}
+	var setVersion, setReplace bool
+	fs.Visit(func(flag *flag.Flag) {
+		switch flag.Name {
+		case "version":
+			setVersion = true
+		case "replace":
+			setReplace = true
+		}
+	})
+	replacePath := *replace
+	if setReplace {
+		replacePath, err = normalizeReplacePath(*dir, *replace)
+		if err != nil {
+			return err
+		}
+	}
+	targetModule, lock, err := previewPluginModuleUpdate(*dir, target, host.UpdatePluginOptions{
+		Version:      *version,
+		Replace:      replacePath,
+		SetVersion:   setVersion,
+		SetReplace:   setReplace,
+		ClearReplace: *clearReplace,
+	})
+	if err != nil {
+		return err
+	}
+	updateVersion := *version
+	updateSetVersion := setVersion
+	pinnedVersion, err := pinPluginModuleVersion(targetModule.Module, targetModule.Version, targetModule.Replace)
+	if err != nil {
+		return err
+	}
+	if pinnedVersion != targetModule.Version {
+		updateVersion = pinnedVersion
+		updateSetVersion = true
+	}
+	rollback, err := snapshotFiles(pluginHostTouchedFiles(*dir))
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		joinRollbackError(&err, committed, rollback)
+	}()
+	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
+		Dir:          *dir,
+		ID:           targetModule.ID,
+		Version:      updateVersion,
+		Replace:      replacePath,
+		SetVersion:   updateSetVersion,
+		SetReplace:   setReplace,
+		ClearReplace: *clearReplace,
+	})
+	if err != nil {
+		return err
+	}
+	if err := syncPluginGoMod(*dir, updated); err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(stdout, "插件已更新：%s (%s)\n", updated.ID, pluginModuleRef(updated))
+	} else {
+		fmt.Fprintf(stdout, "插件配置未变化：%s (%s)\n", updated.ID, pluginModuleRef(updated))
+	}
+	_ = lock
+	committed = true
+	return nil
+}
+
+func runPluginRemove(args []string) (err error) {
+	fs := flag.NewFlagSet("plugin remove", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "目标目录")
+	config := fs.String("config", "", "配置文件")
+	target, flagArgs, err := splitPluginIDArgs(args)
+	if err != nil {
+		return err
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	if target == "" {
+		return fmt.Errorf("用法：anybot plugin remove <id> [-dir 目录] [-config anybot.yaml]")
+	}
+	lock, err := host.LoadPluginLock(filepath.Join(*dir, host.PluginLockFile))
+	if err != nil {
+		return err
+	}
+	pluginID, err := resolveLockPluginID(lock, target)
+	if err != nil {
+		return err
+	}
+	configPath := *config
+	if configPath == "" {
+		configPath = filepath.Join(*dir, "anybot.yaml")
+	}
+	rollback, err := snapshotFiles(append(pluginHostTouchedFiles(*dir), pluginConfigTouchedFiles(configPath, pluginID)...))
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		joinRollbackError(&err, committed, rollback)
+	}()
+	removed, _, err := host.RemovePluginModule(host.RemovePluginOptions{Dir: *dir, ID: pluginID})
+	if err != nil {
+		return err
+	}
+	if err := dropPluginGoMod(*dir, removed); err != nil {
+		return err
+	}
+	changed := false
+	if _, err := os.Stat(configPath); err == nil {
+		changed, err = host.RemovePluginConfigEntry(configPath, removed.ID)
+		if err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	fmt.Fprintf(stdout, "插件已移除：%s (%s)\n", removed.ID, pluginModuleRef(removed))
+	if changed {
+		fmt.Fprintf(stdout, "配置已移除：%s\n", pluginConfigDisplayPath(configPath, removed.ID))
+	}
+	committed = true
+	return nil
+}
+
+func runPluginList(args []string) error {
+	fs := flag.NewFlagSet("plugin list", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "目标目录")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	lock, err := host.LoadPluginLock(filepath.Join(*dir, host.PluginLockFile))
+	if err != nil {
+		return err
+	}
+	if len(lock.Plugins) == 0 {
+		fmt.Fprintln(stdout, "外部插件：无")
+		return nil
+	}
+	fmt.Fprintln(stdout, "ID\t模块")
+	for _, item := range lock.Plugins {
+		fmt.Fprintf(stdout, "%s\t%s\n", host.ShortPluginID(item.ID), pluginModuleRef(item))
+	}
+	return nil
+}
+
+func splitPluginModuleArgs(args []string) (string, []string, error) {
+	return splitPluginTargetArgs(args, map[string]bool{
+		"dir":     true,
+		"version": true,
+		"replace": true,
+	}, nil, "只能指定一个插件模块")
+}
+
+func splitPluginIDArgs(args []string) (string, []string, error) {
+	return splitPluginTargetArgs(args, map[string]bool{
+		"dir":     true,
+		"config":  true,
+		"version": true,
+		"replace": true,
+	}, map[string]struct{}{
+		"clear-replace": {},
+	}, "只能指定一个插件 ID")
+}
+
+func splitPluginTargetArgs(args []string, valueFlags map[string]bool, boolFlags map[string]struct{}, duplicateMessage string) (string, []string, error) {
+	var target string
+	var flagArgs []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		name, hasValue, isFlag := splitFlagArg(arg)
+		if isFlag {
+			if _, ok := boolFlags[name]; ok && !hasValue {
+				flagArgs = append(flagArgs, arg)
+				continue
+			}
+			if valueFlags[name] {
+				if hasValue {
+					flagArgs = append(flagArgs, arg)
+					continue
+				}
+				if i+1 >= len(args) {
+					return "", nil, fmt.Errorf("%s 需要值", arg)
+				}
+				flagArgs = append(flagArgs, arg, args[i+1])
+				i++
+				continue
+			}
+			flagArgs = append(flagArgs, arg)
+			continue
+		}
+		if target != "" {
+			return "", nil, errors.New(duplicateMessage)
+		}
+		target = arg
+	}
+	return target, flagArgs, nil
+}
+
+func splitFlagArg(arg string) (name string, hasValue bool, ok bool) {
+	if !strings.HasPrefix(arg, "-") || arg == "-" {
+		return "", false, false
+	}
+	trimmed := strings.TrimLeft(arg, "-")
+	name, _, hasValue = strings.Cut(trimmed, "=")
+	return name, hasValue, name != ""
+}
+
+func pluginAddTouchedFiles(dir, configPath, id string) []string {
 	if dir == "" {
 		dir = "."
 	}
-	return append(pluginHostTouchedFiles(dir), pluginConfigTouchedFiles(filepath.Join(dir, "anybot.yaml"), name)...)
+	return append(pluginHostTouchedFiles(dir), pluginConfigTouchedFiles(configPath, id)...)
 }
 
 func pluginHostTouchedFiles(dir string) []string {
@@ -190,35 +393,14 @@ func pluginHostTouchedFiles(dir string) []string {
 	}
 }
 
-func pluginConfigTouchedFiles(configPath, name string) []string {
-	files := []string{configPath}
-	if name == "" {
+func pluginConfigTouchedFiles(configPath, id string) []string {
+	files := []string{configPath, host.PluginConfigDir(configPath)}
+	if id == "" {
 		return files
-	}
-	base := filepath.Dir(configPath)
-	if base == "" {
-		base = "."
 	}
 	files = append(files,
-		filepath.Join(base, "plugins.d"),
-		filepath.Join(base, "plugins.d", name+".yaml"),
-		filepath.Join(base, "plugins.d", name+".yml"),
-	)
-	if _, err := os.Stat(configPath); err != nil {
-		return files
-	}
-	cfg, err := host.LoadConfig(configPath)
-	if err != nil || cfg.PluginConfigDir == "" {
-		return files
-	}
-	dir := cfg.PluginConfigDir
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(base, dir)
-	}
-	files = append(files,
-		dir,
-		filepath.Join(dir, name+".yaml"),
-		filepath.Join(dir, name+".yml"),
+		filepath.Join(host.PluginConfigDir(configPath), id+".yaml"),
+		filepath.Join(host.PluginConfigDir(configPath), id+".yml"),
 	)
 	return files
 }
@@ -323,178 +505,26 @@ func removeCreatedPath(path string) error {
 	return err
 }
 
-func runPluginUpdate(args []string) (err error) {
-	fs := flag.NewFlagSet("plugin update", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	version := fs.String("version", "", "插件模块版本")
-	symbol := fs.String("symbol", "", "插件模块导出的 Definition 变量名")
-	replace := fs.String("replace", "", "本地模块替换路径")
-	clearReplace := fs.Bool("clear-replace", false, "清除本地模块替换路径")
-	name, flagArgs, err := splitPluginUpdateArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-	if name == "" {
-		return fmt.Errorf("用法：anybot plugin update <name> [-version 版本] [-symbol Plugin] [-replace 本地路径|-clear-replace] [-dir 目录]")
-	}
-	var setVersion, setSymbol, setReplace bool
-	fs.Visit(func(flag *flag.Flag) {
-		switch flag.Name {
-		case "version":
-			setVersion = true
-		case "symbol":
-			setSymbol = true
-		case "replace":
-			setReplace = true
-		}
-	})
-	replacePath := *replace
-	if setReplace {
-		replacePath, err = normalizeReplacePath(*dir, *replace)
-		if err != nil {
-			return err
-		}
-	}
-	target, err := previewPluginModuleUpdate(host.UpdatePluginOptions{
-		Dir:          *dir,
-		Name:         name,
-		Version:      *version,
-		Replace:      replacePath,
-		Symbol:       *symbol,
-		SetVersion:   setVersion,
-		SetReplace:   setReplace,
-		ClearReplace: *clearReplace,
-		SetSymbol:    setSymbol,
-	})
-	if err != nil {
-		return err
-	}
-	updateVersion := *version
-	updateSetVersion := setVersion
-	pinnedVersion, err := pinPluginModuleVersion(target.Module, target.Version, target.Replace)
-	if err != nil {
-		return err
-	}
-	if pinnedVersion != target.Version {
-		updateVersion = pinnedVersion
-		updateSetVersion = true
-	}
-	rollback, err := snapshotFiles(pluginHostTouchedFiles(*dir))
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		joinRollbackError(&err, committed, rollback)
-	}()
-	updated, _, changed, err := host.UpdatePluginModule(host.UpdatePluginOptions{
-		Dir:          *dir,
-		Name:         name,
-		Version:      updateVersion,
-		Replace:      replacePath,
-		Symbol:       *symbol,
-		SetVersion:   updateSetVersion,
-		SetReplace:   setReplace,
-		ClearReplace: *clearReplace,
-		SetSymbol:    setSymbol,
-	})
-	if err != nil {
-		return err
-	}
-	if err := syncPluginGoMod(*dir, updated); err != nil {
-		return err
-	}
-	if changed {
-		fmt.Fprintf(stdout, "插件已更新：%s (%s.%s)\n", updated.Name, pluginModuleRef(updated), updated.Symbol)
-	} else {
-		fmt.Fprintf(stdout, "插件配置未变化：%s (%s.%s)\n", updated.Name, pluginModuleRef(updated), updated.Symbol)
-	}
-	committed = true
-	return nil
-}
-
-func runPluginRemove(args []string) (err error) {
-	fs := flag.NewFlagSet("plugin remove", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	config := fs.String("config", "", "配置文件")
-	name, flagArgs, err := splitPluginConfigArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return err
-	}
-	if name == "" {
-		return fmt.Errorf("用法：anybot plugin remove <name> [-dir 目录] [-config anybot.yaml]")
-	}
-	if _, exists := host.DefaultRegistry().Factory(name); exists {
-		return fmt.Errorf("内置插件 %q 不能移除；请使用 anybot plugin disable %s", name, name)
-	}
-	configPath := *config
-	if configPath == "" {
-		configPath = filepath.Join(*dir, "anybot.yaml")
-	}
-	rollback, err := snapshotFiles(append(pluginHostTouchedFiles(*dir), pluginConfigTouchedFiles(configPath, name)...))
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		joinRollbackError(&err, committed, rollback)
-	}()
-	removed, _, err := host.RemovePluginModule(host.RemovePluginOptions{Dir: *dir, Name: name})
-	if err != nil {
-		return err
-	}
-	if err := dropPluginGoMod(*dir, removed); err != nil {
-		return err
-	}
-	changed := false
-	if _, err := os.Stat(configPath); err == nil {
-		changed, err = host.RemovePluginConfigEntry(configPath, removed.Name)
-		if err != nil {
-			return err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	fmt.Fprintf(stdout, "插件已移除：%s (%s.%s)\n", removed.Name, pluginModuleRef(removed), removed.Symbol)
-	if changed {
-		fmt.Fprintf(stdout, "配置已移除：%s\n", removed.Name)
-	}
-	committed = true
-	return nil
-}
-
-func previewPluginModuleUpdate(opts host.UpdatePluginOptions) (host.PluginModule, error) {
-	if opts.Dir == "" {
-		opts.Dir = "."
-	}
-	if opts.Name == "" {
-		return host.PluginModule{}, fmt.Errorf("plugin name is required")
+func previewPluginModuleUpdate(dir, target string, opts host.UpdatePluginOptions) (host.PluginModule, host.PluginLock, error) {
+	if dir == "" {
+		dir = "."
 	}
 	if opts.SetReplace && opts.ClearReplace {
-		return host.PluginModule{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
+		return host.PluginModule{}, host.PluginLock{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(opts.Dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
 	if err != nil {
-		return host.PluginModule{}, err
+		return host.PluginModule{}, host.PluginLock{}, err
 	}
-	var updated host.PluginModule
-	found := false
-	for _, item := range lock.Plugins {
-		if item.Name == opts.Name {
-			updated = item
-			found = true
-			break
-		}
+	id, err := resolveLockPluginID(lock, target)
+	if err != nil {
+		return host.PluginModule{}, host.PluginLock{}, err
 	}
-	if !found {
-		return host.PluginModule{}, fmt.Errorf("plugin %s not found", opts.Name)
+	updated, ok := pluginModuleByID(lock, id)
+	if !ok {
+		return host.PluginModule{}, host.PluginLock{}, fmt.Errorf("plugin %s not found", id)
 	}
+	updated.ID = id
 	if opts.SetVersion {
 		updated.Version = strings.TrimSpace(opts.Version)
 	}
@@ -504,13 +534,52 @@ func previewPluginModuleUpdate(opts host.UpdatePluginOptions) (host.PluginModule
 	if opts.ClearReplace {
 		updated.Replace = ""
 	}
-	if opts.SetSymbol {
-		updated.Symbol = strings.TrimSpace(opts.Symbol)
-		if updated.Symbol == "" {
-			updated.Symbol = "Plugin"
+	return updated, lock, nil
+}
+
+func resolveLockPluginID(lock host.PluginLock, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("plugin id is required")
+	}
+	lockIDs := make([]string, 0, len(lock.Plugins))
+	for _, item := range lock.Plugins {
+		if item.ID != "" {
+			lockIDs = append(lockIDs, item.ID)
 		}
 	}
-	return updated, nil
+	for _, id := range lockIDs {
+		if id == target {
+			return id, nil
+		}
+	}
+	matches := make([]string, 0, 4)
+	for _, id := range lockIDs {
+		if strings.HasPrefix(id, target) {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return "", fmt.Errorf("plugin %s not found", target)
+	default:
+		short := make([]string, 0, len(matches))
+		for _, id := range matches {
+			short = append(short, host.ShortPluginID(id))
+		}
+		return "", fmt.Errorf("插件 ID 前缀 %q 不唯一：%s", target, strings.Join(short, ", "))
+	}
+}
+
+func pluginModuleByID(lock host.PluginLock, id string) (host.PluginModule, bool) {
+	for _, item := range lock.Plugins {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return host.PluginModule{}, false
 }
 
 func pinPluginModuleVersion(module, version, replace string) (string, error) {
@@ -552,74 +621,6 @@ func pinnedPluginVersion(module, version string) bool {
 		core = core[:i]
 	}
 	return strings.Count(core, ".") == 2
-}
-
-func splitPluginAddArgs(args []string) (string, []string, error) {
-	var module string
-	var flagArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-dir" || arg == "--dir" ||
-			arg == "-name" || arg == "--name" ||
-			arg == "-symbol" || arg == "--symbol" ||
-			arg == "-version" || arg == "--version" ||
-			arg == "-replace" || arg == "--replace":
-			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("%s 需要值", arg)
-			}
-			flagArgs = append(flagArgs, arg, args[i+1])
-			i++
-		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
-			strings.HasPrefix(arg, "-name=") || strings.HasPrefix(arg, "--name=") ||
-			strings.HasPrefix(arg, "-symbol=") || strings.HasPrefix(arg, "--symbol=") ||
-			strings.HasPrefix(arg, "-version=") || strings.HasPrefix(arg, "--version=") ||
-			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
-			flagArgs = append(flagArgs, arg)
-		case strings.HasPrefix(arg, "-"):
-			flagArgs = append(flagArgs, arg)
-		default:
-			if module != "" {
-				return "", nil, fmt.Errorf("只能指定一个插件模块")
-			}
-			module = arg
-		}
-	}
-	return module, flagArgs, nil
-}
-
-func splitPluginUpdateArgs(args []string) (string, []string, error) {
-	var name string
-	var flagArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-dir" || arg == "--dir" ||
-			arg == "-version" || arg == "--version" ||
-			arg == "-symbol" || arg == "--symbol" ||
-			arg == "-replace" || arg == "--replace":
-			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("%s 需要值", arg)
-			}
-			flagArgs = append(flagArgs, arg, args[i+1])
-			i++
-		case arg == "-clear-replace" || arg == "--clear-replace":
-			flagArgs = append(flagArgs, arg)
-		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
-			strings.HasPrefix(arg, "-version=") || strings.HasPrefix(arg, "--version=") ||
-			strings.HasPrefix(arg, "-symbol=") || strings.HasPrefix(arg, "--symbol=") ||
-			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
-			flagArgs = append(flagArgs, arg)
-		case strings.HasPrefix(arg, "-"):
-			flagArgs = append(flagArgs, arg)
-		default:
-			if name != "" {
-				return "", nil, fmt.Errorf("只能指定一个插件名")
-			}
-			name = arg
-		}
-	}
-	return name, flagArgs, nil
 }
 
 func normalizeReplacePath(dir, replace string) (string, error) {
@@ -671,26 +672,6 @@ func stablePath(path string) (string, error) {
 	}
 }
 
-func runPluginList(args []string) error {
-	fs := flag.NewFlagSet("plugin list", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	lock, err := host.LoadPluginLock(filepath.Join(*dir, host.PluginLockFile))
-	if err != nil {
-		return err
-	}
-	if len(lock.Plugins) == 0 {
-		fmt.Fprintln(stdout, "外部插件：无")
-		return nil
-	}
-	for _, item := range lock.Plugins {
-		fmt.Fprintf(stdout, "%s\t%s\t%s\n", item.Name, pluginModuleRef(item), item.Symbol)
-	}
-	return nil
-}
-
 func pluginModuleRef(item host.PluginModule) string {
 	out := item.Module
 	if item.Version != "" {
@@ -700,6 +681,10 @@ func pluginModuleRef(item host.PluginModule) string {
 		out += " => " + item.Replace
 	}
 	return out
+}
+
+func pluginConfigDisplayPath(configPath, id string) string {
+	return filepath.ToSlash(filepath.Join(host.PluginConfigDir(configPath), id+".yaml"))
 }
 
 func runHostPluginCommand(args []string) error {
@@ -745,7 +730,7 @@ func parseHostPluginCommandArgs(args []string) (dir string, configPath string, c
 			configPath = strings.TrimPrefix(arg, "--config=")
 		case arg == "-reset" || arg == "--reset" || strings.HasPrefix(arg, "-reset=") || strings.HasPrefix(arg, "--reset="):
 			if command == "config" && !seenConfigTarget {
-				return "", "", nil, fmt.Errorf("-reset 必须写在插件名之后")
+				return "", "", nil, fmt.Errorf("-reset 必须写在插件 ID 之后")
 			}
 			commandArgs = append(commandArgs, arg)
 		default:
@@ -758,37 +743,10 @@ func parseHostPluginCommandArgs(args []string) (dir string, configPath string, c
 		}
 	}
 	if command == "config" && (!seenConfigTarget || len(commandArgs) < 3) {
-		return "", "", nil, fmt.Errorf("用法：anybot plugin config <name> <key=value>... [-dir 目录] [-config anybot.yaml]，或 anybot plugin config <name> -reset <key>...")
+		return "", "", nil, fmt.Errorf("用法：anybot plugin config <id> <key=value>... [-dir 目录] [-config anybot.yaml]，或 anybot plugin config <id> -reset <key>...")
 	}
 	if configPath == "" {
 		configPath = filepath.Join(dir, "anybot.yaml")
 	}
 	return dir, configPath, commandArgs, nil
-}
-
-func splitPluginConfigArgs(args []string) (string, []string, error) {
-	var name string
-	var flagArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-dir" || arg == "--dir" || arg == "-config" || arg == "--config":
-			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("%s 需要值", arg)
-			}
-			flagArgs = append(flagArgs, arg, args[i+1])
-			i++
-		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir=") ||
-			strings.HasPrefix(arg, "-config=") || strings.HasPrefix(arg, "--config="):
-			flagArgs = append(flagArgs, arg)
-		case strings.HasPrefix(arg, "-"):
-			flagArgs = append(flagArgs, arg)
-		default:
-			if name != "" {
-				return "", nil, fmt.Errorf("只能指定一个插件名")
-			}
-			name = arg
-		}
-	}
-	return name, flagArgs, nil
 }

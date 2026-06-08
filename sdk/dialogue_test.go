@@ -13,7 +13,7 @@ import (
 func TestDialogueCapturesAndCompletesConversation(t *testing.T) {
 	client := &dialogueTestClient{}
 	app := core.New(core.WithAdapter(dialogueTestAdapter{client: client}))
-	ctx := NewContext(app, Manifest{Name: "profile"})
+	ctx := NewContext(app, Manifest{Name: "profile"}, WithPluginID("profile"))
 	dialogue := ctx.Dialogue("signup")
 	dialogue.Step("ask-name", func(turn *DialogueTurn) error {
 		name := turn.Text()
@@ -58,7 +58,7 @@ func TestDialogueCapturesAndCompletesConversation(t *testing.T) {
 
 func TestDialoguePassesWhenNoConversationIsActive(t *testing.T) {
 	app := core.New()
-	ctx := NewContext(app, Manifest{Name: "dialogue"})
+	ctx := NewContext(app, Manifest{Name: "dialogue"}, WithPluginID("dialogue"))
 	ctx.Dialogue("flow").
 		Step("next", func(*DialogueTurn) error {
 			t.Fatal("inactive dialogue should not call step handler")
@@ -78,8 +78,8 @@ func TestDialoguePassesWhenNoConversationIsActive(t *testing.T) {
 
 func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 	app := core.New()
-	first := NewContext(app, Manifest{Name: "first"})
-	second := NewContext(app, Manifest{Name: "second"})
+	first := NewContext(app, Manifest{Name: "first"}, WithPluginID("first"))
+	second := NewContext(app, Manifest{Name: "second"}, WithPluginID("second"))
 	firstDialogue := first.Dialogue("flow")
 	secondDialogue := second.Dialogue("flow")
 	firstDialogue.Step("step", func(turn *DialogueTurn) error {
@@ -105,7 +105,7 @@ func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 func TestDialogueTurnCanCarryStateAcrossSteps(t *testing.T) {
 	client := &dialogueTestClient{}
 	app := core.New(core.WithAdapter(dialogueTestAdapter{client: client}))
-	ctx := NewContext(app, Manifest{Name: "survey"})
+	ctx := NewContext(app, Manifest{Name: "survey"}, WithPluginID("survey"))
 	dialogue := ctx.Dialogue("survey", DialogueWithTTL(time.Hour))
 	type answers struct {
 		Name string `json:"name"`
@@ -143,7 +143,7 @@ func TestDialogueRejectsUnknownSteps(t *testing.T) {
 	app.OnError(func(_ *EventContext, err error) {
 		handledErr = err
 	})
-	ctx := NewContext(app, Manifest{Name: "dialogue"})
+	ctx := NewContext(app, Manifest{Name: "dialogue"}, WithPluginID("dialogue"))
 	dialogue := ctx.Dialogue("flow")
 	var fallbackCalled bool
 	ctx.OnMessage(Any()).Handle(func(*EventContext) error {

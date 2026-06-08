@@ -16,20 +16,20 @@ func TestPluginStatusesMergesRegistryLockAndConfig(t *testing.T) {
 		"ghost":   {Enabled: &yes},
 	}}
 	lock := PluginLock{Plugins: []PluginModule{
-		{Name: "weather", Module: "github.com/acme/weather", Version: "v1.2.3", Replace: "../weather", Symbol: "Module"},
+		{ID: "weather", Module: "github.com/acme/weather", Version: "v1.2.3", Replace: "../weather"},
 	}}
 	statuses := PluginStatuses(cfg, DefaultRegistry(), lock)
-	byName := map[string]PluginStatus{}
+	byID := map[string]PluginStatus{}
 	for _, status := range statuses {
-		byName[status.Name] = status
+		byID[status.ID] = status
 	}
-	if status := byName["help"]; status.Source != "builtin" || !status.Configured || !status.Enabled || !status.Available {
+	if status := byID["help"]; status.Name != "help" || status.Source != "builtin" || !status.Configured || !status.Enabled || !status.Available {
 		t.Fatalf("help status = %#v", status)
 	}
-	if status := byName["weather"]; status.Source != "external" || status.Module != "github.com/acme/weather@v1.2.3 => ../weather" || !status.Configured || !status.Enabled || status.Available {
+	if status := byID["weather"]; status.Source != "external" || status.Module != "github.com/acme/weather@v1.2.3 => ../weather" || !status.Configured || !status.Enabled || status.Available {
 		t.Fatalf("weather status = %#v", status)
 	}
-	if status := byName["ghost"]; status.Source != "config" || !status.Configured || !status.Enabled || status.Available {
+	if status := byID["ghost"]; status.Source != "config" || !status.Configured || !status.Enabled || status.Available {
 		t.Fatalf("ghost status = %#v", status)
 	}
 }
@@ -37,14 +37,33 @@ func TestPluginStatusesMergesRegistryLockAndConfig(t *testing.T) {
 func TestWritePluginStatusTable(t *testing.T) {
 	var out bytes.Buffer
 	err := WritePluginStatusTable(&out, []PluginStatus{
-		{Name: "weather", Source: "external", Configured: true, Enabled: true, Available: true, Version: "1.0.0", Module: "example.com/weather"},
+		{ID: "plg_abcdefghijklmnopqrstuvwxyz", Name: "天气", Source: "external", Configured: true, Enabled: true, Available: true, Version: "1.0.0", Module: "example.com/weather"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
-		!strings.Contains(out.String(), "weather\t外部\t是\t是\t是\t1.0.0\texample.com/weather") {
+	if !strings.Contains(out.String(), "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
+		!strings.Contains(out.String(), "plg_abcdefgh\t天气\t外部\t是\t是\t是\t1.0.0\texample.com/weather") {
 		t.Fatalf("status table:\n%s", out.String())
+	}
+}
+
+func TestResolvePluginIDAcceptsUniquePrefix(t *testing.T) {
+	cfg := Config{Plugins: map[string]PluginEntry{"weather": {}}}
+	id, err := ResolvePluginID(cfg, DefaultRegistry(), PluginLock{}, "wea", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "weather" {
+		t.Fatalf("id = %q", id)
+	}
+}
+
+func TestResolvePluginIDRejectsAmbiguousPrefix(t *testing.T) {
+	cfg := Config{Plugins: map[string]PluginEntry{"weather": {}, "webhook": {}}}
+	_, err := ResolvePluginID(cfg, DefaultRegistry(), PluginLock{}, "we", true)
+	if err == nil || !strings.Contains(err.Error(), "不唯一") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -59,26 +78,26 @@ func TestPluginConfigChecks(t *testing.T) {
 		"ghost":     {Enabled: &yes},
 	}}
 	lock := PluginLock{Plugins: []PluginModule{
-		{Name: "weather", Module: "github.com/acme/weather", Symbol: "Module"},
+		{ID: "weather", Module: "github.com/acme/weather"},
 	}}
 	checks := PluginConfigChecks(cfg, DefaultRegistry(), lock)
-	byName := map[string]PluginConfigCheck{}
+	byID := map[string]PluginConfigCheck{}
 	for _, check := range checks {
-		byName[check.Name] = check
+		byID[check.ID] = check
 	}
-	if check := byName["help"]; check.State != pluginCheckOK || check.Source != "builtin" {
+	if check := byID["help"]; check.State != pluginCheckOK || check.Source != "builtin" {
 		t.Fatalf("help check = %#v", check)
 	}
-	if check := byName["ratelimit"]; check.State != pluginCheckInvalid || !strings.Contains(check.Detail, "ratelimit.limit") {
+	if check := byID["ratelimit"]; check.State != pluginCheckInvalid || !strings.Contains(check.Detail, "ratelimit.limit") {
 		t.Fatalf("ratelimit check = %#v", check)
 	}
-	if check := byName["weather"]; check.State != pluginCheckUnavailable || check.Source != "external" {
+	if check := byID["weather"]; check.State != pluginCheckUnavailable || check.Source != "external" {
 		t.Fatalf("weather check = %#v", check)
 	}
-	if check := byName["legacy"]; check.State != pluginCheckDisabled {
+	if check := byID["legacy"]; check.State != pluginCheckDisabled {
 		t.Fatalf("legacy check = %#v", check)
 	}
-	if check := byName["ghost"]; check.State != pluginCheckUnknown || check.Source != "config" {
+	if check := byID["ghost"]; check.State != pluginCheckUnknown || check.Source != "config" {
 		t.Fatalf("ghost check = %#v", check)
 	}
 	if !PluginConfigCheckFailed(checks) {
@@ -89,12 +108,12 @@ func TestPluginConfigChecks(t *testing.T) {
 func TestWritePluginConfigCheckTable(t *testing.T) {
 	var out bytes.Buffer
 	err := WritePluginConfigCheckTable(&out, []PluginConfigCheck{
-		{Name: "weather", Source: "external", State: pluginCheckUnavailable, Detail: "外部插件尚未构建到当前框架"},
+		{ID: "weather", Source: "external", State: pluginCheckUnavailable, Detail: "外部插件尚未构建到当前框架"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称\t来源\t状态\t说明") ||
+	if !strings.Contains(out.String(), "ID\t来源\t状态\t说明") ||
 		!strings.Contains(out.String(), "weather\t外部\t待构建\t外部插件尚未构建到当前框架") {
 		t.Fatalf("check table:\n%s", out.String())
 	}

@@ -14,12 +14,11 @@ import (
 // PluginInspect 是单个插件面向用户的完整配置视图。
 type PluginInspect struct {
 	Name              string
-	InstanceID        string
+	ID                string
 	Source            string
 	Version           string
 	Description       string
 	Module            string
-	Symbol            string
 	Configured        bool
 	Enabled           bool
 	Available         bool
@@ -32,59 +31,58 @@ type PluginInspect struct {
 }
 
 // InspectPlugin 合并注册表、外部插件锁和配置文件，返回单个插件的可读视图。
-func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, name string) (PluginInspect, error) {
+func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, id string) (PluginInspect, error) {
 	if configPath == "" {
 		configPath = "anybot.yaml"
 	}
-	if name == "" {
-		return PluginInspect{}, fmt.Errorf("plugin name is required")
+	if id == "" {
+		return PluginInspect{}, fmt.Errorf("plugin id is required")
 	}
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return PluginInspect{}, err
 	}
-	status, ok := pluginStatusByName(cfg, registry, lock, name)
+	status, ok := pluginStatusByID(cfg, registry, lock, id)
 	if !ok {
-		return PluginInspect{}, fmt.Errorf("unknown plugin %q", name)
+		return PluginInspect{}, fmt.Errorf("unknown plugin %q", id)
 	}
 	inspect := PluginInspect{
 		Name:        status.Name,
-		InstanceID:  status.InstanceID,
+		ID:          status.ID,
 		Source:      status.Source,
 		Version:     status.Version,
 		Description: status.Description,
 		Module:      status.Module,
-		Symbol:      status.Symbol,
 		Configured:  status.Configured,
 		Enabled:     status.Enabled,
 		Available:   status.Available,
 	}
-	if entry, ok := cfg.Plugins[name]; ok {
+	if entry, ok := cfg.Plugins[id]; ok {
 		config, err := yamlBlock(&entry.Config)
 		if err != nil {
-			return PluginInspect{}, fmt.Errorf("plugin %s config: %w", name, err)
+			return PluginInspect{}, fmt.Errorf("plugin %s config: %w", id, err)
 		}
 		inspect.ConfigYAML = config
-		if path, ok, err := pluginConfigLocationPath(configPath, name); err != nil {
+		if path, ok, err := pluginConfigLocationPath(configPath, id); err != nil {
 			return PluginInspect{}, err
 		} else if ok {
 			inspect.ConfigPath = path
 		}
 	}
-	if factory, ok := registry.Factory(name); ok {
+	if factory, ok := registry.Factory(id); ok {
 		defaultConfig, err := defaultConfigNode(factory.Default)
 		if err != nil {
-			return PluginInspect{}, fmt.Errorf("plugin %s default config: %w", name, err)
+			return PluginInspect{}, fmt.Errorf("plugin %s default config: %w", id, err)
 		}
 		defaultYAML, err := yamlBlock(defaultConfig)
 		if err != nil {
-			return PluginInspect{}, fmt.Errorf("plugin %s default config: %w", name, err)
+			return PluginInspect{}, fmt.Errorf("plugin %s default config: %w", id, err)
 		}
 		inspect.DefaultAvailable = true
 		inspect.DefaultConfigYAML = defaultYAML
 	}
 	for _, check := range PluginConfigChecks(cfg, registry, lock) {
-		if check.Name == name {
+		if check.ID == id {
 			inspect.CheckState = check.State
 			inspect.CheckDetail = check.Detail
 			break
@@ -96,8 +94,8 @@ func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, 
 // WritePluginInspect 输出单个插件的配置与默认值，便于最终用户直接编辑。
 func WritePluginInspect(w io.Writer, inspect PluginInspect) error {
 	lines := []string{
+		"ID：" + displayValue(inspect.ID),
 		"名称：" + displayValue(inspect.Name),
-		"实例ID：" + displayValue(inspect.InstanceID),
 		"来源：" + sourceLabel(inspect.Source),
 		"配置：" + boolLabel(inspect.Configured),
 		"启用：" + boolLabel(inspect.Enabled),
@@ -111,9 +109,6 @@ func WritePluginInspect(w io.Writer, inspect PluginInspect) error {
 	}
 	if inspect.Module != "" {
 		lines = append(lines, "模块："+inspect.Module)
-	}
-	if inspect.Symbol != "" {
-		lines = append(lines, "导出："+inspect.Symbol)
 	}
 	if inspect.ConfigPath != "" {
 		lines = append(lines, "配置文件："+inspect.ConfigPath)
@@ -144,46 +139,24 @@ func WritePluginInspect(w io.Writer, inspect PluginInspect) error {
 	return err
 }
 
-func pluginStatusByName(cfg Config, registry absdk.Registry, lock PluginLock, name string) (PluginStatus, bool) {
+func pluginStatusByID(cfg Config, registry absdk.Registry, lock PluginLock, id string) (PluginStatus, bool) {
 	for _, status := range PluginStatuses(cfg, registry, lock) {
-		if status.Name == name {
+		if status.ID == id {
 			return status, true
 		}
 	}
 	return PluginStatus{}, false
 }
 
-func pluginConfigLocationPath(configPath, name string) (string, bool, error) {
-	doc, err := loadYAMLDocument(configPath)
-	if err != nil {
-		return "", false, err
-	}
-	root := documentRoot(&doc)
-	if root.Kind == 0 {
-		return "", false, nil
-	}
-	if root.Kind != yaml.MappingNode {
-		return "", false, fmt.Errorf("%s root must be a YAML mapping", configPath)
-	}
-	plugins := mappingValue(root, "plugins")
-	if plugins != nil && plugins.Kind != yaml.MappingNode {
-		return "", false, fmt.Errorf("plugins must be a YAML mapping")
-	}
-	if mappingValue(plugins, name) != nil {
-		return configPath, true, nil
-	}
-	dir, split, err := pluginConfigDir(root, configPath)
-	if err != nil || !split {
-		return "", false, err
-	}
-	entryPath, err := pluginConfigEntryPath(dir, name)
+func pluginConfigLocationPath(configPath, id string) (string, bool, error) {
+	entryPath, err := pluginConfigEntryPath(PluginConfigDir(configPath), id)
 	if err != nil {
 		return "", false, err
 	}
 	for _, candidate := range pluginConfigEntryCandidates(entryPath) {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, true, nil
-		} else if err != nil && !os.IsNotExist(err) {
+		} else if !os.IsNotExist(err) {
 			return "", false, err
 		}
 	}

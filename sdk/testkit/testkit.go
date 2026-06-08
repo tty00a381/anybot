@@ -4,6 +4,7 @@ package testkit
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/tty00a381/anybot/sdk"
 	"github.com/tty00a381/anybot/sdk/message"
@@ -63,12 +64,36 @@ func (app *App) Runtime() *sdk.App {
 
 // InstallDefault 用插件默认配置安装插件定义。
 func (app *App) InstallDefault(definitions ...sdk.Definition) error {
-	return sdk.InstallDefault(app.Runtime(), definitions...)
+	for _, definition := range definitions {
+		if definition == nil {
+			continue
+		}
+		if err := sdk.InstallDefaultWith(app.Runtime(), sdk.Environment{PluginID: testPluginID(definition.Manifest())}, definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// Install 安装已按测试配置构建好的插件实例。
+// Install 安装已按测试配置构建好的插件对象。
 func (app *App) Install(plugins ...sdk.Plugin) error {
-	return sdk.Install(app.Runtime(), plugins...)
+	for _, plugin := range plugins {
+		if plugin == nil {
+			continue
+		}
+		if err := sdk.InstallWith(app.Runtime(), sdk.Environment{PluginID: testPluginID(plugin.Manifest())}, plugin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func testPluginID(manifest sdk.Manifest) string {
+	id := strings.TrimSpace(manifest.Name)
+	if err := sdk.ValidatePluginID(id); err == nil {
+		return id
+	}
+	return "test_plugin"
 }
 
 // DispatchText 投递一条消息事件。

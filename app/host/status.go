@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	absdk "github.com/tty00a381/anybot/sdk"
 )
 
+const pluginIDShortLength = 12
+
 // PluginStatus 是 anybot 对一个插件的运行视图。
 type PluginStatus struct {
+	ID          string
 	Name        string
-	InstanceID  string
 	Source      string
 	Version     string
 	Description string
 	Module      string
-	Symbol      string
 	Configured  bool
 	Enabled     bool
 	Available   bool
@@ -28,76 +30,115 @@ func PluginStatuses(cfg Config, registry absdk.Registry, lock PluginLock) []Plug
 	statuses := map[string]PluginStatus{}
 	external := map[string]PluginModule{}
 	for _, item := range lock.Plugins {
-		if item.Name == "" {
+		if item.ID == "" {
 			continue
 		}
-		external[item.Name] = item
-		statuses[item.Name] = PluginStatus{
-			Name:       item.Name,
-			InstanceID: item.ID,
-			Source:     "external",
-			Module:     pluginModuleRef(item),
-			Symbol:     item.Symbol,
+		external[item.ID] = item
+		statuses[item.ID] = PluginStatus{
+			ID:     item.ID,
+			Source: "external",
+			Module: pluginModuleRef(item),
 		}
 	}
-	for _, manifest := range registry.Plugins() {
-		status := statuses[manifest.Name]
-		status.Name = manifest.Name
-		if factory, ok := registry.Factory(manifest.Name); ok {
-			status.InstanceID = factory.StorageName()
-		}
-		if _, ok := external[manifest.Name]; ok {
+	for _, id := range registry.PluginIDs() {
+		factory, _ := registry.Factory(id)
+		status := statuses[id]
+		status.ID = id
+		status.Name = factory.Info.Name
+		if _, ok := external[id]; ok {
 			status.Source = "external"
 		} else {
 			status.Source = "builtin"
 		}
-		status.Version = manifest.Version
-		status.Description = manifest.Description
+		status.Version = factory.Info.Version
+		status.Description = factory.Info.Description
 		status.Available = true
-		statuses[manifest.Name] = status
+		statuses[id] = status
 	}
-	for name, entry := range cfg.Plugins {
-		status := statuses[name]
-		if status.Name == "" {
-			status.Name = name
+	for id, entry := range cfg.Plugins {
+		status := statuses[id]
+		if status.ID == "" {
+			status.ID = id
 			status.Source = "config"
 		}
 		status.Configured = true
 		status.Enabled = pluginEnabled(entry)
-		statuses[name] = status
+		statuses[id] = status
 	}
-	names := make([]string, 0, len(statuses))
-	for name := range statuses {
-		names = append(names, name)
+	ids := make([]string, 0, len(statuses))
+	for id := range statuses {
+		ids = append(ids, id)
 	}
-	sort.Strings(names)
-	out := make([]PluginStatus, 0, len(names))
-	for _, name := range names {
-		out = append(out, statuses[name])
+	sort.Strings(ids)
+	out := make([]PluginStatus, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, statuses[id])
 	}
 	return out
 }
 
-// EnsureKnownPluginTarget 确认插件名指向内置插件、外部插件锁中的插件，或一个允许编辑的既有配置项。
-func EnsureKnownPluginTarget(cfg Config, registry absdk.Registry, lock PluginLock, name string, allowConfigured bool) error {
-	if name == "" {
-		return fmt.Errorf("plugin name is required")
+// ResolvePluginID 把用户输入解析为插件 ID；支持完整 ID 或唯一前缀。
+func ResolvePluginID(cfg Config, registry absdk.Registry, lock PluginLock, target string, allowConfigured bool) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("plugin id is required")
 	}
-	if allowConfigured {
-		if _, ok := cfg.Plugins[name]; ok {
-			return nil
+	ids := pluginTargetIDs(cfg, registry, lock, allowConfigured)
+	for _, id := range ids {
+		if id == target {
+			return id, nil
 		}
 	}
-	if _, ok := registry.Factory(name); ok {
-		return nil
+	matches := make([]string, 0, 4)
+	for _, id := range ids {
+		if strings.HasPrefix(id, target) {
+			matches = append(matches, id)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return "", fmt.Errorf("未知插件 ID %q；请先用 anybot plugin status 查看插件 ID", target)
+	default:
+		short := make([]string, 0, len(matches))
+		for _, id := range matches {
+			short = append(short, ShortPluginID(id))
+		}
+		return "", fmt.Errorf("插件 ID 前缀 %q 不唯一：%s", target, strings.Join(short, ", "))
+	}
+}
+
+func pluginTargetIDs(cfg Config, registry absdk.Registry, lock PluginLock, allowConfigured bool) []string {
+	seen := map[string]struct{}{}
+	for _, id := range registry.PluginIDs() {
+		seen[id] = struct{}{}
 	}
 	lock.applyDefaults()
 	for _, item := range lock.Plugins {
-		if item.Name == name {
-			return nil
+		if item.ID != "" {
+			seen[item.ID] = struct{}{}
 		}
 	}
-	return fmt.Errorf("未知插件 %q；请先用 anybot plugins 查看内置插件，或用 anybot plugin add <module> 添加外部插件", name)
+	if allowConfigured {
+		for id := range cfg.Plugins {
+			seen[id] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// ShortPluginID 返回适合命令行首列展示的插件 ID。
+func ShortPluginID(id string) string {
+	if len(id) <= pluginIDShortLength {
+		return id
+	}
+	return id[:pluginIDShortLength]
 }
 
 func pluginModuleRef(item PluginModule) string {
@@ -113,12 +154,13 @@ func pluginModuleRef(item PluginModule) string {
 
 // WritePluginStatusTable 以稳定的表格格式输出插件状态。
 func WritePluginStatusTable(w io.Writer, statuses []PluginStatus) error {
-	if _, err := fmt.Fprintln(w, "名称\t来源\t配置\t启用\t可加载\t版本\t模块"); err != nil {
+	if _, err := fmt.Fprintln(w, "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块"); err != nil {
 		return err
 	}
 	for _, status := range statuses {
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			status.Name,
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			ShortPluginID(status.ID),
+			displayValue(status.Name),
 			sourceLabel(status.Source),
 			boolLabel(status.Configured),
 			boolLabel(status.Enabled),

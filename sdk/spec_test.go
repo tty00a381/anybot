@@ -61,36 +61,44 @@ func TestDefinitionValidatesConfig(t *testing.T) {
 	}
 }
 
-func TestDefinitionFactoryRejectsInvalidPluginName(t *testing.T) {
-	definition := Define(Manifest{Name: "../bad"}, struct{}{}, func(*Context, struct{}) error {
+func TestManifestNameIsDisplayOnly(t *testing.T) {
+	var seen string
+	definition := Define(Manifest{Name: "天气/每日", Version: "1.0.0"}, struct{}{}, func(ctx *Context, _ struct{}) error {
+		seen = ctx.Manifest().Name
 		return nil
 	})
-	_, err := definition.Factory().Build(yaml.Node{})
-	if err == nil || !strings.Contains(err.Error(), `plugin name "../bad" is invalid`) {
-		t.Fatalf("err = %v", err)
+	plugin, err := definition.Factory().Build(yaml.Node{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallWith(core.New(), Environment{PluginID: "weather"}, plugin); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "天气/每日" {
+		t.Fatalf("manifest name = %q", seen)
 	}
 }
 
-func TestValidatePluginNameRequiresStableIdentifier(t *testing.T) {
-	for _, name := range []string{"weather", "anybot_weather", "weather2"} {
-		if err := ValidatePluginName(name); err != nil {
-			t.Fatalf("ValidatePluginName(%q) = %v", name, err)
+func TestValidatePluginIDRequiresStableIdentifier(t *testing.T) {
+	for _, id := range []string{"weather", "anybot_weather", "weather2", "plg_abc123"} {
+		if err := ValidatePluginID(id); err != nil {
+			t.Fatalf("ValidatePluginID(%q) = %v", id, err)
 		}
 	}
-	for _, name := range []string{"Weather", "weather-bot", "2weather", "天气", "weather.bot", "weather bot"} {
-		if err := ValidatePluginName(name); err == nil {
-			t.Fatalf("ValidatePluginName(%q) should fail", name)
+	for _, id := range []string{"Weather", "weather-bot", "2weather", "天气", "weather.bot", "weather bot", "../weather"} {
+		if err := ValidatePluginID(id); err == nil {
+			t.Fatalf("ValidatePluginID(%q) should fail", id)
 		}
 	}
 }
 
-func TestRegistryRejectsInvalidPluginName(t *testing.T) {
+func TestRegistryRejectsInvalidPluginID(t *testing.T) {
 	registry := NewRegistry()
 	definition := Define(Manifest{Name: "ok"}, struct{}{}, func(*Context, struct{}) error {
 		return nil
 	})
-	if err := registry.Register(definition.Factory().WithName("bad/name")); err == nil ||
-		!strings.Contains(err.Error(), `plugin name "bad/name" is invalid`) {
+	if err := registry.Register(definition.Factory().WithPluginID("bad/name")); err == nil ||
+		!strings.Contains(err.Error(), `plugin id "bad/name" is invalid`) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -119,32 +127,33 @@ func TestDefinitionClonesDefaultConfig(t *testing.T) {
 	}
 }
 
-func TestFactoryWithNameAliasesPluginContext(t *testing.T) {
+func TestFactoryWithPluginIDLeavesManifestUntouched(t *testing.T) {
 	type config struct {
 		Command string `yaml:"command"`
 	}
-	var contextName string
+	var contextName, contextID string
 	definition := Define(Manifest{Name: "weather", Version: "1.0.0"}, config{Command: "weather"}, func(ctx *Context, cfg config) error {
 		contextName = ctx.Manifest().Name
+		contextID = ctx.PluginID()
 		return nil
 	})
-	factory := definition.Factory().WithName("daily_weather")
-	if factory.Info.Name != "daily_weather" || factory.Info.Version != "1.0.0" {
+	factory := definition.Factory().WithPluginID("daily_weather")
+	if factory.Info.Name != "weather" || factory.PluginID != "daily_weather" || factory.Info.Version != "1.0.0" {
 		t.Fatalf("factory info = %#v", factory.Info)
 	}
 	plugin, err := factory.Build(yaml.Node{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest := plugin.Manifest(); manifest.Name != "daily_weather" || manifest.Version != "1.0.0" {
+	if manifest := plugin.Manifest(); manifest.Name != "weather" || manifest.Version != "1.0.0" {
 		t.Fatalf("plugin manifest = %#v", manifest)
 	}
 	app := core.New()
-	if err := Install(app, plugin); err != nil {
+	if err := InstallWith(app, Environment{PluginID: factory.PluginID}, plugin); err != nil {
 		t.Fatal(err)
 	}
-	if contextName != "daily_weather" {
-		t.Fatalf("context manifest name = %q", contextName)
+	if contextName != "weather" || contextID != "daily_weather" {
+		t.Fatalf("context manifest=%q id=%q", contextName, contextID)
 	}
 }
 

@@ -51,14 +51,9 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 		}
 	}
 	readme := readTestFile(t, filepath.Join(dir, "README.md"))
-	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin\nanybot plugin status\nanybot plugin enable anybot_weather\nanybot up") {
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0\nanybot plugin status\nanybot plugin enable <id>\nanybot up") {
 		t.Fatalf("README should run external plugins through anybot up:\n%s", readme)
 	}
-	if strings.Contains(readme, "anybot plugin enable anybot_weather\nanybot plugin inspect anybot_weather") ||
-		strings.Contains(readme, "anybot plugin check\nanybot up") {
-		t.Fatalf("README should not suggest base plugin check before generated-host build:\n%s", readme)
-	}
-
 	out.Reset()
 	if err := run([]string{"plugins"}); err != nil {
 		t.Fatal(err)
@@ -221,8 +216,9 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "已生成独立插件模块：daily_weather (github.com/acme/anybot-weather)") ||
 		!strings.Contains(out.String(), "go test ./...") ||
-		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -name daily_weather -replace "+dir) ||
-		!strings.Contains(out.String(), "anybot plugin enable daily_weather") {
+		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -replace "+dir) ||
+		!strings.Contains(out.String(), "anybot plugin status -dir <机器人工作目录>") ||
+		!strings.Contains(out.String(), "anybot plugin enable <id> -dir <机器人工作目录>") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
@@ -237,7 +233,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}
 	readme := readTestFile(t, filepath.Join(dir, "README.md"))
-	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather -name daily_weather -replace <插件目录>") {
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather -replace <插件目录>") {
 		t.Fatalf("README.md:\n%s", readme)
 	}
 }
@@ -255,7 +251,7 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "已生成独立插件模块：hello_world (example.com/anybot-plugin/hello-world)") ||
-		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world -name hello_world") {
+		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
@@ -363,14 +359,16 @@ func TestRunPluginAddAndList(t *testing.T) {
 	dir := t.TempDir()
 	out, _, restore := captureOutput(t)
 	defer restore()
-	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-symbol", "Weather", "-dir", dir}); err != nil {
+	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3.Weather)") ||
-		!strings.Contains(out.String(), "配置已添加：weather") ||
+	id := readOnlyPluginID(t, dir)
+	shortID := host.ShortPluginID(id)
+	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather@v1.2.3)") ||
+		!strings.Contains(out.String(), filepath.ToSlash(filepath.Join(dir, "plugins.d", id+".yaml"))) ||
 		!strings.Contains(out.String(), "下一步：") ||
 		!strings.Contains(out.String(), "cd "+dir) ||
-		!strings.Contains(out.String(), "anybot plugin enable weather") ||
+		!strings.Contains(out.String(), "anybot plugin enable "+shortID) ||
 		!strings.Contains(out.String(), "anybot up") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
@@ -381,19 +379,22 @@ func TestRunPluginAddAndList(t *testing.T) {
 	if strings.Contains(config, "weather:") {
 		t.Fatalf("config:\n%s", config)
 	}
-	pluginConfig := readTestFile(t, filepath.Join(dir, "plugins.d", "weather.yaml"))
+	pluginConfig := readTestFile(t, filepath.Join(dir, "plugins.d", id+".yaml"))
 	if !strings.Contains(pluginConfig, "enabled: false") || !strings.Contains(pluginConfig, "config: {}") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
-	if !strings.Contains(lockText, "version: v1.2.3") {
+	if !strings.Contains(lockText, "id: "+id) ||
+		!strings.Contains(lockText, "version: v1.2.3") ||
+		strings.Contains(lockText, "name:") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
 	out.Reset()
 	if err := run([]string{"plugin", "list", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "weather\tgithub.com/acme/weather@v1.2.3\tWeather") {
+	if !strings.Contains(out.String(), "ID\t模块") ||
+		!strings.Contains(out.String(), shortID+"\tgithub.com/acme/weather@v1.2.3") {
 		t.Fatalf("list output:\n%s", out.String())
 	}
 }
@@ -425,7 +426,8 @@ func TestRunPluginAddWithReplaceDoesNotResolveLatest(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather => ../weather.Plugin)") {
+	id := readOnlyPluginID(t, dir)
+	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
@@ -461,11 +463,12 @@ func TestRunPluginAddWithReplaceUsesPathMajorPlaceholder(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather/v2 => ../weather.Plugin)") {
+	id := readOnlyPluginID(t, dir)
+	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather/v2 => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
-	if !strings.Contains(lockText, "name: weather") ||
+	if !strings.Contains(lockText, "id: "+id) ||
 		strings.Contains(lockText, "version:") ||
 		!strings.Contains(lockText, "module: github.com/acme/weather/v2") {
 		t.Fatalf("lockText:\n%s", lockText)
@@ -512,7 +515,6 @@ func TestRunPluginAddRollsBackAfterConfigFailure(t *testing.T) {
 	pluginDir := filepath.Join(t.TempDir(), "weather")
 	err := run([]string{
 		"plugin", "add", "github.com/acme/weather",
-		"-name", "weather",
 		"-replace", pluginDir,
 		"-dir", dir,
 	})
@@ -567,7 +569,8 @@ func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已添加：weather (github.com/acme/weather@v1.2.3 => ../weather.Plugin)") {
+	id := readOnlyPluginID(t, dir)
+	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather@v1.2.3 => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
@@ -592,13 +595,11 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	if err := run([]string{"plugin", "add", "github.com/acme/weather@v1.2.3", "-replace", pluginDir, "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	pluginConfig := filepath.Join(dir, "plugins.d", "weather.yaml")
-	if err := os.WriteFile(pluginConfig, []byte("enabled: true\nconfig:\n  city: Hangzhou\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	id := readOnlyPluginID(t, dir)
+	pluginConfig := writeTestPluginConfig(t, dir, id, "enabled: true\nconfig:\n  city: Hangzhou\n")
 	calls = nil
 	out.Reset()
-	if err := run([]string{"plugin", "update", "weather", "-version", "v1.3.0", "-clear-replace", "-symbol", "Weather", "-dir", dir}); err != nil {
+	if err := run([]string{"plugin", "update", host.ShortPluginID(id), "-version", "v1.3.0", "-clear-replace", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -608,13 +609,12 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.3.0.Weather)") {
+	if !strings.Contains(out.String(), "插件已更新："+id+" (github.com/acme/weather@v1.3.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
 	if !strings.Contains(lockText, "version: v1.3.0") ||
-		strings.Contains(lockText, "replace:") ||
-		!strings.Contains(lockText, "symbol: Weather") {
+		strings.Contains(lockText, "replace:") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
 	if config := readTestFile(t, pluginConfig); !strings.Contains(config, "city: Hangzhou") {
@@ -636,7 +636,7 @@ func TestRunPluginUpdateRollsBackAfterGoModFailure(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 		Replace: "../weather",
@@ -683,7 +683,7 @@ func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 	}); err != nil {
@@ -701,7 +701,7 @@ func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
@@ -727,7 +727,7 @@ func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Replace: "../weather",
 	}); err != nil {
@@ -745,7 +745,7 @@ func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
 	}
-	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0.Plugin)") {
+	if !strings.Contains(out.String(), "插件已更新：weather (github.com/acme/weather@v1.4.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
@@ -771,7 +771,7 @@ func TestRunPluginUpdateVersionResolutionErrorDoesNotWrite(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 	}); err != nil {
@@ -879,22 +879,7 @@ func TestNormalizeReplacePathResolvesSymlinkedMissingLeaf(t *testing.T) {
 	}
 }
 
-func TestRunPluginAddRejectsBuiltinNameCollision(t *testing.T) {
-	dir := t.TempDir()
-	err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir})
-	if err == nil {
-		t.Fatal("builtin name collision should be rejected")
-	}
-	if !strings.Contains(err.Error(), `插件名 "help" 已被内置插件占用`) ||
-		!strings.Contains(err.Error(), "-name") {
-		t.Fatalf("err = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); !os.IsNotExist(err) {
-		t.Fatalf("lock should not be created, err=%v", err)
-	}
-}
-
-func TestRunPluginAddAllowsRenamingBuiltinCollision(t *testing.T) {
+func TestRunPluginAddAllowsModuleNamedLikeBuiltin(t *testing.T) {
 	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
 		if module != "github.com/acme/help" || query != "latest" {
 			t.Fatalf("resolve %s@%s", module, query)
@@ -904,11 +889,29 @@ func TestRunPluginAddAllowsRenamingBuiltinCollision(t *testing.T) {
 	dir := t.TempDir()
 	out, _, restore := captureOutput(t)
 	defer restore()
-	if err := run([]string{"plugin", "add", "github.com/acme/help", "-name", "acme_help", "-dir", dir}); err != nil {
+	if err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "插件已添加：acme_help") {
+	id := readOnlyPluginID(t, dir)
+	if !strings.Contains(out.String(), "插件已添加："+id) {
 		t.Fatalf("add output:\n%s", out.String())
+	}
+}
+
+func TestRunPluginAddRejectsDuplicateModule(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		if module != "github.com/acme/help" || query != "latest" {
+			t.Fatalf("resolve %s@%s", module, query)
+		}
+		return "v1.2.3", nil
+	})
+	dir := t.TempDir()
+	if err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir})
+	if err == nil || !strings.Contains(err.Error(), "plugin module github.com/acme/help already exists") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -917,7 +920,7 @@ func TestRunPluginStatus(t *testing.T) {
 	if err := run([]string{"init", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, Name: "weather", Module: "github.com/acme/weather"}); err != nil {
+	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, ID: "weather", Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := host.EnsurePluginConfigEntry(filepath.Join(dir, "anybot.yaml"), "weather"); err != nil {
@@ -928,9 +931,9 @@ func TestRunPluginStatus(t *testing.T) {
 	if err := run([]string{"plugin", "status", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
-		!strings.Contains(out.String(), "help\t内置\t是\t是\t是\t1.0.0\t-") ||
-		!strings.Contains(out.String(), "weather\t外部\t是\t否\t否\t-\tgithub.com/acme/weather") {
+	if !strings.Contains(out.String(), "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
+		!strings.Contains(out.String(), "help\thelp\t内置\t是\t是\t是\t1.0.0\t-") ||
+		!strings.Contains(out.String(), "weather\t-\t外部\t是\t否\t否\t-\tgithub.com/acme/weather") {
 		t.Fatalf("status output:\n%s", out.String())
 	}
 }
@@ -946,7 +949,8 @@ func TestRunPluginInspect(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "名称：help") ||
-		!strings.Contains(out.String(), "配置文件："+filepath.Join(dir, "anybot.yaml")) ||
+		!strings.Contains(out.String(), "ID：help") ||
+		!strings.Contains(out.String(), "配置文件："+filepath.Join(dir, "plugins.d", "help.yaml")) ||
 		!strings.Contains(out.String(), "当前配置：") ||
 		!strings.Contains(out.String(), "默认配置：") ||
 		!strings.Contains(out.String(), "command: help") {
@@ -957,37 +961,24 @@ func TestRunPluginInspect(t *testing.T) {
 func TestRunPluginCheck(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`plugins:
-  help:
-    enabled: true
-    config: {}
-  legacy:
-    enabled: false
-    config: {}
-`), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeTestPluginConfig(t, dir, "help", "enabled: true\nconfig: {}\n")
+	writeTestPluginConfig(t, dir, "legacy", "enabled: false\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "check", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称\t来源\t状态\t说明") ||
+	if !strings.Contains(out.String(), "ID\t来源\t状态\t说明") ||
 		!strings.Contains(out.String(), "help\t内置\t可用\t-") ||
 		!strings.Contains(out.String(), "legacy\t配置\t禁用\t-") {
 		t.Fatalf("check output:\n%s", out.String())
 	}
 
 	out.Reset()
-	if err := os.WriteFile(config, []byte(`plugins:
-  ratelimit:
-    enabled: true
-    config:
-      limit: 0
-      window: 1m
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestPluginConfig(t, dir, "ratelimit", "enabled: true\nconfig:\n  limit: 0\n  window: 1m\n")
 	err := run([]string{"plugin", "check", "-dir", dir})
 	if err == nil || !strings.Contains(err.Error(), "插件配置检查失败") {
 		t.Fatalf("err = %v", err)
@@ -1009,20 +1000,21 @@ func TestRunPluginRemove(t *testing.T) {
 	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
+	id := readOnlyPluginID(t, dir)
 	out, _, restore := captureOutput(t)
 	defer restore()
-	if err := run([]string{"plugin", "remove", "weather", "-dir", dir}); err != nil {
+	if err := run([]string{"plugin", "remove", host.ShortPluginID(id), "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "插件已移除：weather") ||
-		!strings.Contains(out.String(), "配置已移除：weather") {
+	if !strings.Contains(out.String(), "插件已移除："+id) ||
+		!strings.Contains(out.String(), "配置已移除："+filepath.ToSlash(filepath.Join(dir, "plugins.d", id+".yaml"))) {
 		t.Fatalf("remove output:\n%s", out.String())
 	}
 	config := readTestFile(t, filepath.Join(dir, "anybot.yaml"))
 	if strings.Contains(config, "weather:") {
 		t.Fatalf("config:\n%s", config)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins.d", "weather.yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "plugins.d", id+".yaml")); !os.IsNotExist(err) {
 		t.Fatalf("plugin config should be removed: %v", err)
 	}
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
@@ -1035,7 +1027,7 @@ func TestRunPluginRemoveDropsVersionedGoModEntries(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 		Replace: "../weather",
@@ -1043,9 +1035,10 @@ func TestRunPluginRemoveDropsVersionedGoModEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  weather:\n    enabled: false\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeTestPluginConfig(t, dir, "weather", "enabled: false\nconfig: {}\n")
 	oldRunner := commandRunner
 	defer func() { commandRunner = oldRunner }()
 	var calls []string
@@ -1079,7 +1072,7 @@ func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 		Replace: "../weather",
@@ -1087,12 +1080,13 @@ func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte("plugins:\n  weather:\n    enabled: true\n    config:\n      city: Hangzhou\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pluginConfig := writeTestPluginConfig(t, dir, "weather", "enabled: true\nconfig:\n  city: Hangzhou\n")
 	lockPath := filepath.Join(dir, host.PluginLockFile)
 	beforeLockText := readTestFile(t, lockPath)
-	beforeConfig := readTestFile(t, configPath)
+	beforeConfig := readTestFile(t, pluginConfig)
 	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
 	err := run([]string{"plugin", "remove", "weather", "-dir", dir})
 	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
@@ -1101,7 +1095,7 @@ func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
 	if got := readTestFile(t, lockPath); got != beforeLockText {
 		t.Fatalf("lockText should roll back:\n%s", got)
 	}
-	if got := readTestFile(t, configPath); got != beforeConfig {
+	if got := readTestFile(t, pluginConfig); got != beforeConfig {
 		t.Fatalf("config should roll back:\n%s", got)
 	}
 	if got := readTestFile(t, filepath.Join(dir, "go.mod")); got != beforeGoMod {
@@ -1114,8 +1108,7 @@ func TestRunPluginRemoveRejectsBuiltinPlugin(t *testing.T) {
 	if err == nil {
 		t.Fatal("builtin plugin remove should be rejected")
 	}
-	if !strings.Contains(err.Error(), `内置插件 "help" 不能移除`) ||
-		!strings.Contains(err.Error(), "plugin disable help") {
+	if !strings.Contains(err.Error(), "plugin help not found") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1123,9 +1116,10 @@ func TestRunPluginRemoveRejectsBuiltinPlugin(t *testing.T) {
 func TestRunPluginSync(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  echo:\n    enabled: false\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeTestPluginConfig(t, dir, "echo", "enabled: false\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "sync", "-dir", dir}); err != nil {
@@ -1134,7 +1128,7 @@ func TestRunPluginSync(t *testing.T) {
 	if !strings.Contains(out.String(), "插件配置已同步：") {
 		t.Fatalf("sync output:\n%s", out.String())
 	}
-	updated := readTestFile(t, config)
+	updated := readTestFile(t, filepath.Join(dir, "plugins.d", "echo.yaml"))
 	if !strings.Contains(updated, "command: echo") {
 		t.Fatalf("config:\n%s", updated)
 	}
@@ -1143,16 +1137,11 @@ func TestRunPluginSync(t *testing.T) {
 func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`plugins:
-  echo:
-    enabled: false
-    config: {}
-  legacy:
-    enabled: false
-    config: {}
-`), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeTestPluginConfig(t, dir, "echo", "enabled: false\nconfig: {}\n")
+	writeTestPluginConfig(t, dir, "legacy", "enabled: false\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "sync", "-dir", dir}); err != nil {
@@ -1161,9 +1150,9 @@ func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 	if !strings.Contains(out.String(), "未知插件已跳过：legacy（已禁用）") {
 		t.Fatalf("sync output:\n%s", out.String())
 	}
-	updated := readTestFile(t, config)
-	if !strings.Contains(updated, "command: echo") || !strings.Contains(updated, "legacy:") {
-		t.Fatalf("config:\n%s", updated)
+	updated := readTestFile(t, filepath.Join(dir, "plugins.d", "echo.yaml"))
+	if !strings.Contains(updated, "command: echo") {
+		t.Fatalf("plugin config:\n%s", updated)
 	}
 }
 
@@ -1184,8 +1173,9 @@ func TestRunPluginSyncSkipsExternalLockPlugin(t *testing.T) {
 	if err := run([]string{"plugin", "sync", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
+	id := readOnlyPluginID(t, dir)
 	if !strings.Contains(out.String(), "插件配置已同步：") ||
-		!strings.Contains(out.String(), "外部插件待构建：weather") {
+		!strings.Contains(out.String(), "外部插件待构建："+id) {
 		t.Fatalf("sync output:\n%s", out.String())
 	}
 }
@@ -1193,16 +1183,10 @@ func TestRunPluginSyncSkipsExternalLockPlugin(t *testing.T) {
 func TestRunPluginConfigResetSyncsBuiltinDefaults(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`plugins:
-  help:
-    enabled: true
-    config:
-      command: docs
-      lines:
-        - custom
-`), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pluginPath := writeTestPluginConfig(t, dir, "help", "enabled: true\nconfig:\n  command: docs\n  lines:\n    - custom\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "config", "help", "-reset", "command", "lines", "-dir", dir}); err != nil {
@@ -1212,7 +1196,7 @@ func TestRunPluginConfigResetSyncsBuiltinDefaults(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
 		t.Fatalf("reset output:\n%s", out.String())
 	}
-	updated := readTestFile(t, config)
+	updated := readTestFile(t, pluginPath)
 	if !strings.Contains(updated, "command: help") ||
 		!strings.Contains(updated, "/help 显示帮助") ||
 		strings.Contains(updated, "command: docs") ||
@@ -1228,7 +1212,7 @@ func TestRunPluginConfigResetUsesPluginConfigDir(t *testing.T) {
 	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(config, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(pluginPath, []byte(`enabled: true
@@ -1263,7 +1247,7 @@ config:
 
 func TestRunPluginConfigResetMustFollowPluginName(t *testing.T) {
 	err := run([]string{"plugin", "config", "-reset", "command", "help"})
-	if err == nil || !strings.Contains(err.Error(), "-reset 必须写在插件名之后") {
+	if err == nil || !strings.Contains(err.Error(), "-reset 必须写在插件 ID 之后") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1271,9 +1255,10 @@ func TestRunPluginConfigResetMustFollowPluginName(t *testing.T) {
 func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  help:\n    enabled: true\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeTestPluginConfig(t, dir, "help", "enabled: true\nconfig: {}\n")
 	err := run([]string{"plugin", "config", "help", "-reset", "command", "command=docs", "-dir", dir})
 	if err == nil || !strings.Contains(err.Error(), "不能同时设置和重置插件配置") {
 		t.Fatalf("err = %v", err)
@@ -1283,16 +1268,11 @@ func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
 func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`plugins:
-  weather:
-    enabled: true
-    config:
-      city: Hangzhou
-      unit: c
-`), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, Name: "weather", Module: "github.com/acme/weather"}); err != nil {
+	pluginPath := writeTestPluginConfig(t, dir, "weather", "enabled: true\nconfig:\n  city: Hangzhou\n  unit: c\n")
+	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, ID: "weather", Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
 	out, _, restore := captureOutput(t)
@@ -1304,7 +1284,7 @@ func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置待构建同步：weather") {
 		t.Fatalf("reset output:\n%s", out.String())
 	}
-	updated := readTestFile(t, config)
+	updated := readTestFile(t, pluginPath)
 	if strings.Contains(updated, "city: Hangzhou") || !strings.Contains(updated, "unit: c") {
 		t.Fatalf("config:\n%s", updated)
 	}
@@ -1313,9 +1293,10 @@ func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 func TestRunPluginEnableDisable(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  echo:\n    enabled: false\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pluginPath := writeTestPluginConfig(t, dir, "echo", "enabled: false\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "enable", "echo", "-dir", dir}); err != nil {
@@ -1324,7 +1305,7 @@ func TestRunPluginEnableDisable(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已启用：echo") {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	if updated := readTestFile(t, config); !strings.Contains(updated, "enabled: true") {
+	if updated := readTestFile(t, pluginPath); !strings.Contains(updated, "enabled: true") {
 		t.Fatalf("config:\n%s", updated)
 	}
 	out.Reset()
@@ -1334,7 +1315,7 @@ func TestRunPluginEnableDisable(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已禁用：echo") {
 		t.Fatalf("disable output:\n%s", out.String())
 	}
-	if updated := readTestFile(t, config); !strings.Contains(updated, "enabled: false") {
+	if updated := readTestFile(t, pluginPath); !strings.Contains(updated, "enabled: false") {
 		t.Fatalf("config:\n%s", updated)
 	}
 }
@@ -1342,7 +1323,7 @@ func TestRunPluginEnableDisable(t *testing.T) {
 func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, _, restore := captureOutput(t)
@@ -1354,9 +1335,8 @@ func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	updated := readTestFile(t, config)
-	if !strings.Contains(updated, "ratelimit:") ||
-		!strings.Contains(updated, "enabled: true") ||
+	updated := readTestFile(t, filepath.Join(dir, "plugins.d", "ratelimit.yaml"))
+	if !strings.Contains(updated, "enabled: true") ||
 		!strings.Contains(updated, "limit: 5") ||
 		!strings.Contains(updated, "window: 1m") {
 		t.Fatalf("config:\n%s", updated)
@@ -1366,14 +1346,14 @@ func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 func TestRunPluginEnableRejectsUnknownTarget(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	err := run([]string{"plugin", "enable", "weathre", "-dir", dir})
 	if err == nil {
 		t.Fatal("unknown plugin should be rejected")
 	}
-	if !strings.Contains(err.Error(), "未知插件 \"weathre\"") || !strings.Contains(err.Error(), "plugin add") {
+	if !strings.Contains(err.Error(), "未知插件 ID \"weathre\"") {
 		t.Fatalf("err = %v", err)
 	}
 	if updated := readTestFile(t, config); strings.Contains(updated, "weathre") {
@@ -1384,17 +1364,18 @@ func TestRunPluginEnableRejectsUnknownTarget(t *testing.T) {
 func TestRunPluginEnableRejectsUnknownConfiguredTarget(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  weathre:\n    enabled: false\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pluginPath := writeTestPluginConfig(t, dir, "weathre", "enabled: false\nconfig: {}\n")
 	err := run([]string{"plugin", "enable", "weathre", "-dir", dir})
 	if err == nil {
 		t.Fatal("unknown configured plugin should be rejected")
 	}
-	if !strings.Contains(err.Error(), "未知插件 \"weathre\"") {
+	if !strings.Contains(err.Error(), "未知插件 ID \"weathre\"") {
 		t.Fatalf("err = %v", err)
 	}
-	if updated := readTestFile(t, config); strings.Contains(updated, "enabled: true") {
+	if updated := readTestFile(t, pluginPath); strings.Contains(updated, "enabled: true") {
 		t.Fatalf("unknown plugin should not be enabled:\n%s", updated)
 	}
 }
@@ -1402,9 +1383,10 @@ func TestRunPluginEnableRejectsUnknownConfiguredTarget(t *testing.T) {
 func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins:\n  legacy:\n    enabled: true\n    config: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pluginPath := writeTestPluginConfig(t, dir, "legacy", "enabled: true\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
 	if err := run([]string{"plugin", "disable", "legacy", "-dir", dir}); err != nil {
@@ -1413,7 +1395,7 @@ func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已禁用：legacy") {
 		t.Fatalf("disable output:\n%s", out.String())
 	}
-	if updated := readTestFile(t, config); !strings.Contains(updated, "enabled: false") {
+	if updated := readTestFile(t, pluginPath); !strings.Contains(updated, "enabled: false") {
 		t.Fatalf("config:\n%s", updated)
 	}
 }
@@ -1421,10 +1403,10 @@ func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, Name: "weather", Module: "github.com/acme/weather"}); err != nil {
+	if _, err := host.AddPluginModule(host.AddPluginOptions{Dir: dir, ID: "weather", Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
 	out, _, restore := captureOutput(t)
@@ -1436,7 +1418,7 @@ func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置待构建同步：weather") {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	if updated := readTestFile(t, config); !strings.Contains(updated, "weather:") || !strings.Contains(updated, "enabled: true") {
+	if updated := readTestFile(t, filepath.Join(dir, "plugins.d", "weather.yaml")); !strings.Contains(updated, "enabled: true") {
 		t.Fatalf("config:\n%s", updated)
 	}
 }
@@ -1454,14 +1436,15 @@ func TestRunDoctorHintsExternalLockPlugin(t *testing.T) {
 	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if err := run([]string{"plugin", "enable", "weather", "-dir", dir}); err != nil {
+	id := readOnlyPluginID(t, dir)
+	if err := run([]string{"plugin", "enable", host.ShortPluginID(id), "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
 	err := run([]string{"doctor", "-config", filepath.Join(dir, "anybot.yaml")})
 	if err == nil {
 		t.Fatal("doctor should reject external plugin in base binary")
 	}
-	if !strings.Contains(err.Error(), "weather 是插件锁中的外部插件") || !strings.Contains(err.Error(), "anybot up") {
+	if !strings.Contains(err.Error(), id+" 是插件锁中的外部插件") || !strings.Contains(err.Error(), "anybot up") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1501,7 +1484,7 @@ func TestRunBuildSyncsPluginHostGoMod(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := host.AddPluginModule(host.AddPluginOptions{
 		Dir:     dir,
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
 		Replace: "../weather",
@@ -1770,6 +1753,30 @@ func frameworkGoModCalls(dir string, deps []moduleDependency) []string {
 		}
 	}
 	return calls
+}
+
+func readOnlyPluginID(t *testing.T, dir string) string {
+	t.Helper()
+	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lock.Plugins) != 1 {
+		t.Fatalf("lock plugins = %#v", lock.Plugins)
+	}
+	return lock.Plugins[0].ID
+}
+
+func writeTestPluginConfig(t *testing.T, dir, id, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, "plugins.d", id+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func readTestFile(t *testing.T, path string) string {

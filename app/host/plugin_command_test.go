@@ -10,7 +10,10 @@ import (
 
 func TestRunPluginCommandStatus(t *testing.T) {
 	dir := t.TempDir()
-	configPath := writePluginCommandConfig(t, dir, "plugins:\n  help:\n    enabled: true\n    config: {}\n")
+	configPath := writePluginCommandConfig(t, dir)
+	if err := writePluginConfigFile(dir, "help", "enabled: true\nconfig: {}\n"); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
 		Args:       []string{"status"},
@@ -22,8 +25,8 @@ func TestRunPluginCommandStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
-		!strings.Contains(out.String(), "help\t内置\t是\t是\t是\t1.0.0\t-") {
+	if !strings.Contains(out.String(), "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
+		!strings.Contains(out.String(), "help\thelp\t内置\t是\t是\t是\t1.0.0\t-") {
 		t.Fatalf("status output:\n%s", out.String())
 	}
 }
@@ -34,7 +37,7 @@ func TestRunPluginCommandUsageDoesNotRequireLock(t *testing.T) {
 		Args:   []string{"inspect"},
 		Output: &out,
 	})
-	if err == nil || !strings.Contains(err.Error(), "用法：plugin inspect <name>") {
+	if err == nil || !strings.Contains(err.Error(), "用法：plugin inspect <id>") {
 		t.Fatalf("err = %v", err)
 	}
 	if out.Len() != 0 {
@@ -51,7 +54,7 @@ func TestRunPluginCommandUnknownDoesNotRequireLock(t *testing.T) {
 
 func TestRunPluginCommandEnableSyncsDefaultConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := writePluginCommandConfig(t, dir, "plugins: {}\n")
+	configPath := writePluginCommandConfig(t, dir)
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
 		Args:       []string{"enable", "help"},
@@ -67,24 +70,25 @@ func TestRunPluginCommandEnableSyncsDefaultConfig(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	config := readFile(t, configPath)
+	config := readFile(t, pluginConfigPath(dir, "help"))
 	if !strings.Contains(config, "enabled: true") ||
 		!strings.Contains(config, "command: help") {
-		t.Fatalf("config:\n%s", config)
+		t.Fatalf("plugin config:\n%s", config)
 	}
 }
 
 func TestRunPluginCommandConfigUpdatesPluginConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := writePluginCommandConfig(t, dir, `plugins:
-  help:
-    enabled: true
-    config:
-      command: help
-`)
+	configPath := writePluginCommandConfig(t, dir)
+	if err := writePluginConfigFile(dir, "help", `enabled: true
+config:
+  command: help
+`); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
-		Args:       []string{"config", "help", "command=assist"},
+		Args:       []string{"config", "hel", "command=assist"},
 		Output:     &out,
 		ConfigPath: configPath,
 		LockPath:   filepath.Join(dir, PluginLockFile),
@@ -96,14 +100,17 @@ func TestRunPluginCommandConfigUpdatesPluginConfig(t *testing.T) {
 	if !strings.Contains(out.String(), "插件配置已更新：help（1 项）") {
 		t.Fatalf("config output:\n%s", out.String())
 	}
-	if config := readFile(t, configPath); !strings.Contains(config, "command: assist") {
-		t.Fatalf("config:\n%s", config)
+	if config := readFile(t, pluginConfigPath(dir, "help")); !strings.Contains(config, "command: assist") {
+		t.Fatalf("plugin config:\n%s", config)
 	}
 }
 
 func TestRunPluginCommandCheckReportsFailures(t *testing.T) {
 	dir := t.TempDir()
-	configPath := writePluginCommandConfig(t, dir, "plugins:\n  ghost:\n    enabled: true\n    config: {}\n")
+	configPath := writePluginCommandConfig(t, dir)
+	if err := writePluginConfigFile(dir, "ghost", "enabled: true\nconfig: {}\n"); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	err := RunPluginCommand(PluginCommandOptions{
 		Args:       []string{"check"},
@@ -120,10 +127,10 @@ func TestRunPluginCommandCheckReportsFailures(t *testing.T) {
 	}
 }
 
-func writePluginCommandConfig(t *testing.T, dir, content string) string {
+func writePluginCommandConfig(t *testing.T, dir string) string {
 	t.Helper()
 	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return path

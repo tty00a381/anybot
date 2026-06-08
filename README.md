@@ -28,8 +28,8 @@ anybot up
 `anybot init` 会生成工作目录：
 
 - `anybot.yaml`：运行配置。
-- `plugins.d/*.yaml`：每个插件的配置。
-- `anybot.lock`：外部插件锁，记录配置名、稳定实例 ID、插件来源、版本、本地替换路径和导出符号。
+- `plugins.d/<PluginID>.yaml`：每个插件的配置。
+- `anybot.lock`：外部插件锁，记录本地生成的 `PluginID`、插件来源、版本和本地替换路径。
 - `plugins.gen.go`、`main.go`、`go.mod`：由 AnyBot 管理的可构建生成宿主。
 - `.anybot/`：运行时状态和插件私有数据目录，默认包含 `.anybot/store.json`。
 
@@ -38,22 +38,23 @@ anybot up
 以安装一个天气插件为例：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather@v0.1.0 -symbol Plugin
+anybot plugin add github.com/acme/anybot-weather@v0.1.0
 anybot plugin status
-anybot plugin inspect anybot_weather
-anybot plugin enable anybot_weather
+anybot plugin inspect <id>
+anybot plugin enable <id>
 anybot up
 ```
 
 本地插件开发时使用 `-replace`：
 
 ```sh
-anybot plugin add github.com/acme/anybot-weather -name weather -replace ../anybot-weather
-anybot plugin enable weather
+anybot plugin add github.com/acme/anybot-weather -replace ../anybot-weather
+anybot plugin status
+anybot plugin enable <id>
 anybot up
 ```
 
-插件配置名只能使用小写字母、数字和下划线，并且必须以字母开头。省略 `-name` 时，模块名末尾的短横线会自动转换为下划线，例如 `anybot-weather` 会得到 `anybot_weather`。配置名用于 CLI 和 `plugins.d/<name>.yaml`；持久化实例 ID 会单独写入 `anybot.lock`。
+`anybot plugin add` 会生成本地 `PluginID`，并写入 `anybot.lock`。CLI 表格首列会显示 ID 的前缀；只要前缀唯一，就可以用它执行 `inspect`、`config`、`enable`、`disable`、`update` 和 `remove`。插件作者在 Manifest 里声明的 `Name` 只用于展示，不参与唯一标识。
 
 ## 编写插件
 

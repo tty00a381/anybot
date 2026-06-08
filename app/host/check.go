@@ -17,7 +17,7 @@ const (
 
 // PluginConfigCheck 是一个插件配置项的静态检查结果。
 type PluginConfigCheck struct {
-	Name   string
+	ID     string
 	Source string
 	State  string
 	Detail string
@@ -28,23 +28,23 @@ func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []
 	lock.applyDefaults()
 	external := map[string]PluginModule{}
 	for _, item := range lock.Plugins {
-		if item.Name != "" {
-			external[item.Name] = item
+		if item.ID != "" {
+			external[item.ID] = item
 		}
 	}
 
 	checks := make([]PluginConfigCheck, 0, len(cfg.Plugins))
-	for _, name := range configuredPluginNames(cfg) {
-		entry := cfg.Plugins[name]
-		check := PluginConfigCheck{Name: name, Source: pluginCheckSource(name, registry, external)}
+	for _, id := range configuredPluginIDs(cfg) {
+		entry := cfg.Plugins[id]
+		check := PluginConfigCheck{ID: id, Source: pluginCheckSource(id, registry, external)}
 		if !pluginEnabled(entry) {
 			check.State = pluginCheckDisabled
 			checks = append(checks, check)
 			continue
 		}
-		factory, ok := registry.Factory(name)
+		factory, ok := registry.Factory(id)
 		if !ok {
-			if _, ok := external[name]; ok {
+			if _, ok := external[id]; ok {
 				check.State = pluginCheckUnavailable
 				check.Detail = "外部插件尚未构建到当前框架"
 			} else {
@@ -65,11 +65,11 @@ func PluginConfigChecks(cfg Config, registry absdk.Registry, lock PluginLock) []
 	return checks
 }
 
-func pluginCheckSource(name string, registry absdk.Registry, external map[string]PluginModule) string {
-	if _, ok := external[name]; ok {
+func pluginCheckSource(id string, registry absdk.Registry, external map[string]PluginModule) string {
+	if _, ok := external[id]; ok {
 		return "external"
 	}
-	if _, ok := registry.Factory(name); ok {
+	if _, ok := registry.Factory(id); ok {
 		return "builtin"
 	}
 	return "config"
@@ -88,12 +88,12 @@ func PluginConfigCheckFailed(checks []PluginConfigCheck) bool {
 
 // WritePluginConfigCheckTable 输出稳定的插件配置检查表。
 func WritePluginConfigCheckTable(w io.Writer, checks []PluginConfigCheck) error {
-	if _, err := fmt.Fprintln(w, "名称\t来源\t状态\t说明"); err != nil {
+	if _, err := fmt.Fprintln(w, "ID\t来源\t状态\t说明"); err != nil {
 		return err
 	}
 	for _, check := range checks {
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			check.Name,
+			ShortPluginID(check.ID),
 			sourceLabel(check.Source),
 			pluginCheckStateLabel(check.State),
 			displayValue(check.Detail),

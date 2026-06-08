@@ -13,11 +13,10 @@ import (
 
 // Config 是 anybot 的框架配置。
 type Config struct {
-	Runtime         RuntimeConfig          `yaml:"runtime"`
-	Adapter         AdapterConfig          `yaml:"adapter"`
-	Security        SecurityConfig         `yaml:"security"`
-	PluginConfigDir string                 `yaml:"plugin_config_dir"`
-	Plugins         map[string]PluginEntry `yaml:"plugins"`
+	Runtime  RuntimeConfig          `yaml:"runtime"`
+	Adapter  AdapterConfig          `yaml:"adapter"`
+	Security SecurityConfig         `yaml:"security"`
+	Plugins  map[string]PluginEntry `yaml:"-"`
 
 	configPath string
 }
@@ -70,7 +69,7 @@ func LoadConfig(path string) (Config, error) {
 	}
 	cfg.configPath = path
 	cfg.applyDefaults()
-	if err := cfg.loadPluginConfigDir(path); err != nil {
+	if err := cfg.loadPluginConfigs(path); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -129,11 +128,8 @@ func pluginEnabled(entry PluginEntry) bool {
 	return entry.Enabled == nil || *entry.Enabled
 }
 
-func (cfg *Config) loadPluginConfigDir(configPath string) error {
-	if cfg.PluginConfigDir == "" {
-		return nil
-	}
-	dir := resolveConfigRelativePath(configPath, cfg.PluginConfigDir)
+func (cfg *Config) loadPluginConfigs(configPath string) error {
+	dir := PluginConfigDir(configPath)
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
@@ -145,15 +141,18 @@ func (cfg *Config) loadPluginConfigDir(configPath string) error {
 		if entry.IsDir() {
 			continue
 		}
-		name, ok, err := pluginConfigName(entry.Name())
+		id, ok, err := pluginConfigID(entry.Name())
 		if err != nil {
 			return err
 		}
 		if !ok {
 			continue
 		}
-		if _, exists := cfg.Plugins[name]; exists {
-			return fmt.Errorf("plugin %s is configured more than once", name)
+		if err := ValidatePluginID(id); err != nil {
+			return fmt.Errorf("%s: %w", filepath.Join(dir, entry.Name()), err)
+		}
+		if _, exists := cfg.Plugins[id]; exists {
+			return fmt.Errorf("plugin %s is configured more than once", id)
 		}
 		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
@@ -163,12 +162,21 @@ func (cfg *Config) loadPluginConfigDir(configPath string) error {
 		if err := yaml.Unmarshal(data, &plugin); err != nil {
 			return fmt.Errorf("%s: %w", filepath.Join(dir, entry.Name()), err)
 		}
-		cfg.Plugins[name] = plugin
+		cfg.Plugins[id] = plugin
 	}
 	return nil
 }
 
-func pluginConfigName(file string) (string, bool, error) {
+// PluginConfigDir 返回当前机器人目录下固定的插件配置目录。
+func PluginConfigDir(configPath string) string {
+	base := filepath.Dir(configPath)
+	if base == "" {
+		base = "."
+	}
+	return filepath.Join(base, "plugins.d")
+}
+
+func pluginConfigID(file string) (string, bool, error) {
 	ext := filepath.Ext(file)
 	if ext != ".yaml" && ext != ".yml" {
 		return "", false, nil

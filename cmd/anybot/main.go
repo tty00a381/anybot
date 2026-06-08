@@ -73,6 +73,8 @@ func runInit(args []string) error {
 	}
 	files := []initFile{
 		{name: "anybot.yaml", content: defaultConfig},
+		{name: "plugins.d/help.yaml", content: defaultHelpPluginConfig},
+		{name: "plugins.d/echo.yaml", content: defaultEchoPluginConfig},
 		{name: ".env.example", content: "ONEBOT_ACCESS_TOKEN=\n"},
 		{name: "README.md", content: defaultReadme},
 	}
@@ -198,8 +200,8 @@ func withExternalPluginHint(err error, dir string) error {
 		return err
 	}
 	for _, item := range lock.Plugins {
-		if item.Name == unknown.Name {
-			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.Name, unknown.Name)
+		if item.ID == unknown.ID {
+			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
 		}
 	}
 	return err

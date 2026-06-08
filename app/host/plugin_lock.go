@@ -1,14 +1,11 @@
 package host
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/rand"
+	"encoding/base32"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/token"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,43 +28,38 @@ type PluginLock struct {
 	Plugins []PluginModule `yaml:"plugins"`
 }
 
-// PluginModule 描述一个外部插件模块及其导出的 sdk.Definition 变量。
+// PluginModule 描述一个外部插件安装实例及其来源。
 type PluginModule struct {
-	Name    string `yaml:"name"`
-	ID      string `yaml:"id,omitempty"`
+	ID      string `yaml:"id"`
 	Module  string `yaml:"module"`
 	Version string `yaml:"version,omitempty"`
 	Replace string `yaml:"replace,omitempty"`
-	Symbol  string `yaml:"symbol"`
 }
 
 // AddPluginOptions 描述 anybot plugin add 的插件锁更新参数。
 type AddPluginOptions struct {
 	Dir     string
-	Name    string
+	ID      string
 	Module  string
 	Version string
 	Replace string
-	Symbol  string
 }
 
 // UpdatePluginOptions 描述 anybot plugin update 的插件锁更新参数。
 type UpdatePluginOptions struct {
 	Dir          string
-	Name         string
+	ID           string
 	Version      string
 	Replace      string
-	Symbol       string
 	SetVersion   bool
 	SetReplace   bool
 	ClearReplace bool
-	SetSymbol    bool
 }
 
 // RemovePluginOptions 描述 anybot plugin remove 的插件锁更新参数。
 type RemovePluginOptions struct {
-	Dir  string
-	Name string
+	Dir string
+	ID  string
 }
 
 // EnsurePluginHost 确保目录中存在可构建的插件宿主。
@@ -124,30 +116,22 @@ func AddPluginModule(opts AddPluginOptions) (PluginLock, error) {
 		opts.Version = version
 	}
 	opts.Module = module
-	if opts.Name == "" {
-		opts.Name = DefaultPluginName(opts.Module)
-	}
-	if err := ValidatePluginName(opts.Name); err != nil {
-		return PluginLock{}, err
-	}
-	if opts.Symbol == "" {
-		opts.Symbol = "Plugin"
-	}
-	if !validExportedIdentifier(opts.Symbol) {
-		return PluginLock{}, fmt.Errorf("plugin symbol %q must be an exported Go identifier", opts.Symbol)
-	}
 	lockPath := filepath.Join(opts.Dir, PluginLockFile)
 	lock, err := LoadPluginLock(lockPath)
 	if err != nil {
 		return PluginLock{}, err
 	}
+	if opts.ID == "" {
+		opts.ID, err = NewPluginID()
+		if err != nil {
+			return PluginLock{}, err
+		}
+	}
 	item := PluginModule{
-		Name:    opts.Name,
-		ID:      DefaultPluginInstanceID(opts.Module, opts.Symbol),
+		ID:      opts.ID,
 		Module:  opts.Module,
 		Version: opts.Version,
 		Replace: strings.TrimSpace(opts.Replace),
-		Symbol:  opts.Symbol,
 	}
 	if err := lock.add(item); err != nil {
 		return PluginLock{}, err
@@ -169,20 +153,11 @@ func UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, boo
 	if opts.Dir == "" {
 		opts.Dir = "."
 	}
-	if opts.Name == "" {
-		return PluginModule{}, PluginLock{}, false, fmt.Errorf("plugin name is required")
+	if opts.ID == "" {
+		return PluginModule{}, PluginLock{}, false, fmt.Errorf("plugin id is required")
 	}
 	if opts.SetReplace && opts.ClearReplace {
 		return PluginModule{}, PluginLock{}, false, fmt.Errorf("-replace and -clear-replace cannot be used together")
-	}
-	if opts.SetSymbol {
-		opts.Symbol = strings.TrimSpace(opts.Symbol)
-		if opts.Symbol == "" {
-			opts.Symbol = "Plugin"
-		}
-		if !validExportedIdentifier(opts.Symbol) {
-			return PluginModule{}, PluginLock{}, false, fmt.Errorf("plugin symbol %q must be an exported Go identifier", opts.Symbol)
-		}
 	}
 
 	lockPath := filepath.Join(opts.Dir, PluginLockFile)
@@ -192,13 +167,13 @@ func UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, boo
 	}
 	index := -1
 	for i, item := range lock.Plugins {
-		if item.Name == opts.Name {
+		if item.ID == opts.ID {
 			index = i
 			break
 		}
 	}
 	if index < 0 {
-		return PluginModule{}, PluginLock{}, false, fmt.Errorf("plugin %s not found", opts.Name)
+		return PluginModule{}, PluginLock{}, false, fmt.Errorf("plugin %s not found", opts.ID)
 	}
 
 	original := lock.Plugins[index]
@@ -211,9 +186,6 @@ func UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, boo
 	}
 	if opts.ClearReplace {
 		updated.Replace = ""
-	}
-	if opts.SetSymbol {
-		updated.Symbol = opts.Symbol
 	}
 	lock.Plugins[index] = updated
 	lock.applyDefaults()
@@ -239,15 +211,15 @@ func RemovePluginModule(opts RemovePluginOptions) (PluginModule, PluginLock, err
 	if opts.Dir == "" {
 		opts.Dir = "."
 	}
-	if opts.Name == "" {
-		return PluginModule{}, PluginLock{}, fmt.Errorf("plugin name is required")
+	if opts.ID == "" {
+		return PluginModule{}, PluginLock{}, fmt.Errorf("plugin id is required")
 	}
 	lockPath := filepath.Join(opts.Dir, PluginLockFile)
 	lock, err := LoadPluginLock(lockPath)
 	if err != nil {
 		return PluginModule{}, PluginLock{}, err
 	}
-	removed, err := lock.remove(opts.Name)
+	removed, err := lock.remove(opts.ID)
 	if err != nil {
 		return PluginModule{}, PluginLock{}, err
 	}
@@ -269,8 +241,8 @@ func (lock *PluginLock) add(item PluginModule) error {
 		return err
 	}
 	for _, existing := range lock.Plugins {
-		if existing.Name == item.Name {
-			return fmt.Errorf("plugin %s already exists", item.Name)
+		if existing.ID == item.ID {
+			return fmt.Errorf("plugin id %s already exists", item.ID)
 		}
 		if existing.Module == item.Module {
 			return fmt.Errorf("plugin module %s already exists", item.Module)
@@ -278,20 +250,20 @@ func (lock *PluginLock) add(item PluginModule) error {
 	}
 	lock.Plugins = append(lock.Plugins, item)
 	sort.Slice(lock.Plugins, func(i, j int) bool {
-		return lock.Plugins[i].Name < lock.Plugins[j].Name
+		return lock.Plugins[i].ID < lock.Plugins[j].ID
 	})
 	return nil
 }
 
-func (lock *PluginLock) remove(name string) (PluginModule, error) {
+func (lock *PluginLock) remove(id string) (PluginModule, error) {
 	lock.applyDefaults()
 	for i, existing := range lock.Plugins {
-		if existing.Name == name {
+		if existing.ID == id {
 			lock.Plugins = append(lock.Plugins[:i], lock.Plugins[i+1:]...)
 			return existing, nil
 		}
 	}
-	return PluginModule{}, fmt.Errorf("plugin %s not found", name)
+	return PluginModule{}, fmt.Errorf("plugin %s not found", id)
 }
 
 func (lock *PluginLock) applyDefaults() {
@@ -305,15 +277,6 @@ func (lock *PluginLock) applyDefaults() {
 				lock.Plugins[i].Version = version
 			}
 		}
-		if lock.Plugins[i].Name == "" {
-			lock.Plugins[i].Name = DefaultPluginName(lock.Plugins[i].Module)
-		}
-		if lock.Plugins[i].Symbol == "" {
-			lock.Plugins[i].Symbol = "Plugin"
-		}
-		if lock.Plugins[i].ID == "" {
-			lock.Plugins[i].ID = DefaultPluginInstanceID(lock.Plugins[i].Module, lock.Plugins[i].Symbol)
-		}
 		lock.Plugins[i].Replace = strings.TrimSpace(lock.Plugins[i].Replace)
 	}
 }
@@ -322,73 +285,15 @@ func defaultPluginLock() PluginLock {
 	return PluginLock{Module: "anybot.local/bot"}
 }
 
-// DefaultPluginName 返回外部插件模块的默认配置名。
-func DefaultPluginName(module string) string {
-	if parsed, _, err := ParsePluginModuleSpec(module); err == nil {
-		module = parsed
-	}
-	base := path.Base(strings.TrimRight(pluginNameBasePath(module), "/"))
-	base = strings.TrimSuffix(base, ".git")
-	base = strings.ToLower(base)
-	var b strings.Builder
-	lastSep := false
-	for _, r := range base {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-			lastSep = false
-		case r >= '0' && r <= '9' && b.Len() > 0:
-			b.WriteRune(r)
-			lastSep = false
-		default:
-			if b.Len() > 0 && !lastSep {
-				b.WriteByte('_')
-				lastSep = true
-			}
-		}
-	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return "plugin"
-	}
-	return out
-}
-
-// DefaultPluginInstanceID 返回外部插件默认的稳定实例 ID。
-func DefaultPluginInstanceID(module, symbol string) string {
-	if parsed, _, err := ParsePluginModuleSpec(module); err == nil {
-		module = parsed
-	}
-	if symbol == "" {
-		symbol = "Plugin"
-	}
-	base := DefaultPluginName(module)
-	sum := sha256.Sum256([]byte(module + "#" + symbol))
-	return base + "_" + hex.EncodeToString(sum[:])[:8]
-}
-
-func pluginNameBasePath(module string) string {
-	prefix, pathMajor, ok := modmodule.SplitPathVersion(module)
-	if !ok || pathMajor == "" || prefix == "" {
-		return module
-	}
-	return prefix
-}
-
 // ValidatePluginLock 校验外部插件锁是否可生成稳定 Go 代码。
 func ValidatePluginLock(lock PluginLock) error {
 	lock.applyDefaults()
-	seenNames := map[string]struct{}{}
 	seenIDs := map[string]struct{}{}
 	seenModules := map[string]struct{}{}
 	for _, item := range lock.Plugins {
 		if err := ValidatePluginModule(item); err != nil {
 			return err
 		}
-		if _, exists := seenNames[item.Name]; exists {
-			return fmt.Errorf("plugin %s already exists", item.Name)
-		}
-		seenNames[item.Name] = struct{}{}
 		if _, exists := seenIDs[item.ID]; exists {
 			return fmt.Errorf("plugin id %s already exists", item.ID)
 		}
@@ -403,8 +308,11 @@ func ValidatePluginLock(lock PluginLock) error {
 
 // ValidatePluginModule 校验单个外部插件模块元数据。
 func ValidatePluginModule(item PluginModule) error {
-	if err := ValidatePluginName(item.Name); err != nil {
-		return err
+	if item.ID == "" {
+		return fmt.Errorf("plugin id is required")
+	}
+	if err := ValidatePluginID(item.ID); err != nil {
+		return fmt.Errorf("plugin id %q is invalid: %w", item.ID, err)
 	}
 	if item.Module == "" {
 		return fmt.Errorf("plugin module is required")
@@ -417,24 +325,12 @@ func ValidatePluginModule(item PluginModule) error {
 			return fmt.Errorf("plugin version %q is invalid for %s: %w", item.Version, item.Module, err)
 		}
 	}
-	if item.Symbol == "" {
-		return fmt.Errorf("plugin symbol is required")
-	}
-	if !validExportedIdentifier(item.Symbol) {
-		return fmt.Errorf("plugin symbol %q must be an exported Go identifier", item.Symbol)
-	}
-	if item.ID == "" {
-		item.ID = DefaultPluginInstanceID(item.Module, item.Symbol)
-	}
-	if err := ValidatePluginName(item.ID); err != nil {
-		return fmt.Errorf("plugin id %q is invalid: %w", item.ID, err)
-	}
 	return nil
 }
 
-// ValidatePluginName 校验插件名能安全用于配置名、文件名和实例 ID。
-func ValidatePluginName(name string) error {
-	return absdk.ValidatePluginName(name)
+// ValidatePluginID 校验插件 ID 能安全用于锁文件、配置文件、状态前缀和数据目录。
+func ValidatePluginID(id string) error {
+	return absdk.ValidatePluginID(id)
 }
 
 // ParsePluginModuleSpec 解析 module 或 module@version 形式的插件来源。
@@ -455,6 +351,12 @@ func ParsePluginModuleSpec(spec string) (module string, version string, err erro
 	return module, version, nil
 }
 
-func validExportedIdentifier(name string) bool {
-	return token.IsIdentifier(name) && ast.IsExported(name)
+// NewPluginID 生成一个新的本地插件安装 ID。
+func NewPluginID() (string, error) {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(data[:])
+	return "plg_" + strings.ToLower(encoded), nil
 }

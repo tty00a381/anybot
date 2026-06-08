@@ -2,19 +2,17 @@ package sdk
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Plugin 是运行框架已经完成配置解析后可安装的插件实例。
+// Plugin 是运行框架已经完成配置解析后可安装的插件对象。
 type Plugin interface {
 	Manifest() Manifest
 	Setup(*Context) error
 }
 
-// Definition 是插件定义，可转成运行框架工厂，也可用默认配置构建插件实例。
+// Definition 是插件定义，可转成运行框架工厂，也可用默认配置构建插件对象。
 type Definition interface {
 	Manifest() Manifest
 	Build() (Plugin, error)
@@ -35,44 +33,6 @@ func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
 	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
 }
 
-// ValidatePluginName 校验插件名能安全用于注册表、配置文件、日志、路由命名空间和实例 ID。
-func ValidatePluginName(name string) error {
-	if name == "" {
-		return fmt.Errorf("plugin name is required")
-	}
-	if strings.TrimSpace(name) != name ||
-		strings.ContainsAny(name, `/\`) ||
-		filepath.IsAbs(name) ||
-		name == "." ||
-		name == ".." ||
-		strings.HasPrefix(name, ".") {
-		return fmt.Errorf("plugin name %q is invalid", name)
-	}
-	if !validPluginIdentifier(name) {
-		return fmt.Errorf("plugin name %q is invalid: use lowercase letters, digits, and underscores; start with a letter", name)
-	}
-	return nil
-}
-
-func validPluginIdentifier(name string) bool {
-	for i, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9':
-			if i == 0 {
-				return false
-			}
-		case r == '_':
-			if i == 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 // Manifest 返回插件清单。
 func (d typedDefinition[T]) Manifest() Manifest {
 	return d.Info
@@ -80,14 +40,6 @@ func (d typedDefinition[T]) Manifest() Manifest {
 
 // Factory 返回可供运行框架注册的插件工厂。
 func (d typedDefinition[T]) Factory() Factory {
-	if err := ValidatePluginName(d.Info.Name); err != nil {
-		return Factory{
-			Info: d.Info,
-			Build: func(yaml.Node) (Plugin, error) {
-				return nil, err
-			},
-		}
-	}
 	return Factory{
 		Info:    d.Info,
 		Default: d.Default,
@@ -113,7 +65,7 @@ func (d typedDefinition[T]) Factory() Factory {
 	}
 }
 
-// Build 使用默认配置创建插件实例，主要供嵌入式程序和插件测试使用。
+// Build 使用默认配置创建插件对象，主要供嵌入式程序和插件测试使用。
 func (d typedDefinition[T]) Build() (Plugin, error) {
 	return d.Factory().Build(yaml.Node{})
 }

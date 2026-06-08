@@ -11,22 +11,23 @@ import (
 func TestInspectPluginBuiltinIncludesConfigAndDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte(`plugins:
-  help:
-    enabled: true
-    config:
-      command: docs
-`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePluginConfigFile(dir, "help", `enabled: true
+config:
+  command: docs
+`); err != nil {
 		t.Fatal(err)
 	}
 	inspect, err := InspectPlugin(path, DefaultRegistry(), PluginLock{}, "help")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspect.Source != "builtin" || inspect.InstanceID != "help" || !inspect.Configured || !inspect.Enabled || !inspect.Available {
+	if inspect.Source != "builtin" || inspect.ID != "help" || inspect.Name != "help" || !inspect.Configured || !inspect.Enabled || !inspect.Available {
 		t.Fatalf("inspect = %#v", inspect)
 	}
-	if inspect.ConfigPath != path || inspect.CheckState != pluginCheckOK {
+	if inspect.ConfigPath != filepath.Join(dir, "plugins.d", "help.yaml") || inspect.CheckState != pluginCheckOK {
 		t.Fatalf("inspect = %#v", inspect)
 	}
 	if !strings.Contains(inspect.ConfigYAML, "command: docs") ||
@@ -38,7 +39,8 @@ func TestInspectPluginBuiltinIncludesConfigAndDefaults(t *testing.T) {
 	if err := WritePluginInspect(&out, inspect); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "名称：help") ||
+	if !strings.Contains(out.String(), "ID：help") ||
+		!strings.Contains(out.String(), "名称：help") ||
 		!strings.Contains(out.String(), "检查：可用") ||
 		!strings.Contains(out.String(), "当前配置：") ||
 		!strings.Contains(out.String(), "默认配置：") {
@@ -46,16 +48,16 @@ func TestInspectPluginBuiltinIncludesConfigAndDefaults(t *testing.T) {
 	}
 }
 
-func TestInspectPluginUsesSplitYAMLConfigPath(t *testing.T) {
+func TestInspectPluginAcceptsYMLConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	pluginPath := filepath.Join(dir, "plugins.d", "echo.yaml")
+	pluginPath := filepath.Join(dir, "plugins.d", "echo.yml")
 	if err := os.WriteFile(pluginPath, []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -68,50 +70,28 @@ func TestInspectPluginUsesSplitYAMLConfigPath(t *testing.T) {
 	}
 }
 
-func TestInspectPluginAcceptsSplitYMLConfig(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("plugin_config_dir: plugins.d\nplugins: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "plugins.d", "echo.yml"), []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	inspect, err := InspectPlugin(path, DefaultRegistry(), PluginLock{}, "echo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if inspect.ConfigPath != filepath.Join(dir, "plugins.d", "echo.yml") || inspect.CheckState != pluginCheckDisabled {
-		t.Fatalf("inspect = %#v", inspect)
-	}
-}
-
 func TestInspectPluginExternalUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte(`plugins:
-  weather:
-    enabled: true
-    config:
-      city: Hangzhou
-`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePluginConfigFile(dir, "weather", `enabled: true
+config:
+  city: Hangzhou
+`); err != nil {
 		t.Fatal(err)
 	}
 	lock := PluginLock{Plugins: []PluginModule{{
-		Name:    "weather",
+		ID:      "weather",
 		Module:  "github.com/acme/weather",
 		Version: "v1.2.3",
-		Symbol:  "Module",
 	}}}
 	inspect, err := InspectPlugin(path, DefaultRegistry(), lock, "weather")
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantID := DefaultPluginInstanceID("github.com/acme/weather", "Module")
-	if inspect.Source != "external" || inspect.InstanceID != wantID || inspect.Available || inspect.DefaultAvailable {
+	if inspect.Source != "external" || inspect.ID != "weather" || inspect.Available || inspect.DefaultAvailable {
 		t.Fatalf("inspect = %#v", inspect)
 	}
 	if inspect.CheckState != pluginCheckUnavailable || !strings.Contains(inspect.Module, "github.com/acme/weather@v1.2.3") {
@@ -121,7 +101,8 @@ func TestInspectPluginExternalUnavailable(t *testing.T) {
 	if err := WritePluginInspect(&out, inspect); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "检查：待构建") ||
+	if !strings.Contains(out.String(), "ID：weather") ||
+		!strings.Contains(out.String(), "检查：待构建") ||
 		!strings.Contains(out.String(), "默认配置：-") {
 		t.Fatalf("inspect output:\n%s", out.String())
 	}

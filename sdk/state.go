@@ -16,7 +16,7 @@ var ErrEventContextUnavailable = errors.New("anybot: event context unavailable")
 // ErrStateKeyRequired 表示 typed 状态缺少字段名。
 var ErrStateKeyRequired = errors.New("anybot: plugin state key is required")
 
-// State 是绑定到插件实例命名空间和事件上下文的一段 typed 会话状态。
+// State 是绑定到 PluginID 命名空间和事件上下文的一段 typed 会话状态。
 type State[T any] struct {
 	session *Session
 	event   *EventContext

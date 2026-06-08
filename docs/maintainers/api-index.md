@@ -64,7 +64,7 @@ App option：
 类型：
 
 - `PluginLock`：`Module`、`Plugins`。
-- `PluginModule`：`Name`、`ID`、`Module`、`Version`、`Replace`、`Symbol`。
+- `PluginModule`：`ID`、`Module`、`Version`、`Replace`。
 - `AddPluginOptions`
 - `UpdatePluginOptions`
 - `RemovePluginOptions`
@@ -77,15 +77,13 @@ App option：
 - `SavePluginLock(path string, lock PluginLock) error`：校验并原子写入插件锁。
 - `RenderPluginHost(dir string, lock PluginLock) error`：重写 `plugins.gen.go` 与生成的 `main.go`。
 - `AddPluginModule(opts AddPluginOptions) (PluginLock, error)`：添加外部插件。
-- `UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, bool, error)`：更新版本、替换路径或符号。
+- `UpdatePluginModule(opts UpdatePluginOptions) (PluginModule, PluginLock, bool, error)`：更新版本或替换路径。
 - `RemovePluginModule(opts RemovePluginOptions) (PluginModule, PluginLock, error)`：移除外部插件。
 - `CheckGeneratedHostWritable(dir string, force bool) error`：检查生成文件是否可写。
 - `ParsePluginModuleSpec(spec string) (module, version string, err error)`：解析 `module@version`。
-- `DefaultPluginName(module string) string`：从 module 推导配置名。
-- `DefaultPluginInstanceID(module, symbol string) string`：从 module 和导出符号推导稳定实例 ID。
 - `ValidatePluginLock(lock PluginLock) error`
 - `ValidatePluginModule(item PluginModule) error`
-- `ValidatePluginName(name string) error`：委托 `sdk.ValidatePluginName`，保持注册名、配置名和实例 ID 规则一致。
+- `ValidatePluginID(id string) error`：委托 `sdk.ValidatePluginID`。
 
 实现文件：
 
@@ -145,9 +143,9 @@ App option：
 - `PluginConfigChecks(cfg Config, registry sdk.Registry, lock PluginLock) []PluginConfigCheck`
 - `PluginConfigCheckFailed(checks []PluginConfigCheck) bool`
 - `WritePluginConfigCheckTable(w io.Writer, checks []PluginConfigCheck) error`
-- `InspectPlugin(configPath string, registry sdk.Registry, lock PluginLock, name string) (PluginInspect, error)`
+- `InspectPlugin(configPath string, registry sdk.Registry, lock PluginLock, id string) (PluginInspect, error)`
 - `WritePluginInspect(w io.Writer, inspect PluginInspect) error`
-- `EnsureKnownPluginTarget(cfg Config, registry sdk.Registry, lock PluginLock, name string, allowConfigured bool) error`
+- `ResolvePluginID(cfg Config, registry sdk.Registry, lock PluginLock, target string, allowConfigured bool) (string, error)`
 
 ### 内置插件注册表
 
@@ -203,29 +201,28 @@ App option：
 
 ### 插件定义
 
-- `Plugin`：已配置插件实例接口，方法 `Manifest() Manifest`、`Setup(*Context) error`。
-- `Definition`：插件定义接口，可转成运行框架工厂，也可用默认配置构建插件实例。
+- `Plugin`：已配置插件对象接口，方法 `Manifest() Manifest`、`Setup(*Context) error`。
+- `Definition`：插件定义接口，可转成运行框架工厂，也可用默认配置构建插件对象。
 - `SetupFunc[T]`：typed config 安装函数。
 - `Define`：用类型参数 `T` 创建 `Definition`，参数为 `Manifest`、默认配置和 `SetupFunc[T]`。
 - `Definition.Manifest() Manifest`
-- `Definition.Build() (Plugin, error)`：按默认配置构建插件实例。
+- `Definition.Build() (Plugin, error)`：按默认配置构建插件对象。
 - `Definition.Factory() Factory`：转为运行框架可注册工厂。
-- `Environment`：`DataDir`、`ConfigName`、`InstanceID`、`ConfigStore`、`AllowGlobalMiddleware`。
-- `Install(app *App, plugins ...Plugin) error`：把已配置插件实例安装到运行时。
-- `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件实例。
+- `Environment`：`DataDir`、`PluginID`、`ConfigStore`、`AllowGlobalMiddleware`。
+- `Install(app *App, plugins ...Plugin) error`：把已配置插件对象安装到运行时。
+- `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件对象。
 - `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
 - `InstallDefaultWith(app *App, env Environment, definitions ...Definition) error`：按默认配置和显式宿主能力安装插件定义。
 
 ### 注册表
 
-- `Factory`：`Info`、`InstanceID`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
-- `Factory.WithName(name string) Factory`：为外部插件配置别名。
-- `Factory.WithInstanceID(id string) Factory`：为外部插件固定持久化实例 ID。
-- `Factory.StorageName() string`：返回 Store/DataDir 使用的持久化命名空间。
+- `Factory`：`Info`、`PluginID`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
+- `Factory.WithPluginID(id string) Factory`：为工厂注入本地插件安装 ID。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
 - `Registry.Register(factory Factory) error`
-- `Registry.Factory(name string) (Factory, bool)`
+- `Registry.Factory(id string) (Factory, bool)`
+- `Registry.PluginIDs() []string`
 - `Registry.Plugins() []Manifest`
 
 ### 安装上下文
@@ -233,8 +230,7 @@ App option：
 - `Context`：插件安装上下文。
 - `NewContext(app *App, manifest Manifest, opts ...InstallOption) *Context`
 - `Context.Manifest() Manifest`
-- `Context.ConfigName() string`
-- `Context.InstanceID() string`
+- `Context.PluginID() string`
 - `Context.Logger() *slog.Logger`
 - `Context.Store() Store`
 - `Context.Client() ActionClient`
@@ -270,8 +266,7 @@ App option：
 - `State.Save(value T, ttl time.Duration) error`
 - `State.Delete() error`
 - `WithDataDir(root string) InstallOption`
-- `WithConfigName(name string) InstallOption`
-- `WithInstanceID(id string) InstallOption`
+- `WithPluginID(id string) InstallOption`
 - `Context.DataDir() (string, error)`
 - `ErrDataDirUnavailable`
 

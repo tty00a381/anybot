@@ -33,7 +33,7 @@ func (c *Context) Config() ConfigHandle {
 	if c == nil || c.app == nil {
 		return ConfigHandle{}
 	}
-	return ConfigHandle{plugin: c.ConfigName(), store: c.env.ConfigStore}
+	return ConfigHandle{plugin: c.PluginID(), store: c.env.ConfigStore}
 }
 
 // Available 判断当前框架是否支持运行期写回插件配置。

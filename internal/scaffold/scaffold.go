@@ -454,9 +454,10 @@ go test ./...
 在机器人工作目录中执行：
 
 ` + "```sh" + `
-anybot plugin add {{.Module}} -name {{.Manifest}} -replace <插件目录>
-anybot plugin enable {{.Manifest}}
-anybot plugin config {{.Manifest}} command={{.Command}}
+anybot plugin add {{.Module}} -replace <插件目录>
+anybot plugin status
+anybot plugin config <id> command={{.Command}}
+anybot plugin enable <id>
 anybot up
 ` + "```" + `
 
@@ -485,8 +486,9 @@ go list -m {{.Module}}@v0.1.0
 发布 Go module 版本后，用户可以安装固定版本：
 
 ` + "```sh" + `
-anybot plugin add {{.Module}}@v0.1.0 -name {{.Manifest}}
-anybot plugin enable {{.Manifest}}
+anybot plugin add {{.Module}}@v0.1.0
+anybot plugin status
+anybot plugin enable <id>
 anybot up
 ` + "```" + `
 `
