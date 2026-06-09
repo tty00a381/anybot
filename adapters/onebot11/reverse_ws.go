@@ -27,7 +27,10 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	if s.addr == "" {
 		return errors.New("onebot11: reverse websocket addr is required")
 	}
-	server := &http.Server{Addr: s.addr, Handler: s.handler(sink)}
+	if err := s.opts.checkPublicListener("reverse_ws", s.addr); err != nil {
+		return err
+	}
+	server := newHTTPServer(s.addr, s.handler(sink))
 	s.opts.emitAdapterState(ctx, core.AdapterState{
 		Protocol:  Protocol,
 		Kind:      core.AdapterStateDisconnected,
@@ -46,7 +49,7 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	select {
 	case <-ctx.Done():
 		s.closeCurrentConn()
-		_ = server.Shutdown(context.Background())
+		shutdownHTTPServer(server)
 		err := <-errc
 		if err != nil {
 			return err
@@ -69,6 +72,7 @@ func (s *reverseWSServer) handler(sink func(context.Context, *Event) error) http
 			logFrameError(s.opts.logger, err)
 			return
 		}
+		conn.SetReadLimit(s.opts.maxEventBytes)
 		s.handleConn(r.Context(), conn, r.RemoteAddr, sink)
 	})
 	return mux
@@ -96,9 +100,16 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 	for {
 		messageType, data, err := conn.Read(ctx)
 		if err != nil {
+			if errors.Is(err, websocket.ErrMessageTooBig) {
+				logFrameError(s.opts.logger, err)
+			}
 			return
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
+			continue
+		}
+		if err := s.opts.checkFrameSize(len(data)); err != nil {
+			logFrameError(s.opts.logger, err)
 			continue
 		}
 		if err := s.peer.handleFrame(ctx, data, sink); err != nil {

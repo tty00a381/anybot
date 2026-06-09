@@ -270,6 +270,9 @@ func runDevDoctor(args []string) error {
 	if err := checkListen(cfg); err != nil {
 		return err
 	}
+	if err := checkListenerToken(cfg); err != nil {
+		return err
+	}
 	for _, warning := range doctorWarnings(cfg) {
 		fmt.Fprintf(stderr, "警告：%s\n", warning)
 	}

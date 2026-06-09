@@ -33,11 +33,16 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if !strings.Contains(string(configData), "action_timeout: 10s") {
 		t.Fatalf("core.yaml 内容不符合预期:\n%s", configData)
 	}
+	if !strings.Contains(string(configData), "max_event_bytes: 1048576") {
+		t.Fatalf("core.yaml 缺少事件大小上限:\n%s", configData)
+	}
 	readmeData, err := os.ReadFile(filepath.Join(dir, "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(readmeData), "NapCat") || !strings.Contains(string(readmeData), "运行") {
+	if !strings.Contains(string(readmeData), "NapCat") ||
+		!strings.Contains(string(readmeData), "运行") ||
+		!strings.Contains(string(readmeData), "export ONEBOT_ACCESS_TOKEN=你的令牌") {
 		t.Fatalf("README.md 内容不符合预期:\n%s", readmeData)
 	}
 	readme := string(readmeData)

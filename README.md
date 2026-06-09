@@ -21,6 +21,7 @@ go install github.com/tty00a381/anybot/cmd/anybot@latest
 mkdir mybot
 cd mybot
 anybot init
+export ONEBOT_ACCESS_TOKEN=你的令牌
 anybot doctor
 anybot run
 ```

@@ -311,7 +311,7 @@ func TestRunDevPluginStandaloneRejectsUnknownFrameworkDependency(t *testing.T) {
 	}
 }
 
-func TestRunDoctorWarnsForPublicReverseWSWithoutToken(t *testing.T) {
+func TestRunDoctorRejectsPublicReverseWSWithoutToken(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
 	if err := os.WriteFile(config, []byte(`runtime:
@@ -327,14 +327,41 @@ plugins: {}
 	}
 	out, errOut, restore := captureOutput(t)
 	defer restore()
-	if err := run([]string{"doctor", "-config", config}); err != nil {
+	err := run([]string{"doctor", "-config", config})
+	if err == nil {
+		t.Fatal("doctor should reject public reverse_ws without token")
+	}
+	if !strings.Contains(err.Error(), "监听非本机地址时必须配置可用访问令牌") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatalf("doctor output=%q stderr=%q", out.String(), errOut.String())
+	}
+}
+
+func TestRunDoctorRejectsPublicHTTPWebhookWithoutToken(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte(`runtime:
+  log_level: info
+adapter:
+  protocol: onebot11
+  transport:
+    type: http
+    url: "http://127.0.0.1:5700"
+    listen: "0.0.0.0:0"
+plugins: {}
+`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "配置可用") {
-		t.Fatalf("doctor output:\n%s", out.String())
+	_, _, restore := captureOutput(t)
+	defer restore()
+	err := run([]string{"doctor", "-config", config})
+	if err == nil {
+		t.Fatal("doctor should reject public http webhook without token")
 	}
-	if !strings.Contains(errOut.String(), "反向 WebSocket 监听非本机地址") {
-		t.Fatalf("doctor stderr:\n%s", errOut.String())
+	if !strings.Contains(err.Error(), "监听非本机地址时必须配置可用访问令牌") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

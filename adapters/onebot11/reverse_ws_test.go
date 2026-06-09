@@ -30,6 +30,16 @@ func TestReverseWSAuthorization(t *testing.T) {
 	}
 }
 
+func TestReverseWSRejectsPublicListenerWithoutToken(t *testing.T) {
+	server := newReverseWSServer("0.0.0.0:0", newOptions(nil))
+	err := server.Start(context.Background(), func(context.Context, *Event) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires access token") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestReverseWSEventAndCall(t *testing.T) {
 	states := make(chan ConnectionEvent, 4)
 	server := newReverseWSServer("127.0.0.1:0", newOptions([]Option{
@@ -117,6 +127,36 @@ func TestReverseWSEventAndCall(t *testing.T) {
 		t.Fatal(err)
 	case <-ctx.Done():
 		t.Fatal("等待动作响应超时")
+	}
+}
+
+func TestReverseWSClosesOversizedMessage(t *testing.T) {
+	server := newReverseWSServer("127.0.0.1:0", newOptions([]Option{WithMaxEventBytes(8)}))
+	events := make(chan *Event, 1)
+	httpServer := httptest.NewServer(server.handler(func(_ context.Context, event *Event) error {
+		events <- event
+		return nil
+	}))
+	defer httpServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "done")
+
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"post_type":"message"}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("oversized event should not be dispatched: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if _, _, err := conn.Read(ctx); err == nil || websocket.CloseStatus(err) == -1 {
+		t.Fatalf("read err = %v", err)
 	}
 }
 

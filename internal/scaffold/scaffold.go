@@ -306,6 +306,7 @@ transport:
   listen: "127.0.0.1:6700"
   path: "/"
   access_token_env: ONEBOT_ACCESS_TOKEN
+  max_event_bytes: 1048576
   action_timeout: 10s
 `
 
@@ -317,6 +318,7 @@ const projectReadme = `# AnyBot 核心库机器人
 
 ` + "```sh" + `
 go mod tidy
+export ONEBOT_ACCESS_TOKEN=你的令牌
 anybot dev doctor
 go run . --help
 go run .
@@ -330,7 +332,7 @@ go run .
 ws://127.0.0.1:6700/
 ` + "```" + `
 
-如果设置了访问令牌，请在运行前配置环境变量，并在协议端中填写同一个值：
+运行前配置访问令牌环境变量，并在协议端中填写同一个值：
 
 ` + "```sh" + `
 export ONEBOT_ACCESS_TOKEN=你的令牌

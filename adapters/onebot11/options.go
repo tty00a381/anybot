@@ -2,15 +2,19 @@ package onebot11
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
 type options struct {
 	accessToken       string
 	path              string
+	maxEventBytes     int64
 	header            http.Header
 	logger            *slog.Logger
 	connectionHooks   []ConnectionHook
@@ -20,6 +24,8 @@ type options struct {
 	reconnectMax      time.Duration
 	state             *adapterState
 }
+
+const defaultMaxEventBytes int64 = 1 << 20
 
 // ConnectionState 表示 WebSocket 传输的连接状态。
 type ConnectionState string
@@ -59,6 +65,15 @@ func WithPath(path string) Option {
 	return func(opts *options) {
 		if path != "" {
 			opts.path = path
+		}
+	}
+}
+
+// WithMaxEventBytes 配置入站事件或响应帧的最大字节数。
+func WithMaxEventBytes(n int64) Option {
+	return func(opts *options) {
+		if n > 0 {
+			opts.maxEventBytes = n
 		}
 	}
 }
@@ -130,6 +145,7 @@ func WithReconnectMaxInterval(interval time.Duration) Option {
 func newOptions(opts []Option) options {
 	out := options{
 		path:              "/",
+		maxEventBytes:     defaultMaxEventBytes,
 		header:            make(http.Header),
 		logger:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		dialTimeout:       10 * time.Second,
@@ -142,6 +158,32 @@ func newOptions(opts []Option) options {
 		opt(&out)
 	}
 	return out
+}
+
+func (opts options) checkFrameSize(n int) error {
+	if opts.maxEventBytes <= 0 || int64(n) <= opts.maxEventBytes {
+		return nil
+	}
+	return fmt.Errorf("onebot11: frame too large: %d bytes exceeds %d", n, opts.maxEventBytes)
+}
+
+func (opts options) checkPublicListener(transport, addr string) error {
+	if addr == "" || opts.accessToken != "" || listenAddrIsLocal(addr) {
+		return nil
+	}
+	return fmt.Errorf("onebot11: %s listen %s requires access token", transport, addr)
+}
+
+func listenAddrIsLocal(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (opts options) emitConnection(ctx context.Context, event ConnectionEvent) {

@@ -26,6 +26,7 @@ type TransportConfig struct {
 	AccessToken          string            `yaml:"access_token"`
 	AccessTokenEnv       string            `yaml:"access_token_env"`
 	Headers              map[string]string `yaml:"headers"`
+	MaxEventBytes        int64             `yaml:"max_event_bytes"`
 	DialTimeout          string            `yaml:"dial_timeout"`
 	ActionTimeout        string            `yaml:"action_timeout"`
 	ReconnectInterval    string            `yaml:"reconnect_interval"`
@@ -133,6 +134,9 @@ func (cfg Config) Options(extra ...Option) ([]Option, error) {
 	var opts []Option
 	if cfg.Transport.Path != "" {
 		opts = append(opts, WithPath(cfg.Transport.Path))
+	}
+	if cfg.Transport.MaxEventBytes > 0 {
+		opts = append(opts, WithMaxEventBytes(cfg.Transport.MaxEventBytes))
 	}
 	token := cfg.Transport.AccessToken
 	if token == "" && cfg.Transport.AccessTokenEnv != "" {

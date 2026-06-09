@@ -89,6 +89,7 @@ adapter:
     listen: "127.0.0.1:6700"
     path: "/"
     access_token_env: ONEBOT_ACCESS_TOKEN
+    max_event_bytes: 1048576
     action_timeout: 10s
 
 security:
@@ -113,10 +114,13 @@ security:
 - `transport.type: websocket`：AnyBot 主动连接协议端 WebSocket。需要 `url`。
 - `transport.type: http`：AnyBot 使用 HTTP API；`listen` 非空时也接收 HTTP 事件回调。需要 `url`。
 - `path`：反向 WebSocket 或 HTTP 回调路径，必须以 `/` 开头。
-- `access_token`：直接写令牌。
+- `access_token`：直接写令牌。更推荐使用 `access_token_env`，避免把令牌写进仓库。
 - `access_token_env`：从环境变量读取令牌，默认用 `ONEBOT_ACCESS_TOKEN`。
 - `headers`：正向连接时附加 HTTP 头。
+- `max_event_bytes`：入站事件或 WebSocket 消息大小上限，默认 `1048576`。超过上限的 HTTP 回调会被拒绝，WebSocket 连接会关闭并按传输模式重连或等待重新连接。
 - `dial_timeout`、`action_timeout`、`reconnect_interval`、`reconnect_max_interval`：连接和动作超时配置。
+
+如果 `reverse_ws` 或 HTTP 回调监听到非本机地址，务必设置 `ONEBOT_ACCESS_TOKEN`，并在协议端填入同一个访问令牌。AnyBot 会接受 `Authorization: Bearer <token>`，也兼容 OneBot 常见的 `access_token` 查询参数。
 
 ### `security`
 

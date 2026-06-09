@@ -601,7 +601,7 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 ### Adapter 与配置
 
 - `Config`：`Protocol`、`Transport`。
-- `TransportConfig`：`Type`、`Listen`、`Path`、`URL`、`AccessToken`、`AccessTokenEnv`、`Headers`、`DialTimeout`、`ActionTimeout`、`ReconnectInterval`、`ReconnectMaxInterval`。
+- `TransportConfig`：`Type`、`Listen`、`Path`、`URL`、`AccessToken`、`AccessTokenEnv`、`Headers`、`MaxEventBytes`、`DialTimeout`、`ActionTimeout`、`ReconnectInterval`、`ReconnectMaxInterval`。
 - `LoadConfig(path) (Config, error)`
 - `Config.Validate() error`
 - `Config.Options(extra...) ([]Option, error)`
@@ -621,6 +621,7 @@ Options：
 
 - `WithAccessToken`
 - `WithPath`
+- `WithMaxEventBytes`
 - `WithHeader`
 - `WithLogger`
 - `WithConnectionHook`

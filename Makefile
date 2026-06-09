@@ -2,6 +2,8 @@
 
 GOFILES := $(shell find . -name '*.go' -not -path './.git/*')
 RELEASE_FILES := \
+	go.mod \
+	go.sum \
 	README.md \
 	docs/users/README.md \
 	docs/plugin-developers/README.md \
@@ -15,8 +17,36 @@ RELEASE_FILES := \
 	app/host/app.go \
 	app/host/config_store.go \
 	app/host/store.go \
+	adapters/onebot11/adapter.go \
+	adapters/onebot11/client.go \
+	adapters/onebot11/client_test.go \
+	adapters/onebot11/config.go \
+	adapters/onebot11/config_test.go \
+	adapters/onebot11/doc.go \
+	adapters/onebot11/event.go \
+	adapters/onebot11/http.go \
+	adapters/onebot11/http_test.go \
+	adapters/onebot11/id.go \
+	adapters/onebot11/message.go \
+	adapters/onebot11/message_test.go \
+	adapters/onebot11/napcat/api.go \
+	adapters/onebot11/napcat/api_test.go \
+	adapters/onebot11/napcat/doc.go \
+	adapters/onebot11/options.go \
+	adapters/onebot11/response.go \
+	adapters/onebot11/reverse_ws.go \
+	adapters/onebot11/reverse_ws_test.go \
+	adapters/onebot11/server.go \
+	adapters/onebot11/socket.go \
+	adapters/onebot11/state.go \
+	adapters/onebot11/ws_client.go \
+	adapters/onebot11/ws_client_test.go \
 	cmd/anybot/main.go \
+	cmd/anybot/build.go \
+	cmd/anybot/defaults.go \
 	cmd/anybot/dev.go \
+	cmd/anybot/doctor.go \
+	cmd/anybot/plugin.go \
 	scripts/release-e2e.sh \
 	internal/scaffold/scaffold.go \
 	sdk/access.go \

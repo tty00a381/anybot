@@ -18,6 +18,7 @@ transport:
   listen: "127.0.0.1:6700"
   path: "/onebot"
   access_token_env: TOKEN_FROM_ENV
+  max_event_bytes: 2048
   action_timeout: 2s
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -32,7 +33,7 @@ transport:
 		t.Fatalf("action timeout = %s", client.actionTimeout)
 	}
 	server := adapter.transport.(*reverseWSServer)
-	if server.opts.path != "/onebot" || server.opts.accessToken != "secret" {
+	if server.opts.path != "/onebot" || server.opts.accessToken != "secret" || server.opts.maxEventBytes != 2048 {
 		t.Fatalf("options = %#v", server.opts)
 	}
 }

@@ -44,6 +44,9 @@ func runDoctor(args []string) error {
 	if err := checkListen(adapterCfg); err != nil {
 		return err
 	}
+	if err := checkListenerToken(adapterCfg); err != nil {
+		return err
+	}
 	for _, warning := range doctorWarnings(adapterCfg) {
 		fmt.Fprintf(stderr, "警告：%s\n", warning)
 	}
@@ -67,7 +70,7 @@ func cfgAdapter(cfg host.Config) onebot11.Config {
 }
 
 func checkListen(cfg onebot11.Config) error {
-	if cfg.Transport.Type != "reverse_ws" {
+	if cfg.Transport.Type != "reverse_ws" && (cfg.Transport.Type != "http" || cfg.Transport.Listen == "") {
 		return nil
 	}
 	ln, err := net.Listen("tcp", cfg.Transport.Listen)
@@ -77,28 +80,35 @@ func checkListen(cfg onebot11.Config) error {
 	return ln.Close()
 }
 
+func checkListenerToken(cfg onebot11.Config) error {
+	if !transportListens(cfg) || listenIsLocal(cfg.Transport.Listen) || accessTokenAvailable(cfg) {
+		return nil
+	}
+	return fmt.Errorf("%s 监听非本机地址时必须配置可用访问令牌", cfg.Transport.Type)
+}
+
 func doctorWarnings(cfg onebot11.Config) []string {
 	var warnings []string
-	if cfg.Transport.Type == "reverse_ws" && !reverseListenIsLocal(cfg.Transport.Listen) && !accessTokenAvailable(cfg) {
-		warnings = append(warnings, "反向 WebSocket 监听非本机地址且未配置可用访问令牌")
-	}
 	if cfg.Transport.Type != "reverse_ws" && cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) == "" && cfg.Transport.AccessToken == "" {
 		warnings = append(warnings, fmt.Sprintf("环境变量 %s 未设置，出站动作连接将不携带访问令牌", cfg.Transport.AccessTokenEnv))
 	}
 	return warnings
 }
 
-func reverseListenIsLocal(listen string) bool {
+func transportListens(cfg onebot11.Config) bool {
+	return cfg.Transport.Type == "reverse_ws" || (cfg.Transport.Type == "http" && cfg.Transport.Listen != "")
+}
+
+func listenIsLocal(listen string) bool {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
 		return false
 	}
-	switch host {
-	case "127.0.0.1", "localhost", "::1":
+	if strings.EqualFold(host, "localhost") {
 		return true
-	default:
-		return false
 	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func accessTokenAvailable(cfg onebot11.Config) bool {

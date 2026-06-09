@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/tty00a381/anybot/core"
@@ -91,5 +92,36 @@ func TestHTTPTransportWebhookEvent(t *testing.T) {
 		}
 	default:
 		t.Fatal("未收到事件")
+	}
+}
+
+func TestHTTPTransportRejectsPublicWebhookWithoutToken(t *testing.T) {
+	transport := newHTTPTransport("", "0.0.0.0:0", newOptions(nil))
+	err := transport.Start(context.Background(), func(context.Context, *Event) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires access token") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestHTTPTransportRejectsOversizedWebhook(t *testing.T) {
+	transport := newHTTPTransport("", "127.0.0.1:0", newOptions([]Option{
+		WithAccessToken("secret"),
+		WithMaxEventBytes(8),
+	}))
+	server := httptest.NewServer(transport.handler(func(context.Context, *Event) error {
+		t.Fatal("oversized event should not be dispatched")
+		return nil
+	}))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/?access_token=secret", "application/json", bytes.NewBufferString(`{"post_type":"message"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d", resp.StatusCode)
 	}
 }

@@ -47,6 +47,7 @@ adapter:
     listen: "127.0.0.1:6700"
     path: "/"
     access_token_env: ONEBOT_ACCESS_TOKEN
+    max_event_bytes: 1048576
     action_timeout: 10s
 
 security:
@@ -79,6 +80,7 @@ const defaultReadme = `# AnyBot
 本目录由 ` + "`anybot init`" + ` 生成。编辑 ` + "`anybot.yaml`" + ` 后运行：
 
 ` + "```sh" + `
+export ONEBOT_ACCESS_TOKEN=你的令牌
 anybot doctor
 anybot run
 # 或显式执行完整构建/同步/检查流程：
@@ -86,6 +88,7 @@ anybot up
 ` + "```" + `
 
 默认使用 OneBot v11 反向 WebSocket，请让协议端连接 ` + "`ws://127.0.0.1:6700/`" + `。
+运行时请在协议端中填入同一个 ` + "`ONEBOT_ACCESS_TOKEN`" + ` 值。
 
 ` + "`anybot init`" + ` 已生成 ` + "`anybot.lock`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主入口 ` + "`main.go`" + ` 由 anybot 管理。` + "`anybot.yaml`" + ` 只保存框架配置，插件配置固定放在 ` + "`plugins.d/<PluginID>.yaml`" + `；` + "`anybot.lock`" + ` 是插件记录、内置来源和外部 module 来源的权威记录。运行时状态默认保存到 ` + "`.anybot/`" + `，包括 ` + "`.anybot/store.json`" + ` 和插件私有数据目录。
 

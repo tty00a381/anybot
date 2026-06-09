@@ -75,6 +75,7 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 		}
 		return err
 	}
+	conn.SetReadLimit(c.opts.maxEventBytes)
 
 	c.peer.setConn(conn)
 	info := ConnectionEvent{State: ConnectionConnected, Transport: "websocket", URL: c.url}
@@ -91,9 +92,16 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 	for {
 		messageType, data, err := conn.Read(ctx)
 		if err != nil {
+			if errors.Is(err, websocket.ErrMessageTooBig) {
+				logFrameError(c.opts.logger, err)
+			}
 			return err
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
+			continue
+		}
+		if err := c.opts.checkFrameSize(len(data)); err != nil {
+			logFrameError(c.opts.logger, err)
 			continue
 		}
 		if err := c.peer.handleFrame(ctx, data, sink); err != nil {
