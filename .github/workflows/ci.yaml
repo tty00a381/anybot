@@ -19,5 +19,5 @@ jobs:
       - name: 下载依赖
         run: go mod download
 
-      - name: 运行门禁
-        run: make check
+      - name: 运行发布门禁
+        run: make release-check

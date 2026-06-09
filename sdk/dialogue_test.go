@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,39 @@ func TestDialogueKeepsPluginStateIsolated(t *testing.T) {
 	}
 	if _, ok, err := secondDialogue.Active(ctx); err != nil || ok {
 		t.Fatalf("second should not see first state: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestGroupDialogueRequiresGroupContext(t *testing.T) {
+	app := NewApp()
+	ctx := NewContext(app, Manifest{Name: "dialogue"}, WithPluginID(sdkTestDialogueID))
+	dialogue := ctx.Dialogue("group", DialogueWithScope(DialogueScopeGroup)).
+		Step("next", func(*DialogueTurn) error {
+			t.Fatal("private event should not enter group dialogue")
+			return nil
+		})
+	private := NewTestContext(app, &core.Event{Protocol: testProtocol, Type: "message", UserID: "42"})
+	if err := dialogue.Begin(private, "next", nil); !errors.Is(err, ErrGroupContextUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestGroupDialogueIgnoresPrivateMessagesWhenInactive(t *testing.T) {
+	app := NewApp()
+	ctx := NewContext(app, Manifest{Name: "dialogue"}, WithPluginID(sdkTestDialogueID))
+	ctx.Dialogue("group", DialogueWithScope(DialogueScopeGroup)).
+		Step("next", func(*DialogueTurn) error {
+			t.Fatal("private event should not enter group dialogue")
+			return nil
+		})
+	var called bool
+	ctx.OnMessage(Any()).Handle(func(*EventContext) error {
+		called = true
+		return nil
+	})
+	dispatch(t, app, "user", "hello")
+	if !called {
+		t.Fatal("private message should continue past inactive group dialogue")
 	}
 }
 

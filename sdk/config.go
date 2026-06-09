@@ -16,7 +16,8 @@ type ConfigAssignment struct {
 	Value any
 }
 
-// ConfigStore 是运行框架注入的插件配置写回能力。
+// ConfigStore 是运行框架注入的插件配置写回能力。方法的 plugin 参数是当前
+// 插件的 PluginID，不是 Manifest.Name。
 type ConfigStore interface {
 	SetPluginConfig(context.Context, string, []ConfigAssignment) error
 	ResetPluginConfig(context.Context, string, [][]string) error

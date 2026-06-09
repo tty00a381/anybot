@@ -201,6 +201,8 @@ var (
 	ErrActionUnavailable = core.ErrActionUnavailable
 	// ErrReplyTargetUnavailable 表示当前事件或目标无法映射到可回复的会话。
 	ErrReplyTargetUnavailable = core.ErrReplyTargetUnavailable
+	// ErrSessionUnavailable 表示当前事件或运行时无法映射到请求的会话维度。
+	ErrSessionUnavailable = core.ErrSessionUnavailable
 	// ErrPass 表示当前路由主动让出处理权。
 	ErrPass = core.ErrPass
 	// ErrStop 表示当前事件应停止向后续路由传播。

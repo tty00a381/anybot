@@ -283,7 +283,7 @@ state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour,
 - `absdk.NamedState[T](ctx, c, "key", "scope")`：插件自定义维度 typed 状态。
 - `ctx.Session(c)`：自然会话。群里按群和用户区分，私聊按用户区分。
 - `ctx.UserSession(c)`：用户维度。
-- `ctx.GroupSession(c)`：群或频道维度。
+- `ctx.GroupSession(c)`：群或频道维度；非群或频道事件会在读写时返回 `ErrGroupContextUnavailable`。
 - `ctx.SessionBy("key")`：插件自定义维度。
 
 底层 `Session` 仍可用于原始字节或特殊 JSON 读写。默认运行框架使用文件存储，位置在 `runtime.data_dir/store.path`，也就是默认的 `.anybot/store.json`。如果运行时把 `runtime.store.type` 设成 `memory`，这些状态只保存在进程内，重启后会丢失。
@@ -316,7 +316,7 @@ ctx.Command("bind").Handle(func(c *absdk.EventContext) error {
 
 - `DialogueScopeConversation`：自然会话，默认。
 - `DialogueScopeUser`：用户维度。
-- `DialogueScopeGroup`：群或频道维度。
+- `DialogueScopeGroup`：群或频道维度；非群或频道事件会返回 `ErrGroupContextUnavailable`。
 
 ## 后台任务与主动消息
 

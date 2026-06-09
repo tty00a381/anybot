@@ -305,11 +305,10 @@ func (c *Context) UserSession() *Session {
 
 // GroupSession 返回当前群或频道维度的存储视图。
 func (c *Context) GroupSession() *Session {
-	key := "session:group"
-	if c.event != nil && c.event.GroupSessionID() != "" {
-		key = c.event.GroupSessionID()
+	if c.event == nil || c.event.GroupSessionID() == "" {
+		return NewUnavailableSession(fmt.Errorf("%w: group context unavailable", ErrSessionUnavailable))
 	}
-	return c.SessionBy(key)
+	return c.SessionBy(c.event.GroupSessionID())
 }
 
 // SessionBy 返回指定键空间下的存储视图；key 为空时使用默认会话键。

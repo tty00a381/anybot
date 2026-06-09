@@ -18,6 +18,8 @@ var (
 	ErrActionUnavailable = errors.New("anybot: action unavailable")
 	// ErrReplyTargetUnavailable 表示当前事件或目标无法映射到可回复的会话。
 	ErrReplyTargetUnavailable = errors.New("anybot: reply target unavailable")
+	// ErrSessionUnavailable 表示当前事件或运行时无法映射到请求的会话维度。
+	ErrSessionUnavailable = errors.New("anybot: session unavailable")
 )
 
 // PanicError 包装处理函数或中间件中恢复到的 panic 值和调用栈。

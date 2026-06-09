@@ -958,6 +958,31 @@ func TestRunPluginStatus(t *testing.T) {
 	}
 }
 
+func TestRunPluginStatusUsesConfigPathDirectoryForLock(t *testing.T) {
+	dir := t.TempDir()
+	other := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
+		t.Fatal(err)
+	}
+	writeTestPluginConfig(t, dir, cmdTestHelpID, "enabled: true\nconfig: {}\n")
+	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: other, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "status", "-config", config}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), host.ShortPluginID(cmdTestHelpID)+"\thelp\t内置") ||
+		strings.Contains(out.String(), host.ShortPluginID(cmdTestWeatherID)) {
+		t.Fatalf("status output should use config directory lock:\n%s", out.String())
+	}
+}
+
 func TestRunPluginInspect(t *testing.T) {
 	dir := t.TempDir()
 	if err := run([]string{"init", "-dir", dir}); err != nil {
@@ -976,6 +1001,13 @@ func TestRunPluginInspect(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置：") ||
 		!strings.Contains(out.String(), "command: help") {
 		t.Fatalf("inspect output:\n%s", out.String())
+	}
+}
+
+func TestRunPluginRejectsDirAndConfigTogether(t *testing.T) {
+	err := run([]string{"plugin", "status", "-dir", t.TempDir(), "-config", filepath.Join(t.TempDir(), "anybot.yaml")})
+	if err == nil || !strings.Contains(err.Error(), "不能同时指定 -dir 和 -config") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -1047,6 +1079,46 @@ func TestRunPluginRemove(t *testing.T) {
 	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
 	if strings.Contains(lockText, "github.com/acme/weather") {
 		t.Fatalf("lockText:\n%s", lockText)
+	}
+}
+
+func TestRunPluginRemoveUsesConfigPathDirectoryForLock(t *testing.T) {
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	dir := t.TempDir()
+	other := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
+		t.Fatal(err)
+	}
+	writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: false\nconfig: {}\n")
+	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: other, ID: cmdTestGhostID, Module: "github.com/acme/ghost"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"plugin", "remove", host.ShortPluginID(cmdTestWeatherID), "-config", config}); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 || !strings.HasPrefix(calls[0], dir+" go mod edit") {
+		t.Fatalf("calls should run in config directory: %#v", calls)
+	}
+	if _, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile)); err != nil {
+		t.Fatal(err)
+	}
+	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	if strings.Contains(lockText, "github.com/acme/weather") {
+		t.Fatalf("config directory lock should remove weather:\n%s", lockText)
+	}
+	otherLockText := readTestFile(t, filepath.Join(other, host.PluginLockFile))
+	if !strings.Contains(otherLockText, "github.com/acme/ghost") {
+		t.Fatalf("other directory lock should be untouched:\n%s", otherLockText)
 	}
 }
 

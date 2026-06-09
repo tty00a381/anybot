@@ -202,4 +202,13 @@ func TestContextSessionScopes(t *testing.T) {
 	if c.SessionBy("custom").Key() != "custom" {
 		t.Fatalf("custom key = %q", c.SessionBy("custom").Key())
 	}
+
+	private := NewTestContext(app, &Event{
+		Protocol: storeTestProtocol,
+		Type:     "message",
+		UserID:   "42",
+	})
+	if err := private.GroupSession().Set(context.Background(), "memo", []byte("x"), 0); !errors.Is(err, ErrSessionUnavailable) {
+		t.Fatalf("private group session err = %v", err)
+	}
 }

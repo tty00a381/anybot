@@ -14,7 +14,7 @@ CLI 入口包，不作为库导入。
 - `anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]`：构建包含外部插件的生成宿主。
 - `anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]`：构建、同步、检查并运行。
 - `anybot plugins`：列出基础二进制内置插件。
-- `anybot plugin add/update/remove/list/status/inspect/config/check/sync/enable/disable`：管理插件。
+- `anybot plugin add/update/remove/list/status/inspect/config/check/sync/enable/disable`：管理插件；配置类子命令使用 `-dir 目录` 或 `-config anybot.yaml` 二选一。
 - `anybot dev init/plugin/new plugin/doctor/run`：开发者脚手架和直接核心库项目辅助命令。
 - `anybot version`：打印版本。
 
@@ -266,7 +266,7 @@ App option：
 
 - `Context.Session(event *EventContext) *Session`
 - `Context.UserSession(event *EventContext) *Session`
-- `Context.GroupSession(event *EventContext) *Session`
+- `Context.GroupSession(event *EventContext) *Session`：非群或频道事件返回不可用会话，读写时得到 `ErrGroupContextUnavailable`。
 - `Context.SessionBy(key string) *Session`
 - `State[T]`：typed 会话状态。
 - `ConversationState[T](ctx, event, key) State[T]`
@@ -552,6 +552,7 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `ErrUnauthorized`
 - `ErrRateLimited`
 - `ErrActionUnavailable`
+- `ErrSessionUnavailable`
 - `PanicError`
 
 ### 生命周期
@@ -574,6 +575,7 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 - `FileStore.Get`、`Set`、`Delete`、`Sweep`
 - `Session`
 - `NewSession(store, key)`
+- `NewUnavailableSession(err)`
 - `Session.Key`
 - `Session.Get`、`Set`、`Delete`
 - `Session.LoadJSON`

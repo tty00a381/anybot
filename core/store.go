@@ -123,11 +123,20 @@ func (s *MemoryStore) sweepExpiredLocked(now time.Time, force bool) {
 type Session struct {
 	store Store
 	key   string
+	err   error
 }
 
 // NewSession 创建指定键前缀下的会话视图。
 func NewSession(store Store, key string) *Session {
 	return &Session{store: store, key: key}
+}
+
+// NewUnavailableSession 创建一个会在读写时返回 err 的会话视图。
+func NewUnavailableSession(err error) *Session {
+	if err == nil {
+		err = ErrSessionUnavailable
+	}
+	return &Session{err: err}
 }
 
 // Key 返回当前会话视图使用的键前缀。
@@ -137,16 +146,43 @@ func (s *Session) Key() string {
 
 // Get 读取会话视图中的原始字节值。
 func (s *Session) Get(ctx context.Context, name string) ([]byte, bool, error) {
+	if s == nil {
+		return nil, false, ErrSessionUnavailable
+	}
+	if s.err != nil {
+		return nil, false, s.err
+	}
+	if s.store == nil {
+		return nil, false, ErrSessionUnavailable
+	}
 	return s.store.Get(ctx, s.key+":"+name)
 }
 
 // Set 写入会话视图中的原始字节值。
 func (s *Session) Set(ctx context.Context, name string, value []byte, ttl time.Duration) error {
+	if s == nil {
+		return ErrSessionUnavailable
+	}
+	if s.err != nil {
+		return s.err
+	}
+	if s.store == nil {
+		return ErrSessionUnavailable
+	}
 	return s.store.Set(ctx, s.key+":"+name, value, ttl)
 }
 
 // Delete 删除会话视图中的值。
 func (s *Session) Delete(ctx context.Context, name string) error {
+	if s == nil {
+		return ErrSessionUnavailable
+	}
+	if s.err != nil {
+		return s.err
+	}
+	if s.store == nil {
+		return ErrSessionUnavailable
+	}
 	return s.store.Delete(ctx, s.key+":"+name)
 }
 

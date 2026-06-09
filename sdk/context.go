@@ -98,13 +98,14 @@ func (c *Context) UserSession(event *EventContext) *Session {
 
 // GroupSession 返回当前 PluginID 命名空间下的群或频道存储视图。
 func (c *Context) GroupSession(event *EventContext) *Session {
-	key := "session:group"
-	if event != nil {
-		if current := event.Event(); current != nil && current.GroupSessionID() != "" {
-			key = current.GroupSessionID()
-		}
+	if event == nil {
+		return core.NewUnavailableSession(errors.Join(ErrSessionUnavailable, ErrEventContextUnavailable))
 	}
-	return c.SessionBy(key)
+	current := event.Event()
+	if current == nil || current.GroupSessionID() == "" {
+		return core.NewUnavailableSession(errors.Join(ErrSessionUnavailable, ErrGroupContextUnavailable))
+	}
+	return c.SessionBy(current.GroupSessionID())
 }
 
 // SessionBy 返回当前 PluginID 命名空间下的自定义存储视图。

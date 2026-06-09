@@ -249,6 +249,9 @@ func TestGroupStateRequiresGroupContext(t *testing.T) {
 	app := NewApp()
 	ctx := NewContext(app, Manifest{Name: "memo"}, WithPluginID(sdkTestCounterID))
 	private := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	if err := ctx.GroupSession(private).SaveJSON(private.Context(), "memo", 1, 0); !errors.Is(err, ErrGroupContextUnavailable) {
+		t.Fatalf("group session err = %v", err)
+	}
 	if err := GroupState[int](ctx, private, "memo").Save(1, 0); !errors.Is(err, ErrGroupContextUnavailable) {
 		t.Fatalf("err = %v", err)
 	}

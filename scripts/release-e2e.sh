@@ -37,7 +37,34 @@ if [ -z "$plugin_id" ]; then
 fi
 
 "$cli" plugin enable "$plugin_id" -dir "$bot_dir"
-"$cli" build -dir "$bot_dir" -o anybot-bot
+
+cat > "$bot_dir/plugins.d/$plugin_id.yaml" <<EOF
+enabled: true
+config:
+  command: ""
+EOF
+run_log="$root/run.log"
+if "$cli" run -dir "$bot_dir" >"$run_log" 2>&1; then
+	echo "release e2e: anybot run should reject invalid generated-host plugin config" >&2
+	cat "$run_log" >&2
+	exit 1
+fi
+test -x "$bot_dir/anybot-bot" || {
+	echo "release e2e: anybot run did not build generated host" >&2
+	cat "$run_log" >&2
+	exit 1
+}
+grep -q "插件配置检查失败" "$run_log" || {
+	echo "release e2e: anybot run did not reach generated-host plugin check" >&2
+	cat "$run_log" >&2
+	exit 1
+}
+
+cat > "$bot_dir/plugins.d/$plugin_id.yaml" <<EOF
+enabled: true
+config:
+  command: buddy
+EOF
 
 (
 	cd "$bot_dir"

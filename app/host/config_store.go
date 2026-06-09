@@ -18,7 +18,7 @@ func newPluginConfigStore(path string) *pluginConfigStore {
 	return &pluginConfigStore{path: path}
 }
 
-func (s *pluginConfigStore) SetPluginConfig(ctx context.Context, name string, assignments []absdk.ConfigAssignment) error {
+func (s *pluginConfigStore) SetPluginConfig(ctx context.Context, pluginID string, assignments []absdk.ConfigAssignment) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -28,7 +28,7 @@ func (s *pluginConfigStore) SetPluginConfig(ctx context.Context, name string, as
 	for _, assignment := range assignments {
 		node, err := configValueNode(assignment.Value)
 		if err != nil {
-			return fmt.Errorf("plugin config %s: %w", name, err)
+			return fmt.Errorf("plugin config %s: %w", pluginID, err)
 		}
 		hostAssignments = append(hostAssignments, PluginConfigAssignment{
 			Path:  append([]string(nil), assignment.Path...),
@@ -37,11 +37,11 @@ func (s *pluginConfigStore) SetPluginConfig(ctx context.Context, name string, as
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := SetPluginConfigValues(s.path, name, hostAssignments)
+	_, err := SetPluginConfigValues(s.path, pluginID, hostAssignments)
 	return err
 }
 
-func (s *pluginConfigStore) ResetPluginConfig(ctx context.Context, name string, paths [][]string) error {
+func (s *pluginConfigStore) ResetPluginConfig(ctx context.Context, pluginID string, paths [][]string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -53,7 +53,7 @@ func (s *pluginConfigStore) ResetPluginConfig(ctx context.Context, name string, 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := RemovePluginConfigValues(s.path, name, copied)
+	_, err := RemovePluginConfigValues(s.path, pluginID, copied)
 	return err
 }
 

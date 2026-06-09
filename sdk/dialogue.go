@@ -196,6 +196,9 @@ func (d *Dialogue) activeRule() Rule {
 	return RuleFunc(func(ctx context.Context, c *EventContext) (Match, bool) {
 		record, ok, err := d.load(c)
 		if err != nil {
+			if errors.Is(err, ErrGroupContextUnavailable) {
+				return Match{}, false
+			}
 			return Match{Score: 100, Reason: "dialogue:" + d.name + ":error", Vars: map[string]any{
 				dialogueErrorKey: err,
 			}}, true
