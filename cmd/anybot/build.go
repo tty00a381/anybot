@@ -55,24 +55,50 @@ func runUp(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if !*skipBuild {
-		if err := buildHost(buildOptions{dir: *dir, output: *output, skipTidy: *skipTidy}); err != nil {
+	return runGeneratedHost(generatedHostRunOptions{
+		dir:       *dir,
+		output:    *output,
+		skipTidy:  *skipTidy,
+		skipBuild: *skipBuild,
+		skipSync:  *skipSync,
+		skipCheck: *skipCheck,
+	})
+}
+
+type generatedHostRunOptions struct {
+	dir       string
+	output    string
+	skipTidy  bool
+	skipBuild bool
+	skipSync  bool
+	skipCheck bool
+}
+
+func runGeneratedHost(opts generatedHostRunOptions) error {
+	if opts.dir == "" {
+		opts.dir = "."
+	}
+	if opts.output == "" {
+		opts.output = "anybot-bot"
+	}
+	if !opts.skipBuild {
+		if err := buildHost(buildOptions{dir: opts.dir, output: opts.output, skipTidy: opts.skipTidy}); err != nil {
 			return err
 		}
 	}
-	binary := commandBinaryPath(*output)
-	if !*skipSync {
-		if err := commandRunner(*dir, binary, "plugin", "sync"); err != nil {
+	binary := commandBinaryPath(opts.output)
+	if !opts.skipSync {
+		if err := commandRunner(opts.dir, binary, "plugin", "sync"); err != nil {
 			return err
 		}
 	}
-	if !*skipCheck {
-		if err := commandRunner(*dir, binary, "plugin", "check"); err != nil {
+	if !opts.skipCheck {
+		if err := commandRunner(opts.dir, binary, "plugin", "check"); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintf(stdout, "启动：%s\n", builtBinaryPath(*dir, *output))
-	return commandRunner(*dir, binary)
+	fmt.Fprintf(stdout, "启动：%s\n", builtBinaryPath(opts.dir, opts.output))
+	return commandRunner(opts.dir, binary)
 }
 
 type buildOptions struct {

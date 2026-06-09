@@ -6,6 +6,7 @@ import (
 
 	"github.com/tty00a381/anybot/core"
 	"github.com/tty00a381/anybot/core/message"
+	absdk "github.com/tty00a381/anybot/sdk"
 )
 
 func TestParseCQAndRender(t *testing.T) {
@@ -107,5 +108,16 @@ func TestContextHelpers(t *testing.T) {
 	event, ok := EventFrom(c)
 	if !ok || event.UserID != 42 {
 		t.Fatalf("event=%#v ok=%v", event, ok)
+	}
+
+	sdkApp := absdk.NewApp(absdk.WithAdapter(New(&recordTransport{})))
+	sdkCtx := absdk.NewTestContext(sdkApp, raw.Normalize())
+	client, ok = ClientFrom(sdkCtx)
+	if !ok || client == nil {
+		t.Fatal("sdk client not found")
+	}
+	event, ok = EventFrom(sdkCtx)
+	if !ok || event.UserID != 42 {
+		t.Fatalf("sdk event=%#v ok=%v", event, ok)
 	}
 }

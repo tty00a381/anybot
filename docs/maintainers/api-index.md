@@ -9,7 +9,7 @@ CLI 入口包，不作为库导入。
 命令：
 
 - `anybot init [-dir 目录] [-force]`：生成最终用户工作目录。
-- `anybot run [-config anybot.yaml]`：按配置运行基础框架。
+- `anybot run [-config anybot.yaml]`：按配置运行；发现已启用外部插件时自动构建并运行生成宿主。
 - `anybot doctor [-config anybot.yaml] [-connect]`：静态检查配置，可选连接检查。
 - `anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]`：构建包含外部插件的生成宿主。
 - `anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]`：构建、同步、检查并运行。
@@ -33,7 +33,7 @@ CLI 入口包，不作为库导入。
 
 ### 配置类型
 
-- `Config`：顶层框架配置，字段为 `Runtime`、`Adapter`、`Security`、`PluginConfigDir`、`Plugins`。
+- `Config`：顶层框架配置，字段为 `Runtime`、`Adapter`、`Security`、`Plugins`。
 - `RuntimeConfig`：`LogLevel`、`Workers`、`Buffer`、`Serial`、`DataDir`、`Store`。
 - `StoreConfig`：`Type`、`Path`。
 - `AdapterConfig`：`Protocol`、`Transport`。
@@ -43,6 +43,7 @@ CLI 入口包，不作为库导入。
 函数：
 
 - `LoadConfig(path string) (Config, error)`：读取 YAML 配置，应用默认值并加载 `plugins.d`。
+- `PluginConfigDir(configPath string) string`：返回配置文件同目录下固定的 `plugins.d`。
 - `ValidateConfig(cfg Config, registry sdk.Registry) error`：静态校验配置和插件配置。
 - `NewLogger(level string, out io.Writer) (*slog.Logger, error)`：创建日志器。
 - `NewApp(cfg Config, registry sdk.Registry, logger *slog.Logger, opts ...AppOption) (*core.App, error)`：装配运行时。
@@ -222,7 +223,7 @@ App option：
 - `Install(app *App, plugins ...Plugin) error`：把已配置插件对象安装到运行时。
 - `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件对象。
 - `InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error`：运行框架装配到底层 core 时使用。
-- `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义。
+- `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义；不注入 PluginID、配置写回或插件数据目录。
 - `InstallDefaultWith(app *App, env Environment, definitions ...Definition) error`：按默认配置和显式宿主能力安装插件定义。
 
 ### 注册表
@@ -274,6 +275,7 @@ App option：
 - `NamedState[T](ctx, event, key, scope) State[T]`
 - `State.Load() (T, bool, error)`
 - `State.LoadOr(fallback T) (T, error)`
+- `State.Update(fallback T, ttl time.Duration, update func(*T) error) (T, error)`：读改写便捷方法，不提供跨事件原子性。
 - `State.Save(value T, ttl time.Duration) error`
 - `State.Delete() error`
 - `WithDataDir(root string) InstallOption`
@@ -654,7 +656,7 @@ Options：
 ### 事件与上下文
 
 - `Event`
-- `EventFrom(c *core.Context) (*Event, bool)`
+- `EventFrom(c any) (*Event, bool)`：支持 `*core.Context` 和 SDK `*EventContext`。
 - `Event.UnmarshalJSON`
 - `Event.Normalize() *core.Event`
 - `Sender`
@@ -663,8 +665,8 @@ Options：
 
 通用调用：
 
-- `ClientFrom`
-- `MustClient`
+- `ClientFrom(c any) (*Client, bool)`：支持 `*core.Context` 和 SDK `*EventContext`。
+- `MustClient(c any) *Client`
 - `CallRaw`
 - `Call`
 - `Send`

@@ -29,7 +29,7 @@ core 不依赖 sdk、app/host、cmd
 
 - 命令解析、用户输出、调用 Go 工具链。
 - `init` 创建最终用户工作目录。
-- `run` 直接按 `anybot.yaml` 运行基础框架。
+- `run` 按 `anybot.yaml` 运行；启用外部插件时自动走生成宿主。
 - `build` 生成并构建包含外部插件的宿主。
 - `up` 构建、同步、检查并运行生成宿主。
 - `plugin *` 管理外部插件和插件配置。
@@ -115,7 +115,7 @@ core 不依赖 sdk、app/host、cmd
 4. `host.InstallPlugins` 按配置安装注册表中的插件。
 5. `app.Run` 启动生命周期、任务、观察者、适配器和事件调度。
 
-`anybot run` 使用的是基础 `anybot` 二进制，因此它只能加载基础二进制里已经注册的插件。外部插件需要 `anybot build` 或 `anybot up` 生成新的宿主。
+`anybot run` 会先读取插件锁；没有已启用外部插件时直接用基础二进制运行，发现已启用外部插件时自动走生成宿主流程。自定义 `-config` 文件名目前只能使用基础二进制路径，因为生成宿主固定读取工作目录中的 `anybot.yaml`。
 
 `anybot build`
 

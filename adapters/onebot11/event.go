@@ -78,12 +78,33 @@ type Event struct {
 }
 
 // EventFrom 从 AnyBot 上下文提取 OneBot v11 原始事件。
-func EventFrom(c *core.Context) (*Event, bool) {
-	if c == nil {
+//
+// c 可以是 *core.Context，也可以是 SDK 的 *sdk.EventContext 这类暴露
+// UnsafeCoreContext() *core.Context 的上下文。
+func EventFrom(c any) (*Event, bool) {
+	coreCtx := coreContextFrom(c)
+	if coreCtx == nil {
 		return nil, false
 	}
-	event, ok := c.RawEvent().(*Event)
+	event, ok := coreCtx.RawEvent().(*Event)
 	return event, ok
+}
+
+type unsafeCoreContexter interface {
+	UnsafeCoreContext() *core.Context
+}
+
+func coreContextFrom(c any) *core.Context {
+	switch ctx := c.(type) {
+	case nil:
+		return nil
+	case *core.Context:
+		return ctx
+	case unsafeCoreContexter:
+		return ctx.UnsafeCoreContext()
+	default:
+		return nil
+	}
 }
 
 // UnmarshalJSON 保留未知字段，并同时接受数组消息与 CQ 字符串消息。

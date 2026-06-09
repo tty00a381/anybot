@@ -34,7 +34,10 @@ func renderPluginHost(dir string, lock PluginLock, force bool) error {
 	if err := writeGenerated(filepath.Join(dir, generatedMain), renderMain(), force); err != nil {
 		return err
 	}
-	return writeIfMissing(filepath.Join(dir, "go.mod"), "module "+lock.Module+"\n\ngo 1.24\n")
+	if force {
+		return writeGeneratedGoMod(filepath.Join(dir, "go.mod"), renderGoMod(lock))
+	}
+	return writeGeneratedGoModIfMissing(filepath.Join(dir, "go.mod"), renderGoMod(lock))
 }
 
 func renderPlugins(lock PluginLock) string {
@@ -62,6 +65,11 @@ func renderPlugins(lock PluginLock) string {
 
 func renderMain() string {
 	return mustFormat(executeTemplate(mainTemplate, nil))
+}
+
+func renderGoMod(lock PluginLock) string {
+	lock.applyDefaults()
+	return generatedHeader + "\n\nmodule " + lock.Module + "\n\ngo 1.24\n"
 }
 
 func executeTemplate(src string, data any) string {

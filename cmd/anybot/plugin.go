@@ -142,7 +142,7 @@ func runPluginAdd(args []string) (err error) {
 	if changed {
 		fmt.Fprintf(stdout, "配置已添加：%s（默认禁用）\n", pluginConfigDisplayPath(configPath, item.ID))
 	}
-	printNextSteps(*dir, "anybot plugin enable "+host.ShortPluginID(item.ID), "anybot up")
+	printNextSteps(*dir, "anybot plugin enable "+host.ShortPluginID(item.ID), "anybot run")
 	committed = true
 	return nil
 }

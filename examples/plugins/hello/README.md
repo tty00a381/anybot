@@ -2,7 +2,7 @@
 
 最小 AnyBot SDK 插件示例：注册一个命令，读取 typed config，并回复一条文本。
 
-本地测试：
+在仓库根目录本地测试：
 
 ```sh
 go test ./examples/plugins/hello

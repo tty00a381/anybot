@@ -104,7 +104,7 @@ cd ../mybot
 anybot plugin add github.com/acme/anybot-hello -replace ../anybot-hello
 anybot plugin status
 anybot plugin enable <id>
-anybot up
+anybot run
 ```
 
 构建后用生成的二进制做最终检查：
@@ -115,7 +115,7 @@ anybot up
 ./anybot-bot plugin inspect <id>
 ```
 
-原因是基础 `anybot` 二进制不能预先知道你的外部插件。`anybot up` 构建出的 `anybot-bot` 才包含完整插件注册表。
+原因是基础 `anybot` 二进制不能预先知道你的外部插件。`anybot run` 会在启用外部插件后自动构建并运行包含完整插件注册表的 `anybot-bot`；也可以显式执行 `anybot up`。
 
 ## 配置模型
 
@@ -266,7 +266,7 @@ state.Count++
 return absdk.UserState[State](ctx, c, "state").Save(state, time.Hour)
 ```
 
-读改写可以用 `Update` 收束成一次状态操作：
+读改写可以用 `Update` 简化成一个调用；它不提供跨事件原子性，高并发计数、积分或库存这类强一致状态应使用插件自管数据库或 `DataDir()`：
 
 ```go
 state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour, func(state *State) error {
@@ -279,7 +279,7 @@ state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour,
 
 - `absdk.ConversationState[T](ctx, c, "key")`：自然会话 typed 状态。
 - `absdk.UserState[T](ctx, c, "key")`：用户维度 typed 状态。
-- `absdk.GroupState[T](ctx, c, "key")`：群或频道维度 typed 状态。
+- `absdk.GroupState[T](ctx, c, "key")`：群或频道维度 typed 状态；只在 `Group()` 规则或确认 `c.GroupID() != ""` 后使用，避免非群消息落入共享 fallback。
 - `absdk.NamedState[T](ctx, c, "key", "scope")`：插件自定义维度 typed 状态。
 - `ctx.Session(c)`：自然会话。群里按群和用户区分，私聊按用户区分。
 - `ctx.UserSession(c)`：用户维度。
@@ -380,7 +380,7 @@ runtime.data_dir/plugins/<PluginID>/
 
 ```go
 if ctx.Config().Available() {
-	err := ctx.Config().Set(c.Context, "command", "hello")
+	err := ctx.Config().Set(c.Context(), "command", "hello")
 	if err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ if ctx.Config().Available() {
 批量写入：
 
 ```go
-err := ctx.Config().SetAll(c.Context,
+err := ctx.Config().SetAll(c.Context(),
 	absdk.ConfigAssignment{Path: []string{"city", "default"}, Value: "Shanghai"},
 	absdk.ConfigAssignment{Path: []string{"reply", "suffix"}, Value: "今天也要开心。"},
 )
@@ -399,7 +399,7 @@ err := ctx.Config().SetAll(c.Context,
 重置字段：
 
 ```go
-err := ctx.Config().Reset(c.Context, "city.default")
+err := ctx.Config().Reset(c.Context(), "city.default")
 ```
 
 写回能力只在运行框架注入配置存储时可用。测试或直接核心库嵌入场景可能不可用，要检查 `Available()` 或处理 `ErrConfigStoreUnavailable`。不要把高频状态、用户内容或大对象写进配置文件；这类数据应使用 `State` 或 `DataDir()`。
@@ -436,7 +436,7 @@ client, ok := onebot11.ClientFrom(c)
 if !ok {
 	return fmt.Errorf("需要 OneBot v11 客户端")
 }
-return client.SetGroupBan(c.Context, c.GroupID(), c.UserID(), 10*time.Minute)
+return client.SetGroupBan(c.Context(), c.GroupID(), c.UserID(), 10*time.Minute)
 ```
 
 常用动作：
@@ -471,6 +471,8 @@ if got := app.LastReplyText(); got != "hello" {
 	t.Fatalf("reply = %q", got)
 }
 ```
+
+`InstallDefault` 只适合默认配置安装测试；它不会注入 `PluginID`、配置写回或插件数据目录。测试 `State`、`Config()`、`DataDir()` 这类宿主能力时，使用 `InstallDefaultWith` 或 `sdk/testkit` 已经封装好的能力。
 
 群聊提及规则可以显式构造：
 

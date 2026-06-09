@@ -114,7 +114,7 @@ func runInit(args []string) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(*dir))
-	printNextSteps(*dir, "anybot doctor", "anybot up")
+	printNextSteps(*dir, "anybot doctor", "anybot run")
 	return nil
 }
 
@@ -181,6 +181,13 @@ func runHost(args []string) error {
 	if err != nil {
 		return err
 	}
+	if lockHasEnabledExternalPlugins(cfg, lock) {
+		dir := filepath.Dir(*configPath)
+		if filepath.Base(*configPath) != "anybot.yaml" {
+			return fmt.Errorf("已启用外部插件时 anybot run 需要使用工作目录中的 anybot.yaml；自定义配置请先执行 anybot build -dir %s 后运行生成宿主", cleanDisplayDir(dir))
+		}
+		return runGeneratedHost(generatedHostRunOptions{dir: dir, output: "anybot-bot"})
+	}
 	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
 	if err != nil {
 		return err
@@ -195,6 +202,23 @@ func runHost(args []string) error {
 		return err
 	}
 	return nil
+}
+
+func lockHasEnabledExternalPlugins(cfg host.Config, lock host.PluginLock) bool {
+	for _, item := range lock.Plugins {
+		if item.Module == "" {
+			continue
+		}
+		entry, ok := cfg.Plugins[item.ID]
+		if ok && cliPluginEntryEnabled(entry) {
+			return true
+		}
+	}
+	return false
+}
+
+func cliPluginEntryEnabled(entry host.PluginEntry) bool {
+	return entry.Enabled == nil || *entry.Enabled
 }
 
 func writeFile(path, content string, force bool) error {
@@ -220,7 +244,7 @@ func withExternalPluginHint(err error, dir string) error {
 	}
 	for _, item := range lock.Plugins {
 		if item.ID == unknown.ID && item.Module != "" {
-			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
+			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot run/anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
 		}
 	}
 	return err

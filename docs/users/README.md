@@ -12,7 +12,7 @@ AnyBot 的最终用户入口是一个工作目录。你日常操作的是配置�
 - `plugins.d/<PluginID>.yaml`：插件配置。默认工作目录使用这种拆分配置，便于一个插件一个文件。
 - `anybot.lock`：插件安装锁，记录本地生成的 `PluginID` 以及内置来源或外部 module 来源。
 - `plugins.gen.go`、`main.go`、`go.mod`：AnyBot 生成的可构建宿主。不要手动改，日常用命令更新。
-- `.anybot/`：运行时数据，默认包含 `.anybot/store.json` 会话状态文件和插件私有数据目录。
+- `.anybot/`：运行时创建的数据目录，默认包含 `.anybot/store.json` 会话状态文件和插件私有数据目录。
 
 ## 初始化
 
@@ -44,7 +44,7 @@ ws://127.0.0.1:6700/
 anybot run
 ```
 
-装了外部插件，或者希望先同步配置、检查插件、构建完整框架时，使用：
+如果已经启用外部插件，`anybot run` 会自动构建并运行生成宿主。希望显式执行完整流程，或者需要跳过构建、同步、检查中的某一步时，使用：
 
 ```sh
 anybot up
@@ -340,10 +340,10 @@ anybot plugin inspect <id>
 anybot plugin enable <id>
 ```
 
-4. 构建、同步、检查、运行。
+4. 启动。启用外部插件后，`anybot run` 会自动构建、同步、检查并运行生成宿主。
 
 ```sh
-anybot up
+anybot run
 ```
 
 5. 如果要只检查不启动：
@@ -359,7 +359,7 @@ anybot build
 
 外部插件尚未构建到当前框架
 
-说明插件已经写入 `anybot.lock`，但当前运行的基础 `anybot` 二进制没有编进这个外部插件。执行 `anybot up`，或先 `anybot build` 后运行 `./anybot-bot plugin check`。
+说明插件已经写入 `anybot.lock`，但当前运行的基础 `anybot` 二进制没有编进这个外部插件。执行 `anybot run` 或 `anybot up`，也可以先 `anybot build` 后运行 `./anybot-bot plugin check`。
 
 unknown plugin
 

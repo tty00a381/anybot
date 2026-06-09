@@ -8,7 +8,7 @@
 - `RequireAdmin` 管理员权限。
 - `GroupState[T]` 群维度 typed state。
 
-本地测试：
+在仓库根目录本地测试：
 
 ```sh
 go test ./examples/plugins/groupmemo

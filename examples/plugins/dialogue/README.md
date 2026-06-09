@@ -8,7 +8,7 @@
 - `DialogueWithScope(DialogueScopeUser)` 用户维度对话。
 - `UserState[T]` typed state。
 
-本地测试：
+在仓库根目录本地测试：
 
 ```sh
 go test ./examples/plugins/dialogue

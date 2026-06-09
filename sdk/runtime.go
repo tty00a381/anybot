@@ -74,6 +74,8 @@ func Install(app *App, plugins ...Plugin) error {
 }
 
 // InstallDefault 使用插件定义的默认配置安装插件，主要供插件测试和嵌入式程序使用。
+// 它不会注入 PluginID、配置写回或插件数据目录；需要这些宿主能力时使用
+// InstallDefaultWith 或交给 anybot 运行框架安装。
 func InstallDefault(app *App, definitions ...Definition) error {
 	return InstallDefaultWith(app, Environment{}, definitions...)
 }

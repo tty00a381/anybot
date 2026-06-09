@@ -18,16 +18,20 @@ type Client struct {
 }
 
 // ClientFrom 从 AnyBot 上下文提取 OneBot v11 客户端。
-func ClientFrom(c *core.Context) (*Client, bool) {
-	if c == nil {
+//
+// c 可以是 *core.Context，也可以是 SDK 的 *sdk.EventContext 这类暴露
+// UnsafeCoreContext() *core.Context 的上下文。
+func ClientFrom(c any) (*Client, bool) {
+	coreCtx := coreContextFrom(c)
+	if coreCtx == nil {
 		return nil, false
 	}
-	client, ok := c.Client().(*Client)
+	client, ok := coreCtx.Client().(*Client)
 	return client, ok
 }
 
 // MustClient 从 AnyBot 上下文提取 OneBot v11 客户端；类型不匹配时 panic。
-func MustClient(c *core.Context) *Client {
+func MustClient(c any) *Client {
 	client, ok := ClientFrom(c)
 	if !ok {
 		panic("onebot11: context action client is not *onebot11.Client")

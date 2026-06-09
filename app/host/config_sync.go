@@ -12,7 +12,7 @@ func WritePluginConfigSyncSummary(w io.Writer, result PluginConfigSyncResult) er
 		return err
 	}
 	if len(result.Skipped) > 0 {
-		if _, err := fmt.Fprintf(w, "外部插件待构建：%s（anybot up 会同步默认配置）\n", strings.Join(result.Skipped, ", ")); err != nil {
+		if _, err := fmt.Fprintf(w, "外部插件待构建：%s（anybot run 会同步默认配置）\n", strings.Join(result.Skipped, ", ")); err != nil {
 			return err
 		}
 	}

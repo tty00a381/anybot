@@ -44,7 +44,8 @@ func UserState[T any](ctx *Context, event *EventContext, key string) State[T] {
 	return state
 }
 
-// GroupState 返回当前群或频道维度下的 typed 状态。
+// GroupState 返回当前群或频道维度下的 typed 状态。非群事件会落到共享 fallback；
+// 插件应只在群路由或确认 event.GroupID() 非空后使用。
 func GroupState[T any](ctx *Context, event *EventContext, key string) State[T] {
 	state := State[T]{event: event, key: key, err: validateStateKey(key)}
 	if ctx == nil || ctx.Store() == nil {
@@ -99,7 +100,8 @@ func (s State[T]) LoadOr(fallback T) (T, error) {
 	return value, nil
 }
 
-// Update 读取状态，交给 update 原地修改后再写回。
+// Update 读取状态，交给 update 原地修改后再写回。该操作简化调用但不提供跨事件
+// 原子性；强一致计数、库存或积分应使用插件自管数据库。
 // 状态不存在时从 fallback 开始；ttl 大于 0 时，写回后的状态会在到期后失效。
 func (s State[T]) Update(fallback T, ttl time.Duration, update func(*T) error) (T, error) {
 	value, err := s.LoadOr(fallback)
