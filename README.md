@@ -10,13 +10,14 @@ AnyBot 是一个面向 Go 插件作者的聊天机器人框架。普通插件只
 
 ```sh
 go install github.com/tty00a381/anybot/cmd/anybot@latest
-mkdir my-bot
-anybot init -dir my-bot
-cd my-bot
+anybot init mybot
+cd mybot
 export ONEBOT_ACCESS_TOKEN=你的令牌
 anybot doctor
 anybot run
 ```
+
+不带目录运行 `anybot init` 时会默认创建 `mybot`；要在当前目录初始化，使用 `anybot init .`。
 
 协议端连接 `ws://127.0.0.1:6700/`，并填写同一个访问令牌。
 
@@ -51,10 +52,10 @@ var Plugin = sdk.Define(sdk.Spec[Config]{
 本地装进机器人工作目录：
 
 ```sh
-anybot plugin add github.com/you/anybot-hello -replace ../anybot-hello -dir ../my-bot
-anybot plugin status -dir ../my-bot
-anybot plugin enable <id> -dir ../my-bot
-anybot up -dir ../my-bot
+anybot plugin add github.com/you/anybot-hello -replace ../anybot-hello -dir ../mybot
+anybot plugin status -dir ../mybot
+anybot plugin enable <id> -dir ../mybot
+anybot up -dir ../mybot
 ```
 
 `anybot up` 会构建带外部插件的生成宿主，同步默认配置，检查配置，然后运行。

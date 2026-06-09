@@ -8,10 +8,11 @@
 
 ```sh
 go install github.com/tty00a381/anybot/cmd/anybot@latest
-mkdir my-bot
-anybot init -dir my-bot
-cd my-bot
+anybot init mybot
+cd mybot
 ```
+
+不带目录运行 `anybot init` 时，会默认创建 `mybot`；要在当前目录初始化，使用 `anybot init .`。
 
 配置协议端连接：
 

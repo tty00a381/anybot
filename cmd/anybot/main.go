@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/tty00a381/anybot/app/host"
@@ -23,6 +24,8 @@ type initFile struct {
 	name    string
 	content string
 }
+
+const defaultInitDir = "mybot"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -66,10 +69,30 @@ func run(args []string) error {
 
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "目标目录")
+	dir := fs.String("dir", "", "目标目录")
 	force := fs.Bool("force", false, "覆盖已有文件")
-	if err := fs.Parse(args); err != nil {
+	dirArg, flagArgs, err := splitInitArgs(args)
+	if err != nil {
 		return err
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	dirSet := false
+	fs.Visit(func(flag *flag.Flag) {
+		if flag.Name == "dir" {
+			dirSet = true
+		}
+	})
+	targetDir := defaultInitDir
+	if dirArg != "" {
+		targetDir = dirArg
+	}
+	if dirSet {
+		if dirArg != "" {
+			return fmt.Errorf("anybot init 不能同时指定目录参数和 -dir")
+		}
+		targetDir = *dir
 	}
 	files := []initFile{
 		{name: "anybot.yaml", content: defaultConfig},
@@ -77,33 +100,33 @@ func runInit(args []string) error {
 		{name: ".env.example", content: "ONEBOT_ACCESS_TOKEN=\n"},
 		{name: "README.md", content: defaultReadme},
 	}
-	if err := checkInitFiles(*dir, files, *force); err != nil {
+	if err := checkInitFiles(targetDir, files, *force); err != nil {
 		return err
 	}
-	if err := host.CheckGeneratedHostWritable(*dir, *force); err != nil {
+	if err := host.CheckGeneratedHostWritable(targetDir, *force); err != nil {
 		return err
 	}
-	if err := checkInitDir(*dir, "plugins.d"); err != nil {
+	if err := checkInitDir(targetDir, "plugins.d"); err != nil {
 		return err
 	}
 	if *force {
-		if err := os.RemoveAll(filepath.Join(*dir, "plugins.d")); err != nil {
+		if err := os.RemoveAll(filepath.Join(targetDir, "plugins.d")); err != nil {
 			return err
 		}
 	}
 	for _, file := range files {
-		if err := writeFile(filepath.Join(*dir, file.name), file.content, *force); err != nil {
+		if err := writeFile(filepath.Join(targetDir, file.name), file.content, *force); err != nil {
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(*dir, "plugins.d"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(targetDir, "plugins.d"), 0o755); err != nil {
 		return err
 	}
 	lock, err := host.NewDefaultPluginLock()
 	if err != nil {
 		return err
 	}
-	if err := host.SavePluginLock(filepath.Join(*dir, host.PluginLockFile), lock); err != nil {
+	if err := host.SavePluginLock(filepath.Join(targetDir, host.PluginLockFile), lock); err != nil {
 		return err
 	}
 	for _, item := range lock.Plugins {
@@ -111,16 +134,46 @@ func runInit(args []string) error {
 		if content == "" {
 			continue
 		}
-		if err := writeFile(filepath.Join(*dir, "plugins.d", item.ID+".yaml"), content, *force); err != nil {
+		if err := writeFile(filepath.Join(targetDir, "plugins.d", item.ID+".yaml"), content, *force); err != nil {
 			return err
 		}
 	}
-	if _, err := host.EnsurePluginHostForce(*dir, *force); err != nil {
+	if _, err := host.EnsurePluginHostForce(targetDir, *force); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(*dir))
-	printNextSteps(*dir, "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot doctor", "anybot run")
+	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(targetDir))
+	printNextSteps(targetDir, "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot doctor", "anybot run")
 	return nil
+}
+
+func splitInitArgs(args []string) (string, []string, error) {
+	var dir string
+	var flagArgs []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-dir" || arg == "--dir":
+			if i+1 >= len(args) {
+				return "", nil, fmt.Errorf("%s 需要值", arg)
+			}
+			flagArgs = append(flagArgs, arg, args[i+1])
+			i++
+		case strings.HasPrefix(arg, "-dir=") || strings.HasPrefix(arg, "--dir="):
+			flagArgs = append(flagArgs, arg)
+		case arg == "-force" || arg == "--force":
+			flagArgs = append(flagArgs, arg)
+		case strings.HasPrefix(arg, "-force=") || strings.HasPrefix(arg, "--force="):
+			flagArgs = append(flagArgs, arg)
+		case strings.HasPrefix(arg, "-"):
+			flagArgs = append(flagArgs, arg)
+		default:
+			if dir != "" {
+				return "", nil, fmt.Errorf("只能指定一个初始化目录")
+			}
+			dir = arg
+		}
+	}
+	return dir, flagArgs, nil
 }
 
 func cleanDisplayDir(dir string) string {

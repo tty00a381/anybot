@@ -4,7 +4,7 @@ import "fmt"
 
 func usage() {
 	fmt.Fprintln(stdout, `anybot 命令：
-  anybot init [-dir 目录] [-force]
+  anybot init [目录] [-dir 目录] [-force]
   anybot run [-dir 目录|-config anybot.yaml]
   anybot doctor [-config anybot.yaml] [-connect]
   anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]

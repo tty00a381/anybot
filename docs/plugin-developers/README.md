@@ -68,12 +68,12 @@ func TestPlugin(t *testing.T) {
 ## 5. 本地安装
 
 ```sh
-anybot plugin add github.com/you/anybot-weather -replace ../anybot-weather -dir ../my-bot
-anybot plugin status -dir ../my-bot
-anybot plugin inspect <id> -dir ../my-bot
-anybot plugin config <id> command=weather -dir ../my-bot
-anybot plugin enable <id> -dir ../my-bot
-anybot up -dir ../my-bot
+anybot plugin add github.com/you/anybot-weather -replace ../anybot-weather -dir ../mybot
+anybot plugin status -dir ../mybot
+anybot plugin inspect <id> -dir ../mybot
+anybot plugin config <id> command=weather -dir ../mybot
+anybot plugin enable <id> -dir ../mybot
+anybot up -dir ../mybot
 ```
 
 基础 CLI 在外部插件尚未构建前只知道安装锁，会提示“待构建”。`anybot up` 构建生成宿主后，`./anybot-bot plugin check` 会使用完整插件注册表做最终校验。
@@ -89,9 +89,9 @@ go list -m github.com/you/anybot-weather@v0.1.0
 别人安装固定版本：
 
 ```sh
-anybot plugin add github.com/you/anybot-weather@v0.1.0 -dir my-bot
-anybot plugin enable <id> -dir my-bot
-anybot up -dir my-bot
+anybot plugin add github.com/you/anybot-weather@v0.1.0 -dir mybot
+anybot plugin enable <id> -dir mybot
+anybot up -dir mybot
 ```
 
 ## 7. 何时导入协议包

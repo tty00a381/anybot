@@ -70,7 +70,7 @@ go run ./cmd/anybot dev plugin release-smoke \
 (cd "$tmp/plugin" && go test ./...)
 
 echo "==> generated bot workspace"
-go run ./cmd/anybot init -dir "$tmp/bot"
+go run ./cmd/anybot init "$tmp/bot"
 perl -0pi -e 's/listen: "127\.0\.0\.1:6700"/listen: "127.0.0.1:0"/' "$tmp/bot/anybot.yaml"
 go run ./cmd/anybot doctor -config "$tmp/bot/anybot.yaml"
 go run ./cmd/anybot plugin add example.com/anybot-release-smoke -replace "$tmp/plugin" -dir "$tmp/bot"

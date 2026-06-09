@@ -75,6 +75,60 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 	}
 }
 
+func TestRunInitAcceptsDirectoryArgument(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "bot")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"init", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已初始化 AnyBot 工作目录："+dir) ||
+		!strings.Contains(out.String(), "cd "+dir) {
+		t.Fatalf("init output:\n%s", out.String())
+	}
+	for _, name := range []string{"anybot.yaml", host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "plugins.d"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s was not generated: %v", name, err)
+		}
+	}
+}
+
+func TestRunInitDefaultsToMybotDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"init"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已初始化 AnyBot 工作目录：mybot") ||
+		!strings.Contains(out.String(), "cd mybot") {
+		t.Fatalf("init output:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "mybot", "anybot.yaml")); err != nil {
+		t.Fatalf("default mybot directory was not generated: %v", err)
+	}
+}
+
+func TestRunInitRejectsDirectoryArgumentWithDirFlag(t *testing.T) {
+	err := run([]string{"init", "bot", "-dir", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "不能同时指定目录参数和 -dir") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRunInitAcceptsEqualsFlagsWithDirectoryArgument(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "bot")
+	if err := run([]string{"init", dir, "--force=true"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "anybot.yaml")); err != nil {
+		t.Fatalf("bot directory was not generated: %v", err)
+	}
+}
+
 func TestRunInitRejectsUnmanagedGeneratedFilesWithoutPartialWrite(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
@@ -103,7 +157,7 @@ func TestRunInitForceTakesOverGeneratedHostFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "plugins.d", cmdTestGhostID+".yaml"), []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := run([]string{"init", "-dir", dir, "-force"}); err != nil {
+	if err := run([]string{"init", dir, "-force"}); err != nil {
 		t.Fatal(err)
 	}
 	mainGo := readTestFile(t, filepath.Join(dir, "main.go"))
