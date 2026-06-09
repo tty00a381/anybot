@@ -262,7 +262,7 @@ func withExternalPluginHint(err error, dir string) error {
 	}
 	for _, item := range lock.Plugins {
 		if item.ID == unknown.ID && item.Module != "" {
-			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot run/anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
+			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
 		}
 	}
 	return err

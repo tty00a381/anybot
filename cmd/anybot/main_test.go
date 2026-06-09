@@ -63,8 +63,8 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 		}
 	}
 	readme := readTestFile(t, filepath.Join(dir, "README.md"))
-	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0\nanybot plugin status\nanybot plugin enable <id>\nanybot run") {
-		t.Fatalf("README should run external plugins through anybot run:\n%s", readme)
+	if !strings.Contains(readme, "anybot plugin add github.com/acme/anybot-weather@v0.1.0\nanybot plugin status\nanybot plugin enable <id>\nanybot up") {
+		t.Fatalf("README should run external plugins through anybot up:\n%s", readme)
 	}
 	out.Reset()
 	if err := run([]string{"plugins"}); err != nil {
@@ -280,7 +280,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -replace "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin status -dir <机器人工作目录>") ||
 		!strings.Contains(out.String(), "anybot plugin enable <id> -dir <机器人工作目录>") ||
-		!strings.Contains(out.String(), "anybot run -dir <机器人工作目录>") {
+		!strings.Contains(out.String(), "anybot up -dir <机器人工作目录>") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
@@ -313,6 +313,7 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "已生成独立插件模块：hello-world (example.com/anybot-plugin/hello-world)") ||
+		!strings.Contains(out.String(), "当前 module 是示例路径") ||
 		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
@@ -456,7 +457,7 @@ func TestRunPluginAddAndList(t *testing.T) {
 		!strings.Contains(out.String(), "下一步：") ||
 		!strings.Contains(out.String(), "cd "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin enable "+shortID) ||
-		!strings.Contains(out.String(), "anybot run") {
+		!strings.Contains(out.String(), "anybot up") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, "plugins.gen.go")); err != nil {

@@ -11,7 +11,8 @@
 //		Config{Command: "hello"},
 //		func(ctx *sdk.Context, cfg Config) error {
 //			ctx.Command(cfg.Command).Handle(func(c *sdk.EventContext) error {
-//				return c.ReplyText("hello")
+//				_, err := c.ReplyText("hello")
+//				return err
 //			})
 //			return nil
 //		},

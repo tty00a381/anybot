@@ -167,6 +167,9 @@ func modulePathName(name string) string {
 }
 
 func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
+	if strings.HasPrefix(result.Module, "example.com/anybot-plugin/") {
+		fmt.Fprintln(stdout, "提示：当前 module 是示例路径；发布或发给别人安装前，请用 -module github.com/<you>/<repo> 生成真实模块路径。")
+	}
 	fmt.Fprintln(stdout, "测试插件：")
 	if clean := cleanDisplayDir(dir); clean != "." {
 		fmt.Fprintf(stdout, "  cd %s\n", shellQuote(clean))
@@ -182,7 +185,7 @@ func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
 		fmt.Fprintf(stdout, "  anybot plugin add %s -replace %s -dir <机器人工作目录>\n", result.Module, shellQuote(absDir))
 		fmt.Fprintln(stdout, "  anybot plugin status -dir <机器人工作目录>")
 		fmt.Fprintln(stdout, "  anybot plugin enable <id> -dir <机器人工作目录>")
-		fmt.Fprintln(stdout, "  anybot run -dir <机器人工作目录>")
+		fmt.Fprintln(stdout, "  anybot up -dir <机器人工作目录>")
 	}
 }
 

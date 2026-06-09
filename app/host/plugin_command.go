@@ -145,7 +145,7 @@ func writePluginConfigChangeResult(output io.Writer, configPath string, registry
 		if sync.Changed {
 			fmt.Fprintln(output, "默认配置已同步：1 项更新")
 		} else if !sync.Available {
-			fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot run 会完成）\n", id)
+			fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", id)
 		}
 		return nil
 	}
@@ -177,7 +177,7 @@ func writePluginEnabledResult(output io.Writer, configPath string, registry absd
 	if result.Changed {
 		fmt.Fprintln(output, "默认配置已同步：1 项更新")
 	} else if !result.Available {
-		fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot run 会完成）\n", id)
+		fmt.Fprintf(output, "默认配置待构建同步：%s（重新运行 anybot up 会完成）\n", id)
 	}
 	return nil
 }
