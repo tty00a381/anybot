@@ -22,13 +22,13 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "hello_example", Version: "0.1.0", Description: "最小命令插件示例"},
-	Config{
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: "hello_example", Version: "0.1.0", Description: "最小命令插件示例"},
+	DefaultConfig: Config{
 		Command:  "hello",
 		Greeting: "你好，我是 AnyBot 插件。",
 	},
-	func(ctx *absdk.Context, cfg Config) error {
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).
 			Name("command").
 			Handle(func(c *absdk.EventContext) error {
@@ -37,4 +37,4 @@ var Plugin = absdk.Define(
 			})
 		return nil
 	},
-)
+})

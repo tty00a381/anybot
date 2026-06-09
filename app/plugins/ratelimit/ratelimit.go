@@ -31,14 +31,14 @@ func (cfg Config) window() (time.Duration, error) {
 	return window, nil
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "ratelimit", Version: "1.0.0", Description: "会话限速中间件"},
-	Config{Limit: 5, Window: "1m"},
-	func(ctx *absdk.Context, cfg Config) error {
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest:      absdk.Manifest{Name: "ratelimit", Version: "1.0.0", Description: "会话限速中间件"},
+	DefaultConfig: Config{Limit: 5, Window: "1m"},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		window, err := cfg.window()
 		if err != nil {
 			return err
 		}
 		return ctx.UseGlobal(absdk.RateLimit(cfg.Limit, window))
 	},
-)
+})

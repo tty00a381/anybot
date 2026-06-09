@@ -15,12 +15,16 @@ func TestDefinitionFactoryBuildsConfiguredPlugin(t *testing.T) {
 		Command string `yaml:"command"`
 	}
 	var called bool
-	definition := Define(Manifest{Name: "hello", Version: "1.0.0"}, config{Command: "hello"}, func(ctx *Context, cfg config) error {
-		ctx.Command(cfg.Command).Handle(func(*EventContext) error {
-			called = true
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "hello", Version: "1.0.0"},
+		DefaultConfig: config{Command: "hello"},
+		Setup: func(ctx *Context, cfg config) error {
+			ctx.Command(cfg.Command).Handle(func(*EventContext) error {
+				called = true
+				return nil
+			})
 			return nil
-		})
-		return nil
+		},
 	})
 	var node yaml.Node
 	if err := yaml.Unmarshal([]byte("command: hi\n"), &node); err != nil {
@@ -43,8 +47,12 @@ func TestDefinitionFactoryBuildsConfiguredPlugin(t *testing.T) {
 }
 
 func TestDefinitionIsNotInstallablePlugin(t *testing.T) {
-	definition := Define(Manifest{Name: "hello"}, struct{}{}, func(*Context, struct{}) error {
-		return nil
+	definition := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "hello"},
+		DefaultConfig: struct{}{},
+		Setup: func(*Context, struct{}) error {
+			return nil
+		},
 	})
 	if _, ok := any(definition).(Plugin); ok {
 		t.Fatal("plugin definition should be built before installation")
@@ -52,8 +60,12 @@ func TestDefinitionIsNotInstallablePlugin(t *testing.T) {
 }
 
 func TestDefinitionValidatesConfig(t *testing.T) {
-	definition := Define(Manifest{Name: "strict"}, validatingConfig{}, func(*Context, validatingConfig) error {
-		return nil
+	definition := Define(Spec[validatingConfig]{
+		Manifest:      Manifest{Name: "strict"},
+		DefaultConfig: validatingConfig{},
+		Setup: func(*Context, validatingConfig) error {
+			return nil
+		},
 	})
 	_, err := definition.Factory().Build(yaml.Node{})
 	if err == nil || err.Error() != "not ok" {
@@ -63,9 +75,13 @@ func TestDefinitionValidatesConfig(t *testing.T) {
 
 func TestManifestNameIsDisplayOnly(t *testing.T) {
 	var seen string
-	definition := Define(Manifest{Name: "天气/每日", Version: "1.0.0"}, struct{}{}, func(ctx *Context, _ struct{}) error {
-		seen = ctx.Manifest().Name
-		return nil
+	definition := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "天气/每日", Version: "1.0.0"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *Context, _ struct{}) error {
+			seen = ctx.Manifest().Name
+			return nil
+		},
 	})
 	plugin, err := definition.Factory().Build(yaml.Node{})
 	if err != nil {
@@ -94,8 +110,12 @@ func TestValidatePluginIDRequiresGeneratedIdentifier(t *testing.T) {
 
 func TestRegistryRejectsInvalidPluginID(t *testing.T) {
 	registry := NewRegistry()
-	definition := Define(Manifest{Name: "ok"}, struct{}{}, func(*Context, struct{}) error {
-		return nil
+	definition := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "ok"},
+		DefaultConfig: struct{}{},
+		Setup: func(*Context, struct{}) error {
+			return nil
+		},
 	})
 	if err := registry.Register(definition.Factory().WithPluginID("bad/name")); err == nil ||
 		!strings.Contains(err.Error(), `plugin id "bad/name" is invalid`) {
@@ -108,10 +128,14 @@ func TestDefinitionClonesDefaultConfig(t *testing.T) {
 		Tags []string `yaml:"tags"`
 	}
 	var seen []string
-	definition := Define(Manifest{Name: "clone"}, config{Tags: []string{"default"}}, func(_ *Context, cfg config) error {
-		seen = append(seen, cfg.Tags[0])
-		cfg.Tags[0] = "mutated"
-		return nil
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "clone"},
+		DefaultConfig: config{Tags: []string{"default"}},
+		Setup: func(_ *Context, cfg config) error {
+			seen = append(seen, cfg.Tags[0])
+			cfg.Tags[0] = "mutated"
+			return nil
+		},
 	})
 	for i := 0; i < 2; i++ {
 		plugin, err := definition.Factory().Build(yaml.Node{})
@@ -132,10 +156,14 @@ func TestFactoryWithPluginIDLeavesManifestUntouched(t *testing.T) {
 		Command string `yaml:"command"`
 	}
 	var contextName, contextID string
-	definition := Define(Manifest{Name: "weather", Version: "1.0.0"}, config{Command: "weather"}, func(ctx *Context, cfg config) error {
-		contextName = ctx.Manifest().Name
-		contextID = ctx.PluginID()
-		return nil
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "weather", Version: "1.0.0"},
+		DefaultConfig: config{Command: "weather"},
+		Setup: func(ctx *Context, cfg config) error {
+			contextName = ctx.Manifest().Name
+			contextID = ctx.PluginID()
+			return nil
+		},
 	})
 	factory := definition.Factory().WithPluginID(testPluginID)
 	if factory.Info.Name != "weather" || factory.PluginID != testPluginID || factory.Info.Version != "1.0.0" {
@@ -165,9 +193,13 @@ func TestDefinitionFactoryResolvesEnvConfig(t *testing.T) {
 	}
 	t.Setenv("ANYBOT_TEST_TOKEN", "secret-token")
 	var seen string
-	definition := Define(Manifest{Name: "secret"}, config{}, func(_ *Context, cfg config) error {
-		seen = cfg.Token
-		return nil
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "secret"},
+		DefaultConfig: config{},
+		Setup: func(_ *Context, cfg config) error {
+			seen = cfg.Token
+			return nil
+		},
 	})
 	var node yaml.Node
 	if err := yaml.Unmarshal([]byte("token: !env ANYBOT_TEST_TOKEN\n"), &node); err != nil {
@@ -189,8 +221,12 @@ func TestDefinitionFactoryRejectsMissingEnvConfig(t *testing.T) {
 	type config struct {
 		Token string `yaml:"token"`
 	}
-	definition := Define(Manifest{Name: "secret"}, config{}, func(*Context, config) error {
-		return nil
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "secret"},
+		DefaultConfig: config{},
+		Setup: func(*Context, config) error {
+			return nil
+		},
 	})
 	var node yaml.Node
 	if err := yaml.Unmarshal([]byte("token: !env ANYBOT_MISSING_TOKEN\n"), &node); err != nil {
@@ -203,8 +239,12 @@ func TestDefinitionFactoryRejectsMissingEnvConfig(t *testing.T) {
 }
 
 func TestInstallWrapsSetupError(t *testing.T) {
-	definition := Define(Manifest{Name: "broken"}, struct{}{}, func(*Context, struct{}) error {
-		return errors.New("boom")
+	definition := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "broken"},
+		DefaultConfig: struct{}{},
+		Setup: func(*Context, struct{}) error {
+			return errors.New("boom")
+		},
 	})
 	plugin, buildErr := definition.Build()
 	if buildErr != nil {

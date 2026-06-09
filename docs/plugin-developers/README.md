@@ -21,18 +21,20 @@ go test ./...
 普通插件只需要导出：
 
 ```go
-var Plugin = sdk.Define(
-	sdk.Manifest{Name: "weather", Version: "0.1.0", Description: "天气提醒"},
-	Config{Command: "weather"},
-	func(ctx *sdk.Context, cfg Config) error {
+var Plugin = sdk.Define(sdk.Spec[Config]{
+	Manifest: sdk.Manifest{Name: "weather", Version: "0.1.0", Description: "天气提醒"},
+	DefaultConfig: Config{Command: "weather"},
+	Setup: func(ctx *sdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).Handle(func(c *sdk.EventContext) error {
 			_, err := c.ReplyText("weather ok")
 			return err
 		})
 		return nil
 	},
-)
+})
 ```
+
+这段代码定义的是“插件类型”，不是某次运行实例。`Manifest` 是展示给宿主和用户看的插件信息；`DefaultConfig` 是第一次生成配置文件时使用的默认部署配置；`Setup` 是宿主完成配置解析后安装路由、状态、后台任务和对话流的逻辑入口。
 
 不要在普通插件里直接依赖 `core`。`sdk.Context` 已经提供命令、事件规则、回复、主动发送、后台任务、状态、数据目录、配置写回和对话流。
 

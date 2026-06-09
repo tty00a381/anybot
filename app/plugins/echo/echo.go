@@ -11,10 +11,10 @@ type Config struct {
 	Command string `yaml:"command"`
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "echo", Version: "1.0.0", Description: "复读命令"},
-	Config{Command: "echo"},
-	func(ctx *absdk.Context, cfg Config) error {
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest:      absdk.Manifest{Name: "echo", Version: "1.0.0", Description: "复读命令"},
+	DefaultConfig: Config{Command: "echo"},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).Name("command").Handle(func(c *absdk.EventContext) error {
 			text := strings.TrimSpace(c.Args())
 			if text == "" {
@@ -25,4 +25,4 @@ var Plugin = absdk.Define(
 		})
 		return nil
 	},
-)
+})

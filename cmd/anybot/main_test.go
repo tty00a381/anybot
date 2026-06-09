@@ -226,6 +226,9 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	}
 	plugin := readTestFile(t, filepath.Join(dir, "plugins", "hello_world", "hello_world.go"))
 	if !strings.Contains(plugin, "var Plugin = absdk.Define") ||
+		!strings.Contains(plugin, "absdk.Spec[Config]") ||
+		!strings.Contains(plugin, "DefaultConfig: Config") ||
+		!strings.Contains(plugin, "Setup: func") ||
 		!strings.Contains(plugin, "absdk.EventContext") ||
 		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
@@ -1798,17 +1801,17 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "weather", Version: "0.1.0"},
-	Config{Command: "weather"},
-	func(ctx *absdk.Context, cfg Config) error {
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: "weather", Version: "0.1.0"},
+	DefaultConfig: Config{Command: "weather"},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).Handle(func(c *absdk.EventContext) error {
 			_, err := c.ReplyText("sunny")
 			return err
 		})
 		return nil
 	},
-)
+})
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

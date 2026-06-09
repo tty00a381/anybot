@@ -35,17 +35,17 @@ go test ./...
 插件入口是导出的 `Plugin` 定义：
 
 ```go
-var Plugin = sdk.Define(
-	sdk.Manifest{Name: "hello", Version: "0.1.0"},
-	Config{Command: "hello"},
-	func(ctx *sdk.Context, cfg Config) error {
+var Plugin = sdk.Define(sdk.Spec[Config]{
+	Manifest: sdk.Manifest{Name: "hello", Version: "0.1.0"},
+	DefaultConfig: Config{Command: "hello"},
+	Setup: func(ctx *sdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).Handle(func(c *sdk.EventContext) error {
 			_, err := c.ReplyText("hello")
 			return err
 		})
 		return nil
 	},
-)
+})
 ```
 
 本地装进机器人工作目录：

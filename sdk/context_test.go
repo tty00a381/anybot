@@ -173,9 +173,13 @@ func TestInstallDefaultWithIDScopesEmbeddedPluginState(t *testing.T) {
 	type config struct {
 		Key string
 	}
-	plugin := Define(Manifest{Name: "memory"}, config{Key: "profile"}, func(ctx *Context, cfg config) error {
-		event := NewTestContext(&App{runtime: ctx.app}, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
-		return UserState[string](ctx, event, cfg.Key).Save(ctx.PluginID(), time.Hour)
+	plugin := Define(Spec[config]{
+		Manifest:      Manifest{Name: "memory"},
+		DefaultConfig: config{Key: "profile"},
+		Setup: func(ctx *Context, cfg config) error {
+			event := NewTestContext(&App{runtime: ctx.app}, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+			return UserState[string](ctx, event, cfg.Key).Save(ctx.PluginID(), time.Hour)
+		},
 	})
 	app := NewApp()
 	if err := InstallDefaultWithID(app, sdkTestFirstID, plugin); err != nil {
@@ -401,17 +405,17 @@ func TestContextGoWhenActionReadyRunsAfterAdapterReady(t *testing.T) {
 	adapter := &sdkStatefulAdapter{started: make(chan struct{})}
 	app := NewApp(WithAdapter(adapter))
 	task := make(chan error, 1)
-	plugin := Define(
-		Manifest{Name: "proactive"},
-		struct{}{},
-		func(ctx *Context, _ struct{}) error {
+	plugin := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "proactive"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *Context, _ struct{}) error {
 			ctx.GoWhenActionReady("welcome", func(ctx context.Context) error {
 				task <- ctx.Err()
 				return nil
 			})
 			return nil
 		},
-	)
+	})
 	if err := InstallDefault(app, plugin); err != nil {
 		t.Fatal(err)
 	}

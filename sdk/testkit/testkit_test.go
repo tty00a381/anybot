@@ -11,17 +11,17 @@ import (
 )
 
 func TestAppDispatchRecordsReplies(t *testing.T) {
-	plugin := sdk.Define(
-		sdk.Manifest{Name: "hello"},
-		struct{}{},
-		func(ctx *sdk.Context, _ struct{}) error {
+	plugin := sdk.Define(sdk.Spec[struct{}]{
+		Manifest:      sdk.Manifest{Name: "hello"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *sdk.Context, _ struct{}) error {
 			ctx.Command("hello").Handle(func(c *sdk.EventContext) error {
 				_, err := c.ReplyText(c.UserID() + ":" + c.GroupID())
 				return err
 			})
 			return nil
 		},
-	)
+	})
 	app := NewApp()
 	if err := app.InstallDefault(plugin); err != nil {
 		t.Fatal(err)
@@ -43,17 +43,17 @@ func TestAppDispatchRecordsReplies(t *testing.T) {
 }
 
 func TestDispatchTextSupportsMentionRules(t *testing.T) {
-	plugin := sdk.Define(
-		sdk.Manifest{Name: "mention"},
-		struct{}{},
-		func(ctx *sdk.Context, _ struct{}) error {
+	plugin := sdk.Define(sdk.Spec[struct{}]{
+		Manifest:      sdk.Manifest{Name: "mention"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *sdk.Context, _ struct{}) error {
 			ctx.OnMessage(sdk.ToMe()).Handle(func(c *sdk.EventContext) error {
 				_, err := c.ReplyText("mentioned")
 				return err
 			})
 			return nil
 		},
-	)
+	})
 	app := NewApp()
 	if err := app.InstallDefault(plugin); err != nil {
 		t.Fatal(err)
@@ -85,10 +85,10 @@ func TestAppProvidesHostCapabilities(t *testing.T) {
 	store := &configStore{}
 	root := t.TempDir()
 	pluginID := "plg_bbbbbbbbbbbbbbbbbbbbbbbbbb"
-	plugin := sdk.Define(
-		sdk.Manifest{Name: "hosted"},
-		struct{}{},
-		func(ctx *sdk.Context, _ struct{}) error {
+	plugin := sdk.Define(sdk.Spec[struct{}]{
+		Manifest:      sdk.Manifest{Name: "hosted"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *sdk.Context, _ struct{}) error {
 			dir, err := ctx.DataDir()
 			if err != nil {
 				return err
@@ -98,7 +98,7 @@ func TestAppProvidesHostCapabilities(t *testing.T) {
 			}
 			return ctx.Config().Set(context.Background(), "command", "hosted")
 		},
-	)
+	})
 	app := NewApp(WithPluginID(pluginID), WithDataDir(root), WithConfigStore(store))
 	if err := app.InstallDefault(plugin); err != nil {
 		t.Fatal(err)

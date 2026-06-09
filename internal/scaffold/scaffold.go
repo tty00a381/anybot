@@ -471,10 +471,10 @@ func (cfg Config) Validate() error {
 //
 // 项目内直接安装多个有状态插件时，请用 absdk.InstallDefaultWithID 注入稳定
 // PluginID；通过 anybot plugin add 安装时，运行框架会自动生成并注入 PluginID。
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: {{printf "%q" .Manifest}}, Version: "0.1.0", Description: {{printf "%q" (printf "%s 插件" .DisplayName)}}},
-	Config{Command: {{printf "%q" .Command}}},
-	func(ctx *absdk.Context, cfg Config) error {
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: {{printf "%q" .Manifest}}, Version: "0.1.0", Description: {{printf "%q" (printf "%s 插件" .DisplayName)}}},
+	DefaultConfig: Config{Command: {{printf "%q" .Command}}},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).
 			Name("command").
 			Handle(func(c *absdk.EventContext) error {
@@ -483,7 +483,7 @@ var Plugin = absdk.Define(
 			})
 		return nil
 	},
-)
+})
 `
 
 const pluginTestFile = `package {{.Package}}

@@ -369,13 +369,13 @@ type Config struct {
 	Command string `+"`yaml:\"command\"`"+`
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "天气", Version: "1.0.0", Description: "天气插件"},
-	Config{Command: "weather"},
-	func(ctx *absdk.Context, cfg Config) error {
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: "天气", Version: "1.0.0", Description: "天气插件"},
+	DefaultConfig: Config{Command: "weather"},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		return nil
 	},
-)
+})
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -6,15 +6,15 @@
 //
 // 最小插件形态：
 //
-//	var Plugin = sdk.Define(
-//		sdk.Manifest{Name: "hello", Version: "1.0.0"},
-//		Config{Command: "hello"},
-//		func(ctx *sdk.Context, cfg Config) error {
+//	var Plugin = sdk.Define(sdk.Spec[Config]{
+//		Manifest:      sdk.Manifest{Name: "hello", Version: "1.0.0"},
+//		DefaultConfig: Config{Command: "hello"},
+//		Setup: func(ctx *sdk.Context, cfg Config) error {
 //			ctx.Command(cfg.Command).Handle(func(c *sdk.EventContext) error {
 //				_, err := c.ReplyText("hello")
 //				return err
 //			})
 //			return nil
 //		},
-//	)
+//	})
 package sdk

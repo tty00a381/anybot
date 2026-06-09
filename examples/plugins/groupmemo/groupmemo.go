@@ -28,15 +28,15 @@ type memoState struct {
 	Text string `json:"text"`
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "groupmemo_example", Version: "0.1.0", Description: "群便签插件示例"},
-	Config{
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: "groupmemo_example", Version: "0.1.0", Description: "群便签插件示例"},
+	DefaultConfig: Config{
 		ViewCommand:   "memo",
 		SetCommand:    "remember",
 		AllowedGroups: nil,
 		Admins:        nil,
 	},
-	func(ctx *absdk.Context, cfg Config) error {
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		groupRules := []absdk.Rule{absdk.Group(), absdk.AllowedGroups(cfg.AllowedGroups...)}
 
 		ctx.OnMessage(append(groupRules, absdk.CommandRule(cfg.ViewCommand))...).
@@ -72,4 +72,4 @@ var Plugin = absdk.Define(
 
 		return nil
 	},
-)
+})

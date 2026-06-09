@@ -75,6 +75,9 @@ func TestInitProjectAndPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(pluginData), "var Plugin = absdk.Define") ||
+		!strings.Contains(string(pluginData), "absdk.Spec[Config]") ||
+		!strings.Contains(string(pluginData), "DefaultConfig: Config") ||
+		!strings.Contains(string(pluginData), "Setup: func") ||
 		!strings.Contains(string(pluginData), "absdk.EventContext") ||
 		!strings.Contains(string(pluginData), "func (cfg Config) Validate() error") ||
 		!strings.Contains(string(pluginData), `Command string `+"`yaml:\"command\"`") ||
@@ -216,7 +219,10 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 	plugin := readFile(t, filepath.Join(dir, "hello_world.go"))
 	if strings.Contains(plugin, "github.com/tty00a381/anybot/core") ||
 		!strings.Contains(plugin, "absdk.Define") ||
+		!strings.Contains(plugin, "absdk.Spec[Config]") ||
 		!strings.Contains(plugin, `absdk.Manifest{Name: "hello-world"`) ||
+		!strings.Contains(plugin, `DefaultConfig: Config{Command: "hello_world"}`) ||
+		!strings.Contains(plugin, "Setup: func") ||
 		!strings.Contains(plugin, `ReplyText("hello-world 已启动")`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}
@@ -311,6 +317,7 @@ func TestGeneratedStandalonePluginKeepsNonASCIIDisplayName(t *testing.T) {
 	plugin := readFile(t, filepath.Join(dir, "plugin.go"))
 	if !strings.Contains(plugin, `absdk.Manifest{Name: "天气提醒"`) ||
 		!strings.Contains(plugin, `ReplyText("天气提醒 已启动")`) ||
+		!strings.Contains(plugin, "absdk.Spec[Config]") ||
 		!strings.Contains(plugin, `Config{Command: "plugin"}`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}

@@ -22,29 +22,39 @@ type Definition interface {
 // SetupFunc 是 typed config 插件的安装函数。
 type SetupFunc[T any] func(*Context, T) error
 
+// Spec 描述一个 typed config 插件定义。
+type Spec[T any] struct {
+	// Manifest 是插件展示信息；Name 不承担配置或状态命名空间职责。
+	Manifest Manifest
+
+	// DefaultConfig 是宿主首次同步插件配置时写入的默认部署配置。
+	DefaultConfig T
+
+	// Setup 是宿主解析配置后调用的安装入口。
+	Setup SetupFunc[T]
+}
+
 type typedDefinition[T any] struct {
-	Info    Manifest
-	Default T
-	SetupFn SetupFunc[T]
+	spec Spec[T]
 }
 
 // Define 创建 typed config 插件定义。
-func Define[T any](info Manifest, defaults T, setup SetupFunc[T]) Definition {
-	return typedDefinition[T]{Info: info, Default: defaults, SetupFn: setup}
+func Define[T any](spec Spec[T]) Definition {
+	return typedDefinition[T]{spec: spec}
 }
 
 // Manifest 返回插件清单。
 func (d typedDefinition[T]) Manifest() Manifest {
-	return d.Info
+	return d.spec.Manifest
 }
 
 // Factory 返回可供运行框架注册的插件工厂。
 func (d typedDefinition[T]) Factory() Factory {
 	return Factory{
-		Info:    d.Info,
-		Default: d.Default,
+		Info:    d.spec.Manifest,
+		Default: d.spec.DefaultConfig,
 		Build: func(node yaml.Node) (Plugin, error) {
-			cfg, err := cloneTypedConfig(d.Default)
+			cfg, err := cloneTypedConfig(d.spec.DefaultConfig)
 			if err != nil {
 				return nil, fmt.Errorf("default config: %w", err)
 			}
@@ -76,14 +86,14 @@ type configuredPlugin[T any] struct {
 }
 
 func (p configuredPlugin[T]) Manifest() Manifest {
-	return p.definition.Info
+	return p.definition.spec.Manifest
 }
 
 func (p configuredPlugin[T]) Setup(ctx *Context) error {
-	if p.definition.SetupFn == nil {
-		return fmt.Errorf("plugin %s setup function is required", p.definition.Info.Name)
+	if p.definition.spec.Setup == nil {
+		return fmt.Errorf("plugin %s setup function is required", p.definition.spec.Manifest.Name)
 	}
-	return p.definition.SetupFn(ctx, p.config)
+	return p.definition.spec.Setup(ctx, p.config)
 }
 
 func validateTypedConfig[T any](config T) error {

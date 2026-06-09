@@ -19,16 +19,24 @@ func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
 	disabled := false
 	var called bool
 	registry := absdk.NewRegistry()
-	help := absdk.Define(absdk.Manifest{Name: "help"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		ctx.Command("help").Handle(func(*absdk.EventContext) error {
-			called = true
+	help := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "help"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			ctx.Command("help").Handle(func(*absdk.EventContext) error {
+				called = true
+				return nil
+			})
 			return nil
-		})
-		return nil
+		},
 	})
-	echo := absdk.Define(absdk.Manifest{Name: "echo"}, struct{}{}, func(*absdk.Context, struct{}) error {
-		t.Fatal("disabled plugin should not be installed")
-		return nil
+	echo := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "echo"},
+		DefaultConfig: struct{}{},
+		Setup: func(*absdk.Context, struct{}) error {
+			t.Fatal("disabled plugin should not be installed")
+			return nil
+		},
 	})
 	if err := registry.Register(help.Factory().WithPluginID(testHelpID)); err != nil {
 		t.Fatal(err)
@@ -99,8 +107,12 @@ func TestNewAppDoesNotGrantGlobalMiddlewareToOrdinaryPlugins(t *testing.T) {
 		},
 	}
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "policy"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		return ctx.UseGlobal(absdk.Timeout(0))
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "policy"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			return ctx.UseGlobal(absdk.Timeout(0))
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
 		t.Fatal(err)
@@ -151,8 +163,12 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "minecraft"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		return ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "minecraft"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			return ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
 		t.Fatal(err)
@@ -189,8 +205,12 @@ func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "memory"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		return ctx.Config().Set(context.Background(), "state.path", "memory.db")
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			return ctx.Config().Set(context.Background(), "state.path", "memory.db")
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
@@ -398,9 +418,13 @@ func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
 	}
 	var installed bool
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "memory"}, struct{}{}, func(*absdk.Context, struct{}) error {
-		installed = true
-		return nil
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(*absdk.Context, struct{}) error {
+			installed = true
+			return nil
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
@@ -487,10 +511,14 @@ adapter:
 	}
 	var dataDir string
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "memory"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		var err error
-		dataDir, err = ctx.DataDir()
-		return err
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			var err error
+			dataDir, err = ctx.DataDir()
+			return err
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
@@ -527,10 +555,14 @@ func TestNewAppUsesPluginIDForDataDir(t *testing.T) {
 	}
 	var dataDir string
 	registry := absdk.NewRegistry()
-	module := absdk.Define(absdk.Manifest{Name: "minecraft"}, struct{}{}, func(ctx *absdk.Context, _ struct{}) error {
-		var err error
-		dataDir, err = ctx.DataDir()
-		return err
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "minecraft"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			var err error
+			dataDir, err = ctx.DataDir()
+			return err
+		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testAdminID)); err != nil {
 		t.Fatal(err)

@@ -47,14 +47,14 @@ type draftProfile struct {
 	Name string `json:"name"`
 }
 
-var Plugin = absdk.Define(
-	absdk.Manifest{Name: "dialogue_example", Version: "0.1.0", Description: "多轮对话插件示例"},
-	Config{
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: "dialogue_example", Version: "0.1.0", Description: "多轮对话插件示例"},
+	DefaultConfig: Config{
 		ProfileCommand: "profile",
 		SummaryCommand: "whoami",
 		TTL:            "10m",
 	},
-	func(ctx *absdk.Context, cfg Config) error {
+	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ttl, err := cfg.ttl()
 		if err != nil {
 			return err
@@ -112,4 +112,4 @@ var Plugin = absdk.Define(
 
 		return nil
 	},
-)
+})
