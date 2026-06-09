@@ -56,7 +56,7 @@ func runDevInit(args []string) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "已生成核心库项目：%s\n", cleanDisplayDir(*dir))
-	printNextSteps(*dir, "go mod tidy", "anybot dev doctor", "go run .")
+	printNextSteps(*dir, "go mod tidy", "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot dev doctor", "go run .")
 	return nil
 }
 

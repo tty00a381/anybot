@@ -15,7 +15,19 @@ RELEASE_FILES := \
 	core/app.go \
 	core/file_store.go \
 	app/host/app.go \
+	app/host/atomic.go \
+	app/host/builtins.go \
+	app/host/check.go \
+	app/host/config.go \
 	app/host/config_store.go \
+	app/host/config_sync.go \
+	app/host/config_update.go \
+	app/host/inspect.go \
+	app/host/plugin_command.go \
+	app/host/plugin_host_render.go \
+	app/host/plugin_lock.go \
+	app/host/plugin_lock_io.go \
+	app/host/status.go \
 	app/host/store.go \
 	adapters/onebot11/adapter.go \
 	adapters/onebot11/client.go \

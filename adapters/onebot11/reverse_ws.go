@@ -90,11 +90,16 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 	info.State = ConnectionConnected
 	s.opts.emitConnection(ctx, info)
 	s.opts.logger.Info("反向WS已连接")
+	closeNow := false
 	defer func() {
 		info.State = ConnectionDisconnected
 		s.opts.emitConnection(ctx, info)
 		s.peer.disconnectConn(conn, actionUnavailable("onebot11: reverse websocket disconnected"))
-		_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
+		if closeNow {
+			_ = conn.CloseNow()
+		} else {
+			_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
+		}
 	}()
 
 	for {
@@ -103,6 +108,7 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 			if errors.Is(err, websocket.ErrMessageTooBig) {
 				logFrameError(s.opts.logger, err)
 			}
+			closeNow = ctx.Err() == nil
 			return
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {

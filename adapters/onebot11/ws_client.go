@@ -81,11 +81,16 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 	info := ConnectionEvent{State: ConnectionConnected, Transport: "websocket", URL: c.url}
 	c.opts.emitConnection(ctx, info)
 	c.opts.logger.Info("正向WS已连接", "url", c.url)
+	closeNow := false
 	defer func() {
 		info.State = ConnectionDisconnected
 		c.opts.emitConnection(ctx, info)
 		c.peer.setConn(nil)
-		_ = conn.Close(websocket.StatusNormalClosure, "anybot reconnect")
+		if closeNow {
+			_ = conn.CloseNow()
+		} else {
+			_ = conn.Close(websocket.StatusNormalClosure, "anybot reconnect")
+		}
 		c.peer.failPending(actionUnavailable("onebot11: websocket disconnected"))
 	}()
 
@@ -95,6 +100,7 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 			if errors.Is(err, websocket.ErrMessageTooBig) {
 				logFrameError(c.opts.logger, err)
 			}
+			closeNow = ctx.Err() == nil
 			return err
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {

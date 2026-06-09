@@ -29,6 +29,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "已初始化 AnyBot 工作目录") ||
+		!strings.Contains(out.String(), "export ONEBOT_ACCESS_TOKEN=你的令牌") ||
 		!strings.Contains(out.String(), "anybot doctor") ||
 		!strings.Contains(out.String(), "anybot run") {
 		t.Fatalf("init output:\n%s", out.String())
@@ -166,6 +167,7 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "已生成核心库项目") ||
+		!strings.Contains(out.String(), "export ONEBOT_ACCESS_TOKEN=你的令牌") ||
 		!strings.Contains(out.String(), "anybot dev doctor") ||
 		!strings.Contains(out.String(), "go run .") {
 		t.Fatalf("dev init output:\n%s", out.String())

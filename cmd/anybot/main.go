@@ -114,7 +114,7 @@ func runInit(args []string) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(*dir))
-	printNextSteps(*dir, "anybot doctor", "anybot run")
+	printNextSteps(*dir, "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot doctor", "anybot run")
 	return nil
 }
 

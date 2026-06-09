@@ -162,6 +162,62 @@ func TestWebSocketClientReportsDisconnectedOnDialFailure(t *testing.T) {
 	}
 }
 
+func TestWebSocketClientReconnectsAfterOversizedMessage(t *testing.T) {
+	accepted := make(chan struct{}, 2)
+	events := make(chan *Event, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "done")
+		accepted <- struct{}{}
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"post_type":"message"}`))
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transport := newWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), newOptions([]Option{
+		WithMaxEventBytes(8),
+		WithReconnectInterval(10 * time.Millisecond),
+		WithReconnectMaxInterval(10 * time.Millisecond),
+	}))
+	errc := make(chan error, 1)
+	go func() {
+		errc <- transport.Start(ctx, func(_ context.Context, event *Event) error {
+			events <- event
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-errc:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("start err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not stop")
+		}
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-accepted:
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not reconnect after oversized message")
+		}
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("oversized event should not be dispatched: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestSocketPeerAcceptsStringRetCodeProbe(t *testing.T) {
 	peer := newSocketPeer(nil)
 	ch := make(chan pendingResult, 1)
