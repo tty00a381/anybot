@@ -32,22 +32,15 @@ config:
 	}
 }
 
-func TestLoadConfigIgnoresInlinePlugins(t *testing.T) {
+func TestLoadConfigRejectsInlinePlugins(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`plugins:
-  help:
-    enabled: true
-    config: {}
-`), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("plugins: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfig(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.Plugins) != 0 {
-		t.Fatalf("inline plugins should be ignored: %#v", cfg.Plugins)
+	_, err := LoadConfig(config)
+	if err == nil || !strings.Contains(err.Error(), "插件实例配置必须放在") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

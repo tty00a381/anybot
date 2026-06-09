@@ -368,6 +368,50 @@ func TestWaitActionReadyUsesAdapterState(t *testing.T) {
 	}
 }
 
+func TestGoWhenActionReadyRunsAfterAdapterReady(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	adapter := &fakeStatefulAdapter{started: make(chan struct{})}
+	app := New(WithAdapter(adapter), WithWorkers(0))
+	called := make(chan error, 1)
+	app.GoWhenActionReady("send-on-ready", func(ctx context.Context) error {
+		called <- ctx.Err()
+		return nil
+	})
+	errc := make(chan error, 1)
+	go func() {
+		errc <- app.Run(ctx)
+	}()
+	select {
+	case <-adapter.started:
+	case <-time.After(time.Second):
+		t.Fatal("adapter did not start")
+	}
+	select {
+	case err := <-called:
+		t.Fatalf("task ran before adapter was ready: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	adapter.emit(AdapterState{Protocol: testProtocol, Kind: AdapterStateReady, ActionReady: true})
+	select {
+	case err := <-called:
+		if err != nil {
+			t.Fatalf("task context err = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("task did not run after action ready")
+	}
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("run err = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run did not stop")
+	}
+}
+
 func TestCriticalTaskStopsRun(t *testing.T) {
 	app := New(WithAdapter(&fakeBlockingAdapter{}), WithWorkers(0))
 	app.Go("boom", func(context.Context) error {

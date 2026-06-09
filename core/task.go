@@ -65,6 +65,20 @@ func (a *App) Every(name string, interval time.Duration, fn TaskFunc, opts ...Ta
 	a.addTask(registeredTask{name: taskName(name), kind: taskEvery, interval: interval, fn: fn, options: applyTaskOptions(opts)})
 }
 
+// GoWhenActionReady 注册一个随 App 生命周期启动的后台任务。任务会先等待动作客户端
+// 可用，再调用 fn；适合启动后主动发送消息、恢复投递队列等需要动作通道的场景。
+func (a *App) GoWhenActionReady(name string, fn TaskFunc, opts ...TaskOption) {
+	if a == nil || fn == nil {
+		return
+	}
+	a.Go(name, func(ctx context.Context) error {
+		if err := a.WaitActionReady(ctx); err != nil {
+			return err
+		}
+		return fn(ctx)
+	}, opts...)
+}
+
 func (a *App) addTask(task registeredTask) {
 	a.taskMu.Lock()
 	a.tasks = append(a.tasks, task)

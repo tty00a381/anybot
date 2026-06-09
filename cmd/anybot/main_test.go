@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -218,7 +219,8 @@ func TestRunDevInitPluginAndDoctor(t *testing.T) {
 	if err := run([]string{"dev", "plugin", "hello-world", "-in-project", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成插件骨架：hello_world") ||
+	if !strings.Contains(out.String(), "已生成插件骨架：hello-world") ||
+		!strings.Contains(out.String(), "absdk.InstallDefaultWithID") ||
 		!strings.Contains(out.String(), "go test ./...") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
@@ -273,7 +275,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成独立插件模块：daily_weather (github.com/acme/anybot-weather)") ||
+	if !strings.Contains(out.String(), "已生成独立插件模块：daily-weather (github.com/acme/anybot-weather)") ||
 		!strings.Contains(out.String(), "go test ./...") ||
 		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -replace "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin status -dir <机器人工作目录>") ||
@@ -288,7 +290,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 		t.Fatalf("go.mod:\n%s", goMod)
 	}
 	plugin := readTestFile(t, filepath.Join(dir, "daily_weather.go"))
-	if !strings.Contains(plugin, `absdk.Manifest{Name: "daily_weather"`) ||
+	if !strings.Contains(plugin, `absdk.Manifest{Name: "daily-weather"`) ||
 		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}
@@ -310,7 +312,7 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 	if err := run([]string{"dev", "plugin", "hello-world", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成独立插件模块：hello_world (example.com/anybot-plugin/hello-world)") ||
+	if !strings.Contains(out.String(), "已生成独立插件模块：hello-world (example.com/anybot-plugin/hello-world)") ||
 		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
@@ -370,7 +372,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "0.0.0.0:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +400,6 @@ adapter:
     type: http
     url: "http://127.0.0.1:5700"
     listen: "0.0.0.0:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1624,11 +1624,48 @@ func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 	}
 }
 
-func TestRunDoctorHintsExternalLockPlugin(t *testing.T) {
+func TestRunDoctorSkipsGeneratedExternalPluginChecks(t *testing.T) {
 	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
 		if module != "github.com/acme/weather" || query != "latest" {
 			t.Fatalf("resolve %s@%s", module, query)
 		}
+		return "v1.2.3", nil
+	})
+	dir := t.TempDir()
+	out, errOut, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "add", "github.com/acme/weather", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	id := readOnlyPluginID(t, dir)
+	if err := run([]string{"plugin", "enable", host.ShortPluginID(id), "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errOut.Reset()
+	config := filepath.Join(dir, "anybot.yaml")
+	data := readTestFile(t, config)
+	data = strings.ReplaceAll(data, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
+	if err := os.WriteFile(config, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"doctor", "-config", config}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "传输：reverse_ws") ||
+		!strings.Contains(out.String(), "插件："+id) ||
+		!strings.Contains(out.String(), "外部插件：基础配置已检查") ||
+		!strings.Contains(out.String(), "anybot up -dir "+dir) ||
+		!strings.Contains(out.String(), "./anybot-bot plugin check") {
+		t.Fatalf("doctor output:\n%s", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("doctor stderr:\n%s", errOut.String())
+	}
+}
+
+func TestRunDoctorStillRejectsUnknownConfiguredPlugin(t *testing.T) {
+	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
 		return "v1.2.3", nil
 	})
 	dir := t.TempDir()
@@ -1641,11 +1678,15 @@ func TestRunDoctorHintsExternalLockPlugin(t *testing.T) {
 	if err := run([]string{"plugin", "enable", host.ShortPluginID(id), "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	err := run([]string{"doctor", "-config", filepath.Join(dir, "anybot.yaml")})
-	if err == nil {
-		t.Fatal("doctor should reject external plugin in base binary")
+	writeTestPluginConfig(t, dir, cmdTestGhostID, "enabled: true\nconfig: {}\n")
+	config := filepath.Join(dir, "anybot.yaml")
+	data := readTestFile(t, config)
+	data = strings.ReplaceAll(data, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
+	if err := os.WriteFile(config, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), id+" 是插件锁中的外部插件") || !strings.Contains(err.Error(), "anybot up") {
+	err := run([]string{"doctor", "-config", config})
+	if err == nil || !strings.Contains(err.Error(), "未知插件") || !strings.Contains(err.Error(), cmdTestGhostID) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1710,6 +1751,123 @@ func TestRunBuildSyncsPluginHostGoMod(t *testing.T) {
 	)
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestRunBuildGeneratedHostWithLocalPlugin(t *testing.T) {
+	anybotRoot, ok := detectModuleSourceRoot("github.com/tty00a381/anybot")
+	if !ok {
+		t.Fatal("cannot locate anybot source root")
+	}
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "cache")
+	modCacheDir := filepath.Join(root, "modcache")
+	pluginDir := filepath.Join(root, "weather-plugin")
+	botDir := filepath.Join(root, "bot")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "go.mod"), []byte(`module example.com/weather
+
+go 1.24.0
+
+require github.com/tty00a381/anybot v0.0.0
+
+replace github.com/tty00a381/anybot => `+filepath.ToSlash(anybotRoot)+`
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "weather.go"), []byte(`package weather
+
+import (
+	"fmt"
+	"strings"
+
+	absdk "github.com/tty00a381/anybot/sdk"
+)
+
+type Config struct {
+	Command string `+"`yaml:\"command\"`"+`
+}
+
+func (cfg Config) Validate() error {
+	if strings.TrimSpace(cfg.Command) == "" {
+		return fmt.Errorf("command is required")
+	}
+	return nil
+}
+
+var Plugin = absdk.Define(
+	absdk.Manifest{Name: "weather", Version: "0.1.0"},
+	Config{Command: "weather"},
+	func(ctx *absdk.Context, cfg Config) error {
+		ctx.Command(cfg.Command).Handle(func(c *absdk.EventContext) error {
+			_, err := c.ReplyText("sunny")
+			return err
+		})
+		return nil
+	},
+)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setTestFrameworkDependencies(t, []moduleDependency{{Module: "github.com/tty00a381/anybot", Version: "v0.0.0", Replace: anybotRoot}})
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	commandRunner = func(dir, name string, args ...string) error {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GOCACHE="+cacheDir,
+			"GOMODCACHE="+modCacheDir,
+			"GOFLAGS=-modcacherw",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if detail := strings.TrimSpace(string(out)); detail != "" {
+				return errors.Join(err, errors.New(detail))
+			}
+			return err
+		}
+		return nil
+	}
+	_, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"plugin", "add", "example.com/weather", "-replace", pluginDir, "-dir", botDir}); err != nil {
+		t.Fatal(err)
+	}
+	id := readOnlyPluginID(t, botDir)
+	if err := run([]string{"plugin", "enable", host.ShortPluginID(id), "-dir", botDir}); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(botDir, "anybot.yaml")
+	config := readTestFile(t, configPath)
+	config = strings.ReplaceAll(config, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"build", "-dir", botDir}); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(botDir, "anybot-bot")
+	check := exec.Command(binary, "plugin", "check")
+	check.Dir = botDir
+	out, err := check.CombinedOutput()
+	if err != nil {
+		t.Fatalf("plugin check failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), host.ShortPluginID(id)) || !strings.Contains(string(out), "可用") {
+		t.Fatalf("plugin check output:\n%s", out)
+	}
+	inspect := exec.Command(binary, "plugin", "inspect", host.ShortPluginID(id))
+	inspect.Dir = botDir
+	out, err = inspect.CombinedOutput()
+	if err != nil {
+		t.Fatalf("plugin inspect failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "名称：weather") ||
+		!strings.Contains(string(out), "command: weather") {
+		t.Fatalf("plugin inspect output:\n%s", out)
 	}
 }
 

@@ -202,6 +202,13 @@ func (c *Context) Every(name string, interval time.Duration, fn TaskFunc, opts .
 	}
 }
 
+// GoWhenActionReady 注册等待动作客户端可用后执行的生命周期托管后台任务。
+func (c *Context) GoWhenActionReady(name string, fn TaskFunc, opts ...TaskOption) {
+	if c != nil && c.app != nil {
+		c.app.GoWhenActionReady(scopedName(c.PluginID(), name), fn, opts...)
+	}
+}
+
 // OnStart 注册启动钩子，适配器启动前执行。
 func (c *Context) OnStart(hook Hook) {
 	if c != nil && c.app != nil {

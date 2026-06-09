@@ -129,7 +129,7 @@ func runDevPlugin(args []string) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "已生成插件骨架：%s\n", result.Name)
-	printNextSteps(*dir, "在 Go 入口中 import ./plugins/"+result.Package+" 并使用 absdk.InstallDefault(app, "+result.Package+".Plugin)", "go test ./...")
+	printNextSteps(*dir, "在 Go 入口中 import ./plugins/"+result.Package+" 并使用 absdk.InstallDefaultWithID(app, \"plg_aaaaaaaaaaaaaaaaaaaaaaaaaa\", "+result.Package+".Plugin)", "go test ./...")
 	return nil
 }
 

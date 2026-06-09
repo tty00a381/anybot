@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"unicode"
 
 	"golang.org/x/mod/modfile"
 	modmodule "golang.org/x/mod/module"
@@ -35,8 +36,8 @@ type PluginOptions struct {
 
 // PluginResult 描述插件脚手架写入结果。
 type PluginResult struct {
-	Name       string
-	Package    string
+	Name       string // 面向用户展示的插件名。
+	Package    string // 生成的 Go 包名和文件名前缀。
 	Module     string
 	Standalone bool
 	TestReady  bool
@@ -49,9 +50,9 @@ type scaffoldFile struct {
 }
 
 type pluginScaffoldData struct {
-	Name          string
 	Package       string
 	Manifest      string
+	DisplayName   string
 	Command       string
 	Module        string
 	AnyBotVersion string
@@ -112,10 +113,11 @@ func NewPlugin(opts PluginOptions) (PluginResult, error) {
 	}
 	opts.Module = strings.TrimSpace(opts.Module)
 	pkg := packageName(opts.Name)
+	displayName := pluginDisplayName(opts.Name, pkg)
 	data := pluginScaffoldData{
-		Name:          pkg,
 		Package:       pkg,
-		Manifest:      pkg,
+		Manifest:      displayName,
+		DisplayName:   displayName,
 		Command:       pkg,
 		Module:        opts.Module,
 		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
@@ -292,6 +294,34 @@ func packageName(name string) string {
 	return out
 }
 
+func pluginDisplayName(name, fallback string) string {
+	name = strings.TrimSpace(name)
+	var b strings.Builder
+	lastSep := false
+	for _, r := range name {
+		switch {
+		case r == '"' || r == '\\' || r < 0x20 || r == 0x7f:
+			if b.Len() > 0 && !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		case r == '_' || r == '-' || unicode.IsSpace(r):
+			if b.Len() > 0 && !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		default:
+			b.WriteRune(r)
+			lastSep = false
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return fallback
+	}
+	return out
+}
+
 const projectGoModFile = `module {{.Module}}
 
 go 1.24.0
@@ -405,7 +435,7 @@ anybot dev plugin hello -dir ../anybot-hello -module example.com/hello
 项目内插件导出 ` + "`Plugin`" + `，适合直接写 Go 入口时显式安装：
 
 ` + "```go" + `
-if err := absdk.InstallDefault(app, hello.Plugin); err != nil {
+if err := absdk.InstallDefaultWithID(app, "plg_aaaaaaaaaaaaaaaaaaaaaaaaaa", hello.Plugin); err != nil {
 	log.Fatal(err)
 }
 ` + "```" + `
@@ -424,12 +454,12 @@ import (
 	absdk "github.com/tty00a381/anybot/sdk"
 )
 
-// Config 配置 {{.Name}} 插件。
+// Config 配置 {{.DisplayName}} 插件。
 type Config struct {
 	Command string ` + "`yaml:\"command\"`" + `
 }
 
-// Validate 校验 {{.Name}} 插件配置。
+// Validate 校验 {{.DisplayName}} 插件配置。
 func (cfg Config) Validate() error {
 	if strings.TrimSpace(cfg.Command) == "" {
 		return fmt.Errorf("command 不能为空")
@@ -437,15 +467,18 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
-// Plugin 是 {{.Name}} 插件导出的 AnyBot 插件定义。
+// Plugin 是 {{.DisplayName}} 插件导出的 AnyBot 插件定义。
+//
+// 项目内直接安装多个有状态插件时，请用 absdk.InstallDefaultWithID 注入稳定
+// PluginID；通过 anybot plugin add 安装时，运行框架会自动生成并注入 PluginID。
 var Plugin = absdk.Define(
-	absdk.Manifest{Name: "{{.Manifest}}", Version: "0.1.0", Description: "{{.Name}} 插件"},
-	Config{Command: "{{.Command}}"},
+	absdk.Manifest{Name: {{printf "%q" .Manifest}}, Version: "0.1.0", Description: {{printf "%q" (printf "%s 插件" .DisplayName)}}},
+	Config{Command: {{printf "%q" .Command}}},
 	func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).
 			Name("command").
 			Handle(func(c *absdk.EventContext) error {
-				_, err := c.ReplyText("{{.Name}} 已启动")
+				_, err := c.ReplyText({{printf "%q" (printf "%s 已启动" .DisplayName)}})
 				return err
 			})
 		return nil
@@ -466,18 +499,18 @@ func TestPluginRepliesToCommand(t *testing.T) {
 	if err := app.InstallDefault(Plugin); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.DispatchText("/{{.Command}}"); err != nil {
+	if err := app.DispatchText({{printf "%q" (printf "/%s" .Command)}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := app.LastReplyText(); got != "{{.Name}} 已启动" {
+	if got := app.LastReplyText(); got != {{printf "%q" (printf "%s 已启动" .DisplayName)}} {
 		t.Fatalf("reply = %q", got)
 	}
 }
 `
 
-const pluginReadme = `# {{.Name}}
+const pluginReadme = `# {{.DisplayName}}
 
-{{.Name}} 是一个 AnyBot SDK 插件。插件导出 ` + "`Plugin`" + `，运行框架可以通过 ` + "`anybot plugin add`" + ` 安装，也可以在 Go 代码中用 ` + "`absdk.InstallDefault(app, Plugin)`" + ` 显式安装。
+{{.DisplayName}} 是一个 AnyBot SDK 插件。插件导出 ` + "`Plugin`" + `，运行框架可以通过 ` + "`anybot plugin add`" + ` 安装，也可以在 Go 代码中用 ` + "`absdk.InstallDefaultWithID(app, \"plg_...\", Plugin)`" + ` 显式安装。
 
 ## 开发
 
@@ -516,7 +549,7 @@ config:
   command: {{.Command}}
 ` + "```" + `
 
-` + "`command`" + ` 是触发插件的命令名。插件会回复 ` + "`{{.Name}} 已启动`" + `。
+` + "`command`" + ` 是触发插件的命令名。插件会回复 ` + "`{{.DisplayName}} 已启动`" + `。
 
 ## 发布
 

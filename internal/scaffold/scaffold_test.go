@@ -63,7 +63,7 @@ func TestInitProjectAndPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Name != "hello_world" || result.Package != "hello_world" || result.Standalone {
+	if result.Name != "hello-world" || result.Package != "hello_world" || result.Standalone {
 		t.Fatalf("plugin result = %#v", result)
 	}
 	pluginPath := filepath.Join(dir, "plugins", "hello_world", "hello_world.go")
@@ -192,7 +192,7 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Standalone || result.Name != "hello_world" || result.Module != "example.com/hello-world" {
+	if !result.Standalone || result.Name != "hello-world" || result.Module != "example.com/hello-world" {
 		t.Fatalf("plugin result = %#v", result)
 	}
 	if !result.TestReady {
@@ -215,7 +215,9 @@ func TestGeneratedStandalonePluginSmoke(t *testing.T) {
 	}
 	plugin := readFile(t, filepath.Join(dir, "hello_world.go"))
 	if strings.Contains(plugin, "github.com/tty00a381/anybot/core") ||
-		!strings.Contains(plugin, "absdk.Define") {
+		!strings.Contains(plugin, "absdk.Define") ||
+		!strings.Contains(plugin, `absdk.Manifest{Name: "hello-world"`) ||
+		!strings.Contains(plugin, `ReplyText("hello-world 已启动")`) {
 		t.Fatalf("plugin scaffold:\n%s", plugin)
 	}
 	testFile := readFile(t, filepath.Join(dir, "hello_world_test.go"))
@@ -286,6 +288,36 @@ func TestGeneratedStandalonePluginSanitizesDisplayName(t *testing.T) {
 	plugin := readFile(t, filepath.Join(dir, "hello_world.go"))
 	if strings.Contains(plugin, `"world"`) {
 		t.Fatalf("plugin should use sanitized display text:\n%s", plugin)
+	}
+	runGo(t, dir, "test", "./...")
+}
+
+func TestGeneratedStandalonePluginKeepsNonASCIIDisplayName(t *testing.T) {
+	dir := t.TempDir()
+	root := repoRoot(t)
+	result, err := NewPlugin(PluginOptions{
+		Dir:           dir,
+		Name:          "天气提醒",
+		Module:        "example.com/weather-reminder",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "天气提醒" || result.Package != "plugin" {
+		t.Fatalf("plugin result = %#v", result)
+	}
+	plugin := readFile(t, filepath.Join(dir, "plugin.go"))
+	if !strings.Contains(plugin, `absdk.Manifest{Name: "天气提醒"`) ||
+		!strings.Contains(plugin, `ReplyText("天气提醒 已启动")`) ||
+		!strings.Contains(plugin, `Config{Command: "plugin"}`) {
+		t.Fatalf("plugin scaffold:\n%s", plugin)
+	}
+	readme := readFile(t, filepath.Join(dir, "README.md"))
+	if !strings.Contains(readme, "# 天气提醒") ||
+		!strings.Contains(readme, "command: plugin") {
+		t.Fatalf("README.md:\n%s", readme)
 	}
 	runGo(t, dir, "test", "./...")
 }

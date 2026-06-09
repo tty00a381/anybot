@@ -37,7 +37,7 @@ func runDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := host.ValidateConfigWithLock(cfg, host.EmptyRegistry(), lock); err != nil {
+	if err := host.ValidateConfigWithLock(doctorValidationConfig(cfg, lock), host.EmptyRegistry(), lock); err != nil {
 		return withExternalPluginHint(err, filepath.Dir(*configPath))
 	}
 	adapterCfg := cfgAdapter(cfg)
@@ -55,14 +55,57 @@ func runDoctor(args []string) error {
 			return err
 		}
 	}
-	enabled, err := host.EnabledPluginsWithLock(cfg, host.EmptyRegistry(), lock)
-	if err != nil {
-		return withExternalPluginHint(err, filepath.Dir(*configPath))
-	}
+	enabled := doctorEnabledPlugins(cfg, lock)
 	abs, _ := filepath.Abs(*configPath)
 	printSummary(abs, cfg, enabled)
+	printDoctorExternalPluginHint(cfg, lock, filepath.Dir(*configPath))
 	fmt.Fprintf(stdout, "配置可用：%s\n", abs)
 	return nil
+}
+
+func doctorValidationConfig(cfg host.Config, lock host.PluginLock) host.Config {
+	if len(cfg.Plugins) == 0 {
+		return cfg
+	}
+	out := cfg
+	out.Plugins = make(map[string]host.PluginEntry, len(cfg.Plugins))
+	for id, entry := range cfg.Plugins {
+		out.Plugins[id] = entry
+	}
+	disabled := false
+	for _, item := range lock.Plugins {
+		if item.ID == "" || item.Module == "" {
+			continue
+		}
+		entry, ok := out.Plugins[item.ID]
+		if !ok || !cliPluginEntryEnabled(entry) {
+			continue
+		}
+		entry.Enabled = &disabled
+		out.Plugins[item.ID] = entry
+	}
+	return out
+}
+
+func doctorEnabledPlugins(cfg host.Config, lock host.PluginLock) []string {
+	enabled := make([]string, 0, len(cfg.Plugins))
+	for _, item := range lock.Plugins {
+		if item.ID == "" {
+			continue
+		}
+		entry, ok := cfg.Plugins[item.ID]
+		if ok && cliPluginEntryEnabled(entry) {
+			enabled = append(enabled, item.ID)
+		}
+	}
+	return enabled
+}
+
+func printDoctorExternalPluginHint(cfg host.Config, lock host.PluginLock, dir string) {
+	if !lockHasEnabledExternalPlugins(cfg, lock) {
+		return
+	}
+	fmt.Fprintf(stdout, "外部插件：基础配置已检查；完整插件配置请运行 anybot up -dir %s，或构建后运行 ./anybot-bot plugin check\n", shellQuote(dir))
 }
 
 func cfgAdapter(cfg host.Config) onebot11.Config {

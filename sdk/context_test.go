@@ -169,6 +169,34 @@ func TestContextUsesPluginIDForStateNamespace(t *testing.T) {
 	}
 }
 
+func TestInstallDefaultWithIDScopesEmbeddedPluginState(t *testing.T) {
+	type config struct {
+		Key string
+	}
+	plugin := Define(Manifest{Name: "memory"}, config{Key: "profile"}, func(ctx *Context, cfg config) error {
+		event := NewTestContext(&App{runtime: ctx.app}, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+		return UserState[string](ctx, event, cfg.Key).Save(ctx.PluginID(), time.Hour)
+	})
+	app := NewApp()
+	if err := InstallDefaultWithID(app, sdkTestFirstID, plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallDefaultWithID(app, sdkTestSecondID, plugin); err != nil {
+		t.Fatal(err)
+	}
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	firstCtx := NewContext(app, Manifest{Name: "first"}, WithPluginID(sdkTestFirstID))
+	secondCtx := NewContext(app, Manifest{Name: "second"}, WithPluginID(sdkTestSecondID))
+	first, ok, err := UserState[string](firstCtx, event, "profile").Load()
+	if err != nil || !ok || first != sdkTestFirstID {
+		t.Fatalf("first state=%q ok=%v err=%v", first, ok, err)
+	}
+	second, ok, err := UserState[string](secondCtx, event, "profile").Load()
+	if err != nil || !ok || second != sdkTestSecondID {
+		t.Fatalf("second state=%q ok=%v err=%v", second, ok, err)
+	}
+}
+
 func TestTypedStateUsesEventContext(t *testing.T) {
 	type profile struct {
 		Name string `json:"name"`
@@ -367,6 +395,60 @@ func TestContextDataDirRejectsUnsafePluginID(t *testing.T) {
 	}
 }
 
+func TestContextGoWhenActionReadyRunsAfterAdapterReady(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	adapter := &sdkStatefulAdapter{started: make(chan struct{})}
+	app := NewApp(WithAdapter(adapter))
+	task := make(chan error, 1)
+	plugin := Define(
+		Manifest{Name: "proactive"},
+		struct{}{},
+		func(ctx *Context, _ struct{}) error {
+			ctx.GoWhenActionReady("welcome", func(ctx context.Context) error {
+				task <- ctx.Err()
+				return nil
+			})
+			return nil
+		},
+	)
+	if err := InstallDefault(app, plugin); err != nil {
+		t.Fatal(err)
+	}
+	errc := make(chan error, 1)
+	go func() {
+		errc <- app.runtime.Run(ctx)
+	}()
+	select {
+	case <-adapter.started:
+	case <-time.After(time.Second):
+		t.Fatal("adapter did not start")
+	}
+	select {
+	case err := <-task:
+		t.Fatalf("task ran before adapter was ready: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	adapter.emit(core.AdapterState{Protocol: testProtocol, Kind: core.AdapterStateReady, ActionReady: true})
+	select {
+	case err := <-task:
+		if err != nil {
+			t.Fatalf("task context err = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("task did not run after action ready")
+	}
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("run err = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run did not stop")
+	}
+}
+
 type sdkTestAdapter struct {
 	client ActionClient
 }
@@ -374,6 +456,28 @@ type sdkTestAdapter struct {
 func (a sdkTestAdapter) Protocol() Protocol                         { return testProtocol }
 func (a sdkTestAdapter) Start(context.Context, core.EmitFunc) error { return nil }
 func (a sdkTestAdapter) Client() ActionClient                       { return a.client }
+
+type sdkStatefulAdapter struct {
+	sink    core.AdapterStateSink
+	started chan struct{}
+}
+
+func (*sdkStatefulAdapter) Protocol() Protocol { return testProtocol }
+func (a *sdkStatefulAdapter) Start(ctx context.Context, _ core.EmitFunc) error {
+	close(a.started)
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (*sdkStatefulAdapter) Client() ActionClient { return nil }
+func (*sdkStatefulAdapter) State() core.AdapterState {
+	return core.AdapterState{Protocol: testProtocol, Kind: core.AdapterStateUnknown}
+}
+func (a *sdkStatefulAdapter) SetStateSink(sink core.AdapterStateSink) {
+	a.sink = sink
+}
+func (a *sdkStatefulAdapter) emit(state core.AdapterState) {
+	a.sink(context.Background(), state)
+}
 
 type sdkTestClient struct {
 	target ReplyTarget

@@ -102,6 +102,11 @@ func Every(name string, interval time.Duration, fn TaskFunc, opts ...TaskOption)
 	Default().Every(name, interval, fn, opts...)
 }
 
+// GoWhenActionReady 向默认 App 注册等待动作客户端可用后执行的生命周期任务。
+func GoWhenActionReady(name string, fn TaskFunc, opts ...TaskOption) {
+	Default().GoWhenActionReady(name, fn, opts...)
+}
+
 // CurrentAdapterState 返回默认 App 最近一次已知的适配器状态。
 func CurrentAdapterState() AdapterState {
 	return Default().AdapterState()

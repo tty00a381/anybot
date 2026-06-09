@@ -111,9 +111,20 @@ func InstallDefaultWith(app *App, env Environment, definition Definition) error 
 	return InstallWith(app, env, plugin)
 }
 
+// InstallDefaultWithID 使用默认配置和显式稳定 PluginID 安装插件定义。
+// 适合项目内或嵌入式机器人直接安装多个插件时隔离状态、任务和路由名称。
+func InstallDefaultWithID(app *App, id string, definition Definition) error {
+	return InstallDefaultWith(app, Environment{PluginID: id}, definition)
+}
+
 // InstallWith 使用显式宿主能力安装 SDK 插件。
 func InstallWith(app *App, env Environment, plugin Plugin) error {
 	return InstallCoreWith(coreApp(app), env, plugin)
+}
+
+// InstallWithID 使用显式稳定 PluginID 安装已构建好的插件对象。
+func InstallWithID(app *App, id string, plugin Plugin) error {
+	return InstallWith(app, Environment{PluginID: id}, plugin)
 }
 
 // InstallCoreWith 将 SDK 插件安装到底层 core.App，供运行框架装配插件时使用。

@@ -212,7 +212,6 @@ func TestNewAppUsesPersistentStoreFromConfigPath(t *testing.T) {
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +251,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +278,6 @@ func TestNewAppDoesNotUseRuntimeStateByDefault(t *testing.T) {
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +309,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +334,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +356,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -392,11 +386,10 @@ func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins:
-  `+testMemoryID+`:
-    enabled: true
-    config: {}
 `), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadConfig(configPath)
@@ -435,7 +428,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +453,6 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-plugins: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

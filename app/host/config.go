@@ -63,6 +63,9 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if err := rejectInlinePluginConfigs(path, data); err != nil {
+		return Config{}, err
+	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, err
@@ -73,6 +76,21 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func rejectInlinePluginConfigs(path string, data []byte) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	root := documentRoot(&doc)
+	if root == nil || root.Kind != yaml.MappingNode {
+		return nil
+	}
+	if mappingValue(root, "plugins") == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: 顶层 plugins 已废弃；插件实例配置必须放在 %s/<PluginID>.yaml", path, filepath.ToSlash(PluginConfigDir(path)))
 }
 
 func (cfg *Config) applyDefaults() {
