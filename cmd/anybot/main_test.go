@@ -228,7 +228,8 @@ func TestRunDevPluginStandalone(t *testing.T) {
 		!strings.Contains(out.String(), "go test ./...") ||
 		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -replace "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin status -dir <机器人工作目录>") ||
-		!strings.Contains(out.String(), "anybot plugin enable <id> -dir <机器人工作目录>") {
+		!strings.Contains(out.String(), "anybot plugin enable <id> -dir <机器人工作目录>") ||
+		!strings.Contains(out.String(), "anybot run -dir <机器人工作目录>") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
 	}
 	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
@@ -1663,6 +1664,55 @@ func TestRunDelegatesEnabledExternalPluginToGeneratedHost(t *testing.T) {
 	}
 }
 
+func TestRunDirDelegatesEnabledExternalPluginToGeneratedHost(t *testing.T) {
+	setTestFrameworkDependencies(t, releaseFrameworkDependencies("v9.9.9"))
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+
+	dir := t.TempDir()
+	config := filepath.Join(dir, "anybot.yaml")
+	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather", Version: "v1.2.3"}); err != nil {
+		t.Fatal(err)
+	}
+	writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: true\nconfig: {}\n")
+	out, _, restore := captureOutput(t)
+	defer restore()
+	if err := run([]string{"run", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	binary := "." + string(filepath.Separator) + "anybot-bot"
+	want := append(frameworkGoModCalls(dir, releaseFrameworkDependencies("v9.9.9")),
+		dir+" go mod edit -require=github.com/acme/weather@v1.2.3",
+		dir+" go mod edit -dropreplace=github.com/acme/weather",
+		dir+" go mod tidy",
+		dir+" go build -o anybot-bot .",
+		dir+" "+binary+" plugin sync",
+		dir+" "+binary+" plugin check",
+		dir+" "+binary+" ",
+	)
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if !strings.Contains(out.String(), "启动："+filepath.Join(dir, "anybot-bot")) {
+		t.Fatalf("run output:\n%s", out.String())
+	}
+}
+
+func TestRunRejectsDirAndConfigTogether(t *testing.T) {
+	err := run([]string{"run", "-dir", t.TempDir(), "-config", filepath.Join(t.TempDir(), "anybot.yaml")})
+	if err == nil || !strings.Contains(err.Error(), "不能同时指定 -dir 和 -config") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestRunIgnoresDisabledExternalPlugin(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "anybot.yaml")
@@ -1686,7 +1736,7 @@ func TestRunIgnoresDisabledExternalPlugin(t *testing.T) {
 	}
 }
 
-func TestRunRejectsExternalPluginWithCustomConfigName(t *testing.T) {
+func TestRunRejectsExternalPluginWithNonDefaultConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "bot.yaml")
 	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {

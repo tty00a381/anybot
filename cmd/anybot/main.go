@@ -170,8 +170,21 @@ func checkInitDir(dir, name string) error {
 func runHost(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	configPath := fs.String("config", "anybot.yaml", "配置文件")
+	dir := fs.String("dir", "", "机器人工作目录")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	configSet := false
+	fs.Visit(func(flag *flag.Flag) {
+		if flag.Name == "config" {
+			configSet = true
+		}
+	})
+	if *dir != "" {
+		if configSet {
+			return fmt.Errorf("anybot run 不能同时指定 -dir 和 -config")
+		}
+		*configPath = filepath.Join(*dir, "anybot.yaml")
 	}
 	cfg, err := host.LoadConfig(*configPath)
 	if err != nil {

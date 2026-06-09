@@ -33,7 +33,7 @@ func WithSuperUsers(ids ...string) Option {
 	}
 }
 
-// WithPluginID 配置测试安装实例使用的 PluginID。
+// WithPluginID 配置测试运行时使用的 PluginID。
 func WithPluginID(id string) Option {
 	return func(opts *options) {
 		opts.pluginID = strings.TrimSpace(id)

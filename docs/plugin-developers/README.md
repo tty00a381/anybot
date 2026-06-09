@@ -279,7 +279,7 @@ state, err := absdk.UserState[State](ctx, c, "state").Update(State{}, time.Hour,
 
 - `absdk.ConversationState[T](ctx, c, "key")`：自然会话 typed 状态。
 - `absdk.UserState[T](ctx, c, "key")`：用户维度 typed 状态。
-- `absdk.GroupState[T](ctx, c, "key")`：群或频道维度 typed 状态；只在 `Group()` 规则或确认 `c.GroupID() != ""` 后使用，避免非群消息落入共享 fallback。
+- `absdk.GroupState[T](ctx, c, "key")`：群或频道维度 typed 状态；非群或频道事件会返回 `ErrGroupContextUnavailable`。
 - `absdk.NamedState[T](ctx, c, "key", "scope")`：插件自定义维度 typed 状态。
 - `ctx.Session(c)`：自然会话。群里按群和用户区分，私聊按用户区分。
 - `ctx.UserSession(c)`：用户维度。

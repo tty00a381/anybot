@@ -170,7 +170,7 @@ func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
 		fmt.Fprintf(stdout, "  anybot plugin add %s -replace %s -dir <机器人工作目录>\n", result.Module, shellQuote(absDir))
 		fmt.Fprintln(stdout, "  anybot plugin status -dir <机器人工作目录>")
 		fmt.Fprintln(stdout, "  anybot plugin enable <id> -dir <机器人工作目录>")
-		fmt.Fprintln(stdout, "  anybot up -dir <机器人工作目录>")
+		fmt.Fprintln(stdout, "  anybot run -dir <机器人工作目录>")
 	}
 }
 

@@ -5,7 +5,7 @@ import "fmt"
 func usage() {
 	fmt.Fprintln(stdout, `anybot 命令：
   anybot init [-dir 目录] [-force]
-  anybot run [-config anybot.yaml]
+  anybot run [-dir 目录|-config anybot.yaml]
   anybot doctor [-config anybot.yaml] [-connect]
   anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]
   anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]
@@ -87,7 +87,7 @@ anybot up
 
 默认使用 OneBot v11 反向 WebSocket，请让协议端连接 ` + "`ws://127.0.0.1:6700/`" + `。
 
-` + "`anybot init`" + ` 已生成 ` + "`anybot.lock`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主入口 ` + "`main.go`" + ` 由 anybot 管理。` + "`anybot.yaml`" + ` 只保存框架配置，插件配置固定放在 ` + "`plugins.d/<PluginID>.yaml`" + `；` + "`anybot.lock`" + ` 是插件安装实例、内置来源和外部 module 来源的权威记录。运行时状态默认保存到 ` + "`.anybot/`" + `，包括 ` + "`.anybot/store.json`" + ` 和插件私有数据目录。
+` + "`anybot init`" + ` 已生成 ` + "`anybot.lock`" + `、` + "`plugins.gen.go`" + `、` + "`main.go`" + ` 和 ` + "`go.mod`" + `。` + "`plugins.gen.go`" + ` 与生成宿主入口 ` + "`main.go`" + ` 由 anybot 管理。` + "`anybot.yaml`" + ` 只保存框架配置，插件配置固定放在 ` + "`plugins.d/<PluginID>.yaml`" + `；` + "`anybot.lock`" + ` 是插件记录、内置来源和外部 module 来源的权威记录。运行时状态默认保存到 ` + "`.anybot/`" + `，包括 ` + "`.anybot/store.json`" + ` 和插件私有数据目录。
 
 ## 外部插件
 

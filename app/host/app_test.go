@@ -325,6 +325,32 @@ plugins: {}
 	}
 }
 
+func TestNewAppRejectsAbsoluteStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "anybot.yaml")
+	storePath := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(configPath, []byte(`runtime:
+  store:
+    type: file
+    path: `+storePath+`
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+plugins: {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState()); err == nil || !strings.Contains(err.Error(), "必须是相对 runtime.data_dir 的路径") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestNewAppTrimsRuntimeDataDirForStorePath(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "anybot.yaml")
@@ -418,6 +444,32 @@ plugins: {}
 		t.Fatal(err)
 	}
 	if err := ValidateConfig(cfg, EmptyRegistry()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateConfigRejectsAbsoluteStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "anybot.yaml")
+	storePath := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(configPath, []byte(`runtime:
+  store:
+    type: file
+    path: `+storePath+`
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+plugins: {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateConfig(cfg, EmptyRegistry()); err == nil || !strings.Contains(err.Error(), "必须是相对 runtime.data_dir 的路径") {
 		t.Fatalf("err = %v", err)
 	}
 }

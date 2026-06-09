@@ -16,6 +16,9 @@ var ErrEventContextUnavailable = errors.New("anybot: event context unavailable")
 // ErrStateKeyRequired 表示 typed 状态缺少字段名。
 var ErrStateKeyRequired = errors.New("anybot: plugin state key is required")
 
+// ErrGroupContextUnavailable 表示当前事件没有群或频道上下文。
+var ErrGroupContextUnavailable = errors.New("anybot: group context unavailable")
+
 // State 是绑定到 PluginID 命名空间和事件上下文的一段 typed 会话状态。
 type State[T any] struct {
 	session *Session
@@ -44,14 +47,23 @@ func UserState[T any](ctx *Context, event *EventContext, key string) State[T] {
 	return state
 }
 
-// GroupState 返回当前群或频道维度下的 typed 状态。非群事件会落到共享 fallback；
-// 插件应只在群路由或确认 event.GroupID() 非空后使用。
+// GroupState 返回当前群或频道维度下的 typed 状态。非群或频道事件会返回
+// ErrGroupContextUnavailable，插件应在群路由或确认 event.GroupID() 非空后使用。
 func GroupState[T any](ctx *Context, event *EventContext, key string) State[T] {
 	state := State[T]{event: event, key: key, err: validateStateKey(key)}
 	if ctx == nil || ctx.Store() == nil {
 		return state
 	}
-	state.session = ctx.GroupSession(event)
+	if event == nil {
+		state.err = errors.Join(state.err, ErrEventContextUnavailable)
+		return state
+	}
+	current := event.Event()
+	if current == nil || current.GroupSessionID() == "" {
+		state.err = errors.Join(state.err, ErrGroupContextUnavailable)
+		return state
+	}
+	state.session = ctx.SessionBy(current.GroupSessionID())
 	return state
 }
 

@@ -115,7 +115,7 @@ core 不依赖 sdk、app/host、cmd
 4. `host.InstallPlugins` 按配置安装注册表中的插件。
 5. `app.Run` 启动生命周期、任务、观察者、适配器和事件调度。
 
-`anybot run` 会先读取插件锁；没有已启用外部插件时直接用基础二进制运行，发现已启用外部插件时自动走生成宿主流程。自定义 `-config` 文件名目前只能使用基础二进制路径，因为生成宿主固定读取工作目录中的 `anybot.yaml`。
+`anybot run` 会先读取插件锁；没有已启用外部插件时直接用基础二进制运行，发现已启用外部插件时自动走生成宿主流程。`-dir` 会读取该目录的 `anybot.yaml`；自定义 `-config` 文件名目前只能使用基础二进制路径，因为生成宿主固定读取工作目录中的 `anybot.yaml`。
 
 `anybot build`
 
@@ -362,7 +362,7 @@ make release-e2e
 - “运行框架”：最终用户通过 `anybot` 使用的框架层，以及生成后的 `anybot-bot`。
 - “机器人目录”：最终用户执行 `anybot init` 后日常操作的目录。
 - “PluginID”：`anybot.lock` 中的 `id`，用于 CLI 目标、`plugins.d/<PluginID>.yaml`、Store 前缀和插件私有数据目录。
-- “插件锁”：`anybot.lock`，记录插件安装实例的 `PluginID`、内置来源或外部 module 来源、版本和本地替换路径。
+- “插件锁”：`anybot.lock`，记录插件的 `PluginID`、内置来源或外部 module 来源、版本和本地替换路径。
 - “生成宿主”：`plugins.gen.go`、生成的 `main.go` 和 `go.mod` 组成的可构建 Go 程序。
 - “外部插件”：通过 Go module 安装到机器人目录的插件。
 - “项目内 SDK 插件”：直接核心库项目里的 `plugins/` 目录插件，仍然使用 `sdk.Plugin`。

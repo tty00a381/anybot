@@ -54,14 +54,14 @@ func runtimeStorePath(cfg RuntimeConfig, configPath string) (string, error) {
 		return "", fmt.Errorf("runtime.store.path 不能为空")
 	}
 	if filepath.IsAbs(path) {
-		return path, nil
+		return "", fmt.Errorf("runtime.store.path %q 必须是相对 runtime.data_dir 的路径", path)
 	}
 	dataDir := resolveConfigRelativePath(configPath, strings.TrimSpace(cfg.DataDir))
 	if dataDir == "" {
 		return "", fmt.Errorf("runtime.data_dir 不能为空")
 	}
 	if !localRuntimePath(path) {
-		return "", fmt.Errorf("runtime.store.path %q 必须位于 runtime.data_dir 内，或使用绝对路径", path)
+		return "", fmt.Errorf("runtime.store.path %q 必须位于 runtime.data_dir 内", path)
 	}
 	return filepath.Join(dataDir, filepath.Clean(path)), nil
 }

@@ -245,6 +245,22 @@ func TestTypedStateUnavailable(t *testing.T) {
 	}
 }
 
+func TestGroupStateRequiresGroupContext(t *testing.T) {
+	app := NewApp()
+	ctx := NewContext(app, Manifest{Name: "memo"}, WithPluginID(sdkTestCounterID))
+	private := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	if err := GroupState[int](ctx, private, "memo").Save(1, 0); !errors.Is(err, ErrGroupContextUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	group := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", GroupID: "100", Type: "message"})
+	if err := GroupState[int](ctx, group, "memo").Save(1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok, err := GroupState[int](ctx, group, "memo").Load(); err != nil || !ok || value != 1 {
+		t.Fatalf("group value=%d ok=%v err=%v", value, ok, err)
+	}
+}
+
 func TestContextConfigWritesThroughStore(t *testing.T) {
 	store := &sdkConfigStore{}
 	app := NewApp()

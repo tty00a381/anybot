@@ -261,7 +261,7 @@ anybot plugin update <id> -replace ../weather
 anybot plugin update <id> -clear-replace
 ```
 
-移除插件安装实例：
+移除插件记录：
 
 ```sh
 anybot plugin remove <id>
@@ -279,7 +279,7 @@ cd mybot
 anybot init
 ```
 
-2. 设置超级用户，查看随机 `PluginID`，启用 `admin` 和 `echo` 对应的安装实例。
+2. 设置超级用户，查看随机 `PluginID`，启用 `admin` 和 `echo` 对应的插件记录。
 
 ```yaml
 security:

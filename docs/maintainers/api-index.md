@@ -9,7 +9,7 @@ CLI 入口包，不作为库导入。
 命令：
 
 - `anybot init [-dir 目录] [-force]`：生成最终用户工作目录。
-- `anybot run [-config anybot.yaml]`：按配置运行；发现已启用外部插件时自动构建并运行生成宿主。
+- `anybot run [-dir 目录|-config anybot.yaml]`：按配置运行；发现已启用外部插件时自动构建并运行生成宿主。
 - `anybot doctor [-config anybot.yaml] [-connect]`：静态检查配置，可选连接检查。
 - `anybot build [-dir 目录] [-o anybot-bot] [-skip-tidy]`：构建包含外部插件的生成宿主。
 - `anybot up [-dir 目录] [-o anybot-bot] [-skip-tidy] [-skip-build] [-skip-sync] [-skip-check]`：构建、同步、检查并运行。
@@ -78,13 +78,13 @@ App option：
 
 - `EnsurePluginHost(dir string) (PluginLock, error)`：确保插件锁与生成宿主存在。
 - `EnsurePluginHostForce(dir string, force bool) (PluginLock, error)`：允许接管同名非生成文件。
-- `NewDefaultPluginLock() (PluginLock, error)`：创建带内置插件安装实例的新锁。
+- `NewDefaultPluginLock() (PluginLock, error)`：创建带内置插件记录的新锁。
 - `LoadPluginLock(path string) (PluginLock, error)`：读取插件锁，文件不存在返回空锁。
 - `SavePluginLock(path string, lock PluginLock) error`：校验并原子写入插件锁。
 - `RenderPluginHost(dir string, lock PluginLock) error`：重写 `plugins.gen.go` 与生成的 `main.go`。
-- `AddPluginInstall(opts AddPluginInstallOptions) (PluginLock, error)`：添加插件安装实例，来源可以是 `Builtin` 或 `Module`。
+- `AddPluginInstall(opts AddPluginInstallOptions) (PluginLock, error)`：添加插件记录，来源可以是 `Builtin` 或 `Module`。
 - `UpdatePluginInstall(opts UpdatePluginInstallOptions) (PluginInstall, PluginLock, bool, error)`：更新外部插件版本或替换路径。
-- `RemovePluginInstall(opts RemovePluginInstallOptions) (PluginInstall, PluginLock, error)`：移除插件安装实例。
+- `RemovePluginInstall(opts RemovePluginInstallOptions) (PluginInstall, PluginLock, error)`：移除插件记录。
 - `CheckGeneratedHostWritable(dir string, force bool) error`：检查生成文件是否可写。
 - `ParsePluginModuleSpec(spec string) (module, version string, err error)`：解析 `module@version`。
 - `ValidatePluginLock(lock PluginLock) error`
@@ -229,7 +229,7 @@ App option：
 ### 注册表
 
 - `Factory`：`Info`、`PluginID`、`Default`、`Build func(yaml.Node) (Plugin, error)`。
-- `Factory.WithPluginID(id string) Factory`：为工厂注入本地插件安装 ID。
+- `Factory.WithPluginID(id string) Factory`：为工厂注入本地 `PluginID`。
 - `Registry`：插件工厂表。
 - `NewRegistry() Registry`
 - `Registry.Register(factory Factory) error`
@@ -271,7 +271,7 @@ App option：
 - `State[T]`：typed 会话状态。
 - `ConversationState[T](ctx, event, key) State[T]`
 - `UserState[T](ctx, event, key) State[T]`
-- `GroupState[T](ctx, event, key) State[T]`
+- `GroupState[T](ctx, event, key) State[T]`：非群或频道事件返回 `ErrGroupContextUnavailable`。
 - `NamedState[T](ctx, event, key, scope) State[T]`
 - `State.Load() (T, bool, error)`
 - `State.LoadOr(fallback T) (T, error)`
@@ -282,6 +282,7 @@ App option：
 - `WithPluginID(id string) InstallOption`
 - `Context.DataDir() (string, error)`
 - `ErrDataDirUnavailable`
+- `ErrGroupContextUnavailable`
 
 ### 配置写回
 
