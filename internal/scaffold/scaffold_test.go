@@ -13,8 +13,13 @@ import (
 
 func TestInitProjectAndPlugin(t *testing.T) {
 	dir := t.TempDir()
-	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err != nil {
+	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo", AnyBotVersion: "v1.2.3"}); err != nil {
 		t.Fatal(err)
+	}
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "require github.com/tty00a381/anybot v1.2.3") ||
+		strings.Contains(goMod, "replace github.com/tty00a381/anybot") {
+		t.Fatalf("go.mod:\n%s", goMod)
 	}
 	mainData, err := os.ReadFile(filepath.Join(dir, "main.go"))
 	if err != nil {
@@ -83,7 +88,7 @@ func TestInitProjectConflictDoesNotPartiallyWrite(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("已有说明"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err == nil {
+	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo", AnyBotVersion: "v1.2.3"}); err == nil {
 		t.Fatal("存在文件时应拒绝生成")
 	}
 	for _, name := range []string{"go.mod", "main.go", "core.yaml", ".env.example"} {
@@ -110,27 +115,67 @@ func TestPackageName(t *testing.T) {
 
 func TestGeneratedProjectSmoke(t *testing.T) {
 	dir := t.TempDir()
-	if err := InitProject(ProjectOptions{Dir: dir, Module: "example.com/demo"}); err != nil {
+	root := repoRoot(t)
+	if err := InitProject(ProjectOptions{
+		Dir:           dir,
+		Module:        "example.com/demo",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: root,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewPlugin(PluginOptions{Dir: dir, Name: "hello-world"}); err != nil {
 		t.Fatal(err)
 	}
-	root := repoRoot(t)
-	goMod := filepath.Join(dir, "go.mod")
-	data, err := os.ReadFile(goMod)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data = append(data, []byte("\nrequire github.com/tty00a381/anybot v0.0.0\nreplace github.com/tty00a381/anybot => "+root+"\n")...)
-	if err := os.WriteFile(goMod, data, 0o644); err != nil {
-		t.Fatal(err)
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if !strings.Contains(goMod, "require github.com/tty00a381/anybot v0.0.0") ||
+		!strings.Contains(goMod, "replace github.com/tty00a381/anybot => "+root) {
+		t.Fatalf("go.mod:\n%s", goMod)
 	}
 	runGo(t, dir, "mod", "tidy")
 	runGo(t, dir, "test", "./...")
 	out := runGo(t, dir, "run", ".", "--help")
 	if !strings.Contains(out, "用法：go run .") {
 		t.Fatalf("help 输出不符合预期:\n%s", out)
+	}
+}
+
+func TestInitProjectRejectsUnknownFrameworkVersion(t *testing.T) {
+	err := InitProject(ProjectOptions{Dir: t.TempDir(), Module: "example.com/demo"})
+	if err == nil || !strings.Contains(err.Error(), "核心库项目需要有效 AnyBot 版本") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInitProjectRejectsInvalidModule(t *testing.T) {
+	err := InitProject(ProjectOptions{Dir: t.TempDir(), Module: "bad module", AnyBotVersion: "v1.2.3"})
+	if err == nil || !strings.Contains(err.Error(), "核心库项目模块路径") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInitProjectQuotesReplaceWithSpaces(t *testing.T) {
+	root := t.TempDir()
+	replaceDir := filepath.Join(root, "AnyBot Source")
+	if err := os.MkdirAll(replaceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "bot")
+	if err := InitProject(ProjectOptions{
+		Dir:           dir,
+		Module:        "example.com/demo",
+		AnyBotVersion: "v0.0.0",
+		AnyBotReplace: replaceDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	goMod := readFile(t, filepath.Join(dir, "go.mod"))
+	if _, err := modfile.Parse("go.mod", []byte(goMod), nil); err != nil {
+		t.Fatalf("go.mod should be parseable: %v\n%s", err, goMod)
+	}
+	if !strings.Contains(goMod, `replace github.com/tty00a381/anybot => "`) ||
+		!strings.Contains(goMod, `AnyBot Source"`) {
+		t.Fatalf("go.mod should quote replace path containing spaces:\n%s", goMod)
 	}
 }
 

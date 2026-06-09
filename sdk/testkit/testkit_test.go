@@ -1,6 +1,9 @@
 package testkit
 
 import (
+	"context"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/tty00a381/anybot/sdk"
@@ -78,9 +81,56 @@ func TestWithMessageClonesChain(t *testing.T) {
 	}
 }
 
+func TestAppProvidesHostCapabilities(t *testing.T) {
+	store := &configStore{}
+	root := t.TempDir()
+	pluginID := "plg_bbbbbbbbbbbbbbbbbbbbbbbbbb"
+	plugin := sdk.Define(
+		sdk.Manifest{Name: "hosted"},
+		struct{}{},
+		func(ctx *sdk.Context, _ struct{}) error {
+			dir, err := ctx.DataDir()
+			if err != nil {
+				return err
+			}
+			if dir != filepath.Join(root, "plugins", pluginID) {
+				t.Fatalf("data dir = %q", dir)
+			}
+			return ctx.Config().Set(context.Background(), "command", "hosted")
+		},
+	)
+	app := NewApp(WithPluginID(pluginID), WithDataDir(root), WithConfigStore(store))
+	if err := app.InstallDefault(plugin); err != nil {
+		t.Fatal(err)
+	}
+	if store.plugin != pluginID || !reflect.DeepEqual(store.assignments, []sdk.ConfigAssignment{
+		{Path: []string{"command"}, Value: "hosted"},
+	}) {
+		t.Fatalf("plugin=%q assignments=%#v", store.plugin, store.assignments)
+	}
+}
+
 func TestDispatchRejectsNilApp(t *testing.T) {
 	var app *App
 	if err := app.DispatchText("/hello"); err != ErrAppUnavailable {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+type configStore struct {
+	plugin      string
+	assignments []sdk.ConfigAssignment
+	resets      [][]string
+}
+
+func (s *configStore) SetPluginConfig(_ context.Context, plugin string, assignments []sdk.ConfigAssignment) error {
+	s.plugin = plugin
+	s.assignments = append([]sdk.ConfigAssignment(nil), assignments...)
+	return nil
+}
+
+func (s *configStore) ResetPluginConfig(_ context.Context, plugin string, paths [][]string) error {
+	s.plugin = plugin
+	s.resets = append([][]string(nil), paths...)
+	return nil
 }

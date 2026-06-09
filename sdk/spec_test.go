@@ -220,6 +220,12 @@ func TestInstallRejectsNilApp(t *testing.T) {
 	if err := Install(nil); err == nil || err.Error() != "anybot: app is nil" {
 		t.Fatalf("err = %v", err)
 	}
+	if err := InstallDefault(nil); err == nil || err.Error() != "anybot: app is nil" {
+		t.Fatalf("err = %v", err)
+	}
+	if err := InstallDefaultWith(nil, Environment{}, nil); err == nil || err.Error() != "anybot: app is nil" {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 type validatingConfig struct {

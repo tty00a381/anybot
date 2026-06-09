@@ -221,10 +221,10 @@ App option：
 - `Definition.Factory() Factory`：转为运行框架可注册工厂。
 - `Environment`：`DataDir`、`PluginID`、`ConfigStore`、`AllowGlobalMiddleware`。
 - `Install(app *App, plugins ...Plugin) error`：把已配置插件对象安装到运行时。
-- `InstallWith(app *App, env Environment, plugins ...Plugin) error`：用显式宿主能力安装插件对象。
-- `InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error`：运行框架装配到底层 core 时使用。
+- `InstallWith(app *App, env Environment, plugin Plugin) error`：用显式宿主能力安装单个插件对象。
+- `InstallCoreWith(app *core.App, env Environment, plugin Plugin) error`：运行框架装配单个插件到底层 core 时使用。
 - `InstallDefault(app *App, definitions ...Definition) error`：按默认配置安装插件定义；不注入 PluginID、配置写回或插件数据目录。
-- `InstallDefaultWith(app *App, env Environment, definitions ...Definition) error`：按默认配置和显式宿主能力安装插件定义。
+- `InstallDefaultWith(app *App, env Environment, definition Definition) error`：按默认配置和显式宿主能力安装单个插件定义。
 
 ### 注册表
 
@@ -382,6 +382,9 @@ SDK 重新导出函数：`NewApp`、`WithAdapter`、`WithStore`、`WithSuperUser
 
 - `NewApp(opts ...Option) *App`：创建带记录客户端的测试运行时。
 - `WithSuperUsers(ids ...string) Option`
+- `WithPluginID(id string) Option`
+- `WithDataDir(root string) Option`
+- `WithConfigStore(store sdk.ConfigStore) Option`
 - `App.InstallDefault(definitions ...sdk.Definition) error`
 - `App.Install(plugins ...sdk.Plugin) error`
 - `App.DispatchText(text string, opts ...EventOption) error`
@@ -759,7 +762,7 @@ NapCat 专属扩展动作辅助包。
 
 内部脚手架，不是公共 API。插件生成器只保留单一 starter，不再维护场景模板。
 
-- `ProjectOptions`：`Dir`、`Module`、`Force`。
+- `ProjectOptions`：`Dir`、`Module`、`AnyBotVersion`、`AnyBotReplace`、`Force`。
 - `InitProject(opts ProjectOptions) error`
 - `PluginOptions`：`Dir`、`Name`、`Module`、`AnyBotVersion`、`AnyBotReplace`、`Force`。
 - `PluginResult`：`Name`、`Package`、`Module`、`Standalone`、`TestReady`。

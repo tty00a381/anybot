@@ -86,6 +86,11 @@ func runInit(args []string) error {
 	if err := checkInitDir(*dir, "plugins.d"); err != nil {
 		return err
 	}
+	if *force {
+		if err := os.RemoveAll(filepath.Join(*dir, "plugins.d")); err != nil {
+			return err
+		}
+	}
 	for _, file := range files {
 		if err := writeFile(filepath.Join(*dir, file.name), file.content, *force); err != nil {
 			return err
@@ -128,7 +133,7 @@ func cleanDisplayDir(dir string) string {
 func printNextSteps(dir string, commands ...string) {
 	fmt.Fprintln(stdout, "下一步：")
 	if clean := cleanDisplayDir(dir); clean != "." {
-		fmt.Fprintf(stdout, "  cd %s\n", clean)
+		fmt.Fprintf(stdout, "  cd %s\n", shellQuote(clean))
 	}
 	for _, command := range commands {
 		if command != "" {

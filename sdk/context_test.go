@@ -222,6 +222,25 @@ func TestTypedStateUpdateLoadsMutatesAndSaves(t *testing.T) {
 	}
 }
 
+func TestNamedStateUsesPluginAndScopeNamespace(t *testing.T) {
+	type setting struct {
+		Value string `json:"value"`
+	}
+	app := NewApp()
+	first := NewContext(app, Manifest{Name: "first"}, WithPluginID(sdkTestFirstID))
+	second := NewContext(app, Manifest{Name: "second"}, WithPluginID(sdkTestSecondID))
+	event := NewTestContext(app, &core.Event{Protocol: testProtocol, UserID: "42", Type: "message"})
+	if err := NamedState[setting](first, event, "value", "settings").Save(setting{Value: "first"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok, err := NamedState[setting](second, event, "value", "settings").Load(); err != nil || ok || value.Value != "" {
+		t.Fatalf("second plugin should not see first state: value=%#v ok=%v err=%v", value, ok, err)
+	}
+	if value, ok, err := NamedState[setting](first, event, "value", "settings").Load(); err != nil || !ok || value.Value != "first" {
+		t.Fatalf("first state missing: value=%#v ok=%v err=%v", value, ok, err)
+	}
+}
+
 func TestTypedStateUnavailable(t *testing.T) {
 	if _, _, err := UserState[int](nil, nil, "count").Load(); !errors.Is(err, ErrStoreUnavailable) {
 		t.Fatalf("err = %v", err)

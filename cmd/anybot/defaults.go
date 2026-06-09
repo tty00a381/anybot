@@ -22,7 +22,7 @@ func usage() {
   anybot plugin sync [-dir 目录|-config anybot.yaml]
   anybot plugin enable <id> [-dir 目录|-config anybot.yaml]
   anybot plugin disable <id> [-dir 目录|-config anybot.yaml]
-  anybot dev init [-module 模块名] [-dir 目录] [-force]
+  anybot dev init [-module 模块名] [-dir 目录] [-force] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev new plugin <名称> [同 anybot dev plugin]
   anybot dev doctor [-config core.yaml] [-connect]

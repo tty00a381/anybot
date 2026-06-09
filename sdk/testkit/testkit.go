@@ -22,8 +22,10 @@ var ErrAppUnavailable = errors.New("anybot testkit: app is unavailable")
 type Option func(*options)
 
 type options struct {
-	superUsers []string
-	pluginID   string
+	superUsers  []string
+	pluginID    string
+	dataDir     string
+	configStore sdk.ConfigStore
 }
 
 // WithSuperUsers 配置测试运行时的超级用户。
@@ -40,11 +42,25 @@ func WithPluginID(id string) Option {
 	}
 }
 
+// WithDataDir 配置测试插件数据根目录。
+func WithDataDir(root string) Option {
+	return func(opts *options) {
+		opts.dataDir = strings.TrimSpace(root)
+	}
+}
+
+// WithConfigStore 配置测试插件配置写回存储。
+func WithConfigStore(store sdk.ConfigStore) Option {
+	return func(opts *options) {
+		opts.configStore = store
+	}
+}
+
 // App 是插件测试用运行时，记录插件通过 Reply 或 Send 发出的消息。
 type App struct {
-	runtime  *sdk.App
-	client   *Client
-	pluginID string
+	runtime     *sdk.App
+	client      *Client
+	environment sdk.Environment
 }
 
 // NewApp 创建带记录客户端的测试运行时。
@@ -65,9 +81,13 @@ func NewApp(opts ...Option) *App {
 		pluginID = defaultPluginID
 	}
 	return &App{
-		runtime:  sdk.NewApp(runtimeOptions...),
-		client:   client,
-		pluginID: pluginID,
+		runtime: sdk.NewApp(runtimeOptions...),
+		client:  client,
+		environment: sdk.Environment{
+			PluginID:    pluginID,
+			DataDir:     cfg.dataDir,
+			ConfigStore: cfg.configStore,
+		},
 	}
 }
 
@@ -85,7 +105,7 @@ func (app *App) InstallDefault(definitions ...sdk.Definition) error {
 		if definition == nil {
 			continue
 		}
-		if err := sdk.InstallDefaultWith(app.Runtime(), sdk.Environment{PluginID: app.pluginID}, definition); err != nil {
+		if err := sdk.InstallDefaultWith(app.Runtime(), app.environment, definition); err != nil {
 			return err
 		}
 	}
@@ -98,7 +118,7 @@ func (app *App) Install(plugins ...sdk.Plugin) error {
 		if plugin == nil {
 			continue
 		}
-		if err := sdk.InstallWith(app.Runtime(), sdk.Environment{PluginID: app.pluginID}, plugin); err != nil {
+		if err := sdk.InstallWith(app.Runtime(), app.environment, plugin); err != nil {
 			return err
 		}
 	}

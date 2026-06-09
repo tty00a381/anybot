@@ -70,39 +70,54 @@ func WithConfigStore(store ConfigStore) InstallOption {
 
 // Install 将 SDK 插件安装到运行时。普通插件代码不需要接触 core.App 的内部安装细节。
 func Install(app *App, plugins ...Plugin) error {
-	return InstallWith(app, Environment{}, plugins...)
+	if app == nil {
+		return fmt.Errorf("anybot: app is nil")
+	}
+	for _, plugin := range plugins {
+		if err := InstallWith(app, Environment{}, plugin); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // InstallDefault 使用插件定义的默认配置安装插件，主要供插件测试和嵌入式程序使用。
 // 它不会注入 PluginID、配置写回或插件数据目录；需要这些宿主能力时使用
 // InstallDefaultWith 或交给 anybot 运行框架安装。
 func InstallDefault(app *App, definitions ...Definition) error {
-	return InstallDefaultWith(app, Environment{}, definitions...)
+	if app == nil {
+		return fmt.Errorf("anybot: app is nil")
+	}
+	for _, definition := range definitions {
+		if err := InstallDefaultWith(app, Environment{}, definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // InstallDefaultWith 使用默认配置和显式宿主能力安装插件定义。
-func InstallDefaultWith(app *App, env Environment, definitions ...Definition) error {
-	plugins := make([]Plugin, 0, len(definitions))
-	for _, definition := range definitions {
-		if definition == nil {
-			continue
-		}
-		plugin, err := definition.Build()
-		if err != nil {
-			return err
-		}
-		plugins = append(plugins, plugin)
+func InstallDefaultWith(app *App, env Environment, definition Definition) error {
+	if app == nil {
+		return fmt.Errorf("anybot: app is nil")
 	}
-	return InstallWith(app, env, plugins...)
+	if definition == nil {
+		return nil
+	}
+	plugin, err := definition.Build()
+	if err != nil {
+		return err
+	}
+	return InstallWith(app, env, plugin)
 }
 
 // InstallWith 使用显式宿主能力安装 SDK 插件。
-func InstallWith(app *App, env Environment, plugins ...Plugin) error {
-	return InstallCoreWith(coreApp(app), env, plugins...)
+func InstallWith(app *App, env Environment, plugin Plugin) error {
+	return InstallCoreWith(coreApp(app), env, plugin)
 }
 
 // InstallCoreWith 将 SDK 插件安装到底层 core.App，供运行框架装配插件时使用。
-func InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error {
+func InstallCoreWith(app *core.App, env Environment, plugin Plugin) error {
 	if app == nil {
 		return fmt.Errorf("anybot: app is nil")
 	}
@@ -113,17 +128,15 @@ func InstallCoreWith(app *core.App, env Environment, plugins ...Plugin) error {
 			return err
 		}
 	}
-	for _, plugin := range plugins {
-		if plugin == nil {
-			continue
+	if plugin == nil {
+		return nil
+	}
+	manifest := plugin.Manifest()
+	if err := plugin.Setup(newCoreContext(app, manifest, WithEnvironment(env))); err != nil {
+		if manifest.Name != "" {
+			return fmt.Errorf("anybot: 安装插件 %s 失败: %w", manifest.Name, err)
 		}
-		manifest := plugin.Manifest()
-		if err := plugin.Setup(newCoreContext(app, manifest, WithEnvironment(env))); err != nil {
-			if manifest.Name != "" {
-				return fmt.Errorf("anybot: 安装插件 %s 失败: %w", manifest.Name, err)
-			}
-			return fmt.Errorf("anybot: 安装插件失败: %w", err)
-		}
+		return fmt.Errorf("anybot: 安装插件失败: %w", err)
 	}
 	return nil
 }

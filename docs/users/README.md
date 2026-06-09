@@ -22,6 +22,7 @@ AnyBot 的最终用户入口是一个工作目录。你日常操作的是配置�
 mkdir mybot
 cd mybot
 anybot init
+export ONEBOT_ACCESS_TOKEN=你的令牌
 ```
 
 初始化后先检查配置：
@@ -283,6 +284,7 @@ anybot plugin remove <id>
 mkdir mybot
 cd mybot
 anybot init
+export ONEBOT_ACCESS_TOKEN=你的令牌
 ```
 
 2. 设置超级用户，查看随机 `PluginID`，启用 `admin` 和 `echo` 对应的插件记录。

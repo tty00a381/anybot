@@ -7,6 +7,7 @@ trap 'rm -rf "$root"' EXIT INT TERM
 
 cli="$root/anybot"
 plugin_dir="$root/buddy"
+core_dir="$root/corebot"
 bot_dir="$root/bot"
 
 cd "$repo_root"
@@ -14,6 +15,19 @@ go build -o "$cli" ./cmd/anybot
 
 "$cli" dev plugin buddy -dir "$plugin_dir" -module example.com/anybot-plugin/buddy
 (cd "$plugin_dir" && go mod tidy && go test ./...)
+
+"$cli" dev init -dir "$core_dir" -module example.com/anybot-corebot
+awk '
+	/listen: "127\.0\.0\.1:6700"/ { print "  listen: \"127.0.0.1:0\""; next }
+	{ print }
+' "$core_dir/core.yaml" > "$core_dir/core.yaml.tmp"
+mv "$core_dir/core.yaml.tmp" "$core_dir/core.yaml"
+(
+	cd "$core_dir"
+	go mod tidy
+	"$cli" dev doctor
+	go run . --help
+)
 
 "$cli" init -dir "$bot_dir"
 awk '

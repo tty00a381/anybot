@@ -1,6 +1,15 @@
 .PHONY: fmt fmt-check test race vet check release-files release-e2e release-check
 
 GOFILES := $(shell find . -name '*.go' -not -path './.git/*')
+RELEASE_GO_FILES := $(shell find \
+	core \
+	sdk \
+	app \
+	adapters/onebot11 \
+	cmd/anybot \
+	internal/scaffold \
+	examples \
+	-name '*.go' | sort)
 RELEASE_FILES := \
 	go.mod \
 	go.sum \
@@ -12,75 +21,11 @@ RELEASE_FILES := \
 	assets/waifu.png \
 	LICENSE \
 	.github/workflows/ci.yaml \
-	core/app.go \
-	core/file_store.go \
-	app/host/app.go \
-	app/host/atomic.go \
-	app/host/builtins.go \
-	app/host/check.go \
-	app/host/config.go \
-	app/host/config_store.go \
-	app/host/config_sync.go \
-	app/host/config_update.go \
-	app/host/inspect.go \
-	app/host/plugin_command.go \
-	app/host/plugin_host_render.go \
-	app/host/plugin_lock.go \
-	app/host/plugin_lock_io.go \
-	app/host/status.go \
-	app/host/store.go \
-	adapters/onebot11/adapter.go \
-	adapters/onebot11/client.go \
-	adapters/onebot11/client_test.go \
-	adapters/onebot11/config.go \
-	adapters/onebot11/config_test.go \
-	adapters/onebot11/doc.go \
-	adapters/onebot11/event.go \
-	adapters/onebot11/http.go \
-	adapters/onebot11/http_test.go \
-	adapters/onebot11/id.go \
-	adapters/onebot11/message.go \
-	adapters/onebot11/message_test.go \
-	adapters/onebot11/napcat/api.go \
-	adapters/onebot11/napcat/api_test.go \
-	adapters/onebot11/napcat/doc.go \
-	adapters/onebot11/options.go \
-	adapters/onebot11/response.go \
-	adapters/onebot11/reverse_ws.go \
-	adapters/onebot11/reverse_ws_test.go \
-	adapters/onebot11/server.go \
-	adapters/onebot11/socket.go \
-	adapters/onebot11/state.go \
-	adapters/onebot11/ws_client.go \
-	adapters/onebot11/ws_client_test.go \
-	cmd/anybot/main.go \
-	cmd/anybot/build.go \
-	cmd/anybot/defaults.go \
-	cmd/anybot/dev.go \
-	cmd/anybot/doctor.go \
-	cmd/anybot/plugin.go \
 	scripts/release-e2e.sh \
-	internal/scaffold/scaffold.go \
-	sdk/access.go \
-	sdk/config.go \
-	sdk/data_dir.go \
-	sdk/doc.go \
-	sdk/spec.go \
-	sdk/runtime.go \
-	sdk/state.go \
-	sdk/message/message.go \
-	sdk/testkit/testkit.go \
-	sdk/testkit/testkit_test.go \
 	examples/README.md \
 	examples/plugins/hello/README.md \
-	examples/plugins/hello/hello.go \
-	examples/plugins/hello/hello_test.go \
 	examples/plugins/groupmemo/README.md \
-	examples/plugins/groupmemo/groupmemo.go \
-	examples/plugins/groupmemo/groupmemo_test.go \
-	examples/plugins/dialogue/README.md \
-	examples/plugins/dialogue/dialogue.go \
-	examples/plugins/dialogue/dialogue_test.go
+	examples/plugins/dialogue/README.md
 
 fmt:
 	gofmt -w $(GOFILES)
@@ -100,7 +45,7 @@ vet:
 check: fmt-check test race vet
 
 release-files:
-	@for file in $(RELEASE_FILES); do \
+	@for file in $(RELEASE_FILES) $(RELEASE_GO_FILES); do \
 		test -s "$$file" || { echo "missing release file: $$file"; exit 1; }; \
 	done
 

@@ -36,7 +36,7 @@ func runDev(args []string) error {
 
 func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
-  anybot dev init [-module 模块名] [-dir 目录] [-force]
+  anybot dev init [-module 模块名] [-dir 目录] [-force] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev plugin <名称> -in-project [-dir 目录] [-force]
   anybot dev new plugin <名称> [同 anybot dev plugin]
@@ -48,11 +48,23 @@ func runDevInit(args []string) error {
 	fs := flag.NewFlagSet("dev init", flag.ContinueOnError)
 	module := fs.String("module", "example.com/bot", "Go 模块路径")
 	dir := fs.String("dir", ".", "目标目录")
+	anybotVersion := fs.String("anybot-version", "", "核心库项目依赖的 AnyBot 版本")
+	replace := fs.String("replace", "", "核心库项目 go.mod 中的 AnyBot 本地源码替换路径")
 	force := fs.Bool("force", false, "覆盖已有文件")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if err := scaffold.InitProject(scaffold.ProjectOptions{Dir: *dir, Module: *module, Force: *force}); err != nil {
+	opts := scaffold.ProjectOptions{
+		Dir:           *dir,
+		Module:        *module,
+		AnyBotVersion: *anybotVersion,
+		AnyBotReplace: *replace,
+		Force:         *force,
+	}
+	if err := fillDevProjectDependency(&opts); err != nil {
+		return err
+	}
+	if err := scaffold.InitProject(opts); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "已生成核心库项目：%s\n", cleanDisplayDir(*dir))
@@ -172,6 +184,31 @@ func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
 		fmt.Fprintln(stdout, "  anybot plugin enable <id> -dir <机器人工作目录>")
 		fmt.Fprintln(stdout, "  anybot run -dir <机器人工作目录>")
 	}
+}
+
+func fillDevProjectDependency(opts *scaffold.ProjectOptions) error {
+	if opts == nil {
+		return nil
+	}
+	opts.AnyBotVersion = strings.TrimSpace(opts.AnyBotVersion)
+	opts.AnyBotReplace = strings.TrimSpace(opts.AnyBotReplace)
+	if opts.AnyBotVersion == "" && opts.AnyBotReplace == "" {
+		dep := devPluginFrameworkDependency("github.com/tty00a381/anybot")
+		opts.AnyBotVersion = dep.Version
+		opts.AnyBotReplace = dep.Replace
+	}
+	if opts.AnyBotReplace == "" {
+		if opts.AnyBotVersion == "" || opts.AnyBotVersion == "v0.0.0" {
+			return fmt.Errorf("生成核心库项目需要可解析的 AnyBot 版本；请传 -anybot-version vX.Y.Z，或传 -replace /path/to/anybot 使用本地源码")
+		}
+		return nil
+	}
+	replace, err := normalizeReplacePath(opts.Dir, opts.AnyBotReplace)
+	if err != nil {
+		return err
+	}
+	opts.AnyBotReplace = replace
+	return nil
 }
 
 func fillDevPluginDependency(opts *scaffold.PluginOptions) error {

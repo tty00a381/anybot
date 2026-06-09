@@ -14,11 +14,13 @@ import (
 	modmodule "golang.org/x/mod/module"
 )
 
-// ProjectOptions 配置项目脚手架的目标目录、模块名和覆盖策略。
+// ProjectOptions 配置项目脚手架的目标目录、模块名、框架依赖和覆盖策略。
 type ProjectOptions struct {
-	Dir    string
-	Module string
-	Force  bool
+	Dir           string
+	Module        string
+	Force         bool
+	AnyBotVersion string
+	AnyBotReplace string
 }
 
 // PluginOptions 配置插件脚手架的目标项目、插件名和覆盖策略。
@@ -56,6 +58,12 @@ type pluginScaffoldData struct {
 	AnyBotReplace string
 }
 
+type projectScaffoldData struct {
+	Module        string
+	AnyBotVersion string
+	AnyBotReplace string
+}
+
 // InitProject 写入一个使用 OneBot v11 反向 WebSocket 的最小机器人项目。
 func InitProject(opts ProjectOptions) error {
 	if opts.Dir == "" {
@@ -64,12 +72,24 @@ func InitProject(opts ProjectOptions) error {
 	if opts.Module == "" {
 		opts.Module = "example.com/bot"
 	}
+	if err := modmodule.CheckPath(opts.Module); err != nil {
+		return fmt.Errorf("核心库项目模块路径 %q 无效: %w", opts.Module, err)
+	}
+	data := projectScaffoldData{
+		Module:        opts.Module,
+		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
+		AnyBotReplace: strings.TrimSpace(opts.AnyBotReplace),
+	}
+	goMod, err := projectGoMod(data)
+	if err != nil {
+		return err
+	}
 	files := []scaffoldFile{
-		{Name: "go.mod", Content: render(projectGoMod, opts)},
-		{Name: "main.go", Content: mustFormat(render(projectMain, opts))},
-		{Name: "core.yaml", Content: render(projectConfig, opts)},
+		{Name: "go.mod", Content: goMod},
+		{Name: "main.go", Content: mustFormat(render(projectMain, data))},
+		{Name: "core.yaml", Content: render(projectConfig, data)},
 		{Name: ".env.example", Content: "ONEBOT_ACCESS_TOKEN=\n"},
-		{Name: "README.md", Content: render(projectReadme, opts)},
+		{Name: "README.md", Content: render(projectReadme, data)},
 	}
 	if err := checkFileConflicts(opts.Dir, files, opts.Force); err != nil {
 		return err
@@ -157,6 +177,27 @@ func anybotVersion(version string) string {
 		return "v0.0.0"
 	}
 	return version
+}
+
+func projectGoMod(data projectScaffoldData) (string, error) {
+	if data.AnyBotReplace == "" && data.AnyBotVersion == "v0.0.0" {
+		return "", fmt.Errorf("核心库项目需要有效 AnyBot 版本，或使用 -replace 指向本地 AnyBot 源码")
+	}
+	goMod := render(projectGoModFile, data)
+	file, err := modfile.Parse("go.mod", []byte(goMod), nil)
+	if err != nil {
+		return "", fmt.Errorf("核心库项目 go.mod 无效: %w", err)
+	}
+	if data.AnyBotReplace != "" {
+		if err := file.AddReplace("github.com/tty00a381/anybot", "", data.AnyBotReplace, ""); err != nil {
+			return "", fmt.Errorf("核心库项目 go.mod replace 无效: %w", err)
+		}
+	}
+	out, err := file.Format()
+	if err != nil {
+		return "", fmt.Errorf("核心库项目 go.mod 格式化失败: %w", err)
+	}
+	return string(out), nil
 }
 
 func pluginGoMod(data pluginScaffoldData) (string, error) {
@@ -251,9 +292,11 @@ func packageName(name string) string {
 	return out
 }
 
-const projectGoMod = `module {{.Module}}
+const projectGoModFile = `module {{.Module}}
 
-go 1.24
+go 1.24.0
+
+require github.com/tty00a381/anybot {{.AnyBotVersion}}
 `
 
 const projectMain = `package main
