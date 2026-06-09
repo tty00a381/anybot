@@ -256,6 +256,23 @@ func TestInstallWrapsSetupError(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsMissingSetup(t *testing.T) {
+	definition := Define(Spec[struct{}]{
+		Manifest:      Manifest{Name: "empty"},
+		DefaultConfig: struct{}{},
+	})
+	plugin, buildErr := definition.Build()
+	if buildErr != nil {
+		t.Fatal(buildErr)
+	}
+	err := Install(NewApp(), plugin)
+	if err == nil ||
+		!strings.Contains(err.Error(), "安装插件 empty 失败") ||
+		!strings.Contains(err.Error(), "plugin empty setup function is required") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestInstallRejectsNilApp(t *testing.T) {
 	if err := Install(nil); err == nil || err.Error() != "anybot: app is nil" {
 		t.Fatalf("err = %v", err)
