@@ -37,7 +37,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 	}
 	out.Reset()
 	errOut.Reset()
-	config := filepath.Join(dir, "anybot.yaml")
+	config := host.ConfigPath(dir)
 	data, err := os.ReadFile(config)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 	if errOut.Len() != 0 {
 		t.Fatalf("doctor stderr:\n%s", errOut.String())
 	}
-	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "plugins.d"} {
+	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", host.ConfigDirName} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("%s was not generated: %v", name, err)
 		}
@@ -87,10 +87,13 @@ func TestRunInitAcceptsDirectoryArgument(t *testing.T) {
 		!strings.Contains(out.String(), "cd "+dir) {
 		t.Fatalf("init output:\n%s", out.String())
 	}
-	for _, name := range []string{"anybot.yaml", host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "plugins.d"} {
+	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", host.ConfigDirName} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("%s was not generated: %v", name, err)
 		}
+	}
+	if _, err := os.Stat(host.ConfigPath(dir)); err != nil {
+		t.Fatalf("%s was not generated: %v", host.DefaultConfigPath, err)
 	}
 }
 
@@ -106,7 +109,7 @@ func TestRunInitDefaultsToMybotDirectory(t *testing.T) {
 		!strings.Contains(out.String(), "cd mybot") {
 		t.Fatalf("init output:\n%s", out.String())
 	}
-	if _, err := os.Stat(filepath.Join(root, "mybot", "anybot.yaml")); err != nil {
+	if _, err := os.Stat(host.ConfigPath(filepath.Join(root, "mybot"))); err != nil {
 		t.Fatalf("default mybot directory was not generated: %v", err)
 	}
 }
@@ -124,7 +127,7 @@ func TestRunInitAcceptsEqualsFlagsWithDirectoryArgument(t *testing.T) {
 	if err := run([]string{"init", dir, "--force=true"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "anybot.yaml")); err != nil {
+	if _, err := os.Stat(host.ConfigPath(dir)); err != nil {
 		t.Fatalf("bot directory was not generated: %v", err)
 	}
 }
@@ -141,7 +144,7 @@ func TestRunInitRejectsUnmanagedGeneratedFilesWithoutPartialWrite(t *testing.T) 
 	if !strings.Contains(err.Error(), "不是 anybot 生成文件") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "anybot.yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(host.ConfigPath(dir)); !os.IsNotExist(err) {
 		t.Fatalf("anybot.yaml should not be partially written: %v", err)
 	}
 }
@@ -151,10 +154,10 @@ func TestRunInitForceTakesOverGeneratedHostFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(dir, host.ConfigDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "plugins.d", cmdTestGhostID+".yaml"), []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, host.ConfigDirName, cmdTestGhostID+".yaml"), []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := run([]string{"init", dir, "-force"}); err != nil {
@@ -165,7 +168,7 @@ func TestRunInitForceTakesOverGeneratedHostFiles(t *testing.T) {
 		!strings.Contains(mainGo, "registerGeneratedPlugins(external)") {
 		t.Fatalf("main.go:\n%s", mainGo)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins.d", cmdTestGhostID+".yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, host.ConfigDirName, cmdTestGhostID+".yaml")); !os.IsNotExist(err) {
 		t.Fatalf("stale plugin config should be removed, err=%v", err)
 	}
 }
@@ -337,17 +340,15 @@ func TestRunDevPluginModuleRejectsUnknownFrameworkDependency(t *testing.T) {
 
 func TestRunDoctorRejectsPublicReverseWSWithoutToken(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`runtime:
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, `runtime:
   log_level: info
 adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "0.0.0.0:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	out, errOut, restore := captureOutput(t)
 	defer restore()
 	err := run([]string{"doctor", "-config", config})
@@ -364,8 +365,8 @@ adapter:
 
 func TestRunDoctorRejectsPublicHTTPWebhookWithoutToken(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte(`runtime:
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, `runtime:
   log_level: info
 adapter:
   protocol: onebot11
@@ -373,9 +374,7 @@ adapter:
     type: http
     url: "http://127.0.0.1:5700"
     listen: "0.0.0.0:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	_, _, restore := captureOutput(t)
 	defer restore()
 	err := run([]string{"doctor", "-config", config})
@@ -403,7 +402,7 @@ func TestRunPluginAddAndList(t *testing.T) {
 	id := readOnlyPluginID(t, dir)
 	shortID := host.ShortPluginID(id)
 	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather@v1.2.3)") ||
-		!strings.Contains(out.String(), filepath.ToSlash(filepath.Join(dir, "plugins.d", id+".yaml"))) ||
+		!strings.Contains(out.String(), filepath.ToSlash(filepath.Join(dir, host.ConfigDirName, id+".yaml"))) ||
 		!strings.Contains(out.String(), "下一步：") ||
 		!strings.Contains(out.String(), "cd "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin enable "+shortID) ||
@@ -413,15 +412,15 @@ func TestRunPluginAddAndList(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plugins.gen.go")); err != nil {
 		t.Fatal(err)
 	}
-	config := readTestFile(t, filepath.Join(dir, "anybot.yaml"))
+	config := readTestFile(t, host.ConfigPath(dir))
 	if strings.Contains(config, "weather:") {
 		t.Fatalf("config:\n%s", config)
 	}
-	pluginConfig := readTestFile(t, filepath.Join(dir, "plugins.d", id+".yaml"))
+	pluginConfig := readTestFile(t, filepath.Join(dir, host.ConfigDirName, id+".yaml"))
 	if !strings.Contains(pluginConfig, "enabled: false") || !strings.Contains(pluginConfig, "config: {}") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "id: "+id) ||
 		!strings.Contains(lockText, "version: v1.2.3") ||
 		strings.Contains(lockText, "name:") {
@@ -468,7 +467,7 @@ func TestRunPluginAddWithReplaceDoesNotResolveLatest(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if strings.Contains(lockText, "version:") || !strings.Contains(lockText, "replace: ../weather") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -505,7 +504,7 @@ func TestRunPluginAddWithReplaceUsesPathMajorPlaceholder(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather/v2 => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "id: "+id) ||
 		strings.Contains(lockText, "version:") ||
 		!strings.Contains(lockText, "module: github.com/acme/weather/v2") {
@@ -529,7 +528,7 @@ func TestRunPluginAddReportsVersionResolutionErrorWithoutPartialWrite(t *testing
 		!strings.Contains(err.Error(), "module not found") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); !os.IsNotExist(err) {
+	if _, err := os.Stat(host.PluginLockPath(dir)); !os.IsNotExist(err) {
 		t.Fatalf("lock should not be created, err=%v", err)
 	}
 }
@@ -559,13 +558,13 @@ func TestRunPluginAddRollsBackAfterConfigFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "go mod edit failed") {
 		t.Fatalf("err = %v", err)
 	}
-	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod", "anybot.yaml"} {
+	for _, name := range []string{host.PluginLockFile, "plugins.gen.go", "main.go", "go.mod"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s should be rolled back, err=%v", name, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins.d")); !os.IsNotExist(err) {
-		t.Fatalf("plugins.d should be rolled back, err=%v", err)
+	if _, err := os.Stat(filepath.Join(dir, host.ConfigDirName)); !os.IsNotExist(err) {
+		t.Fatalf("config should be rolled back, err=%v", err)
 	}
 }
 
@@ -608,7 +607,7 @@ func TestRunPluginAddSupportsVersionAndReplace(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已添加："+id+" (github.com/acme/weather@v1.2.3 => ../weather)") {
 		t.Fatalf("add output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.2.3") || !strings.Contains(lockText, "replace: ../weather") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -647,7 +646,7 @@ func TestRunPluginUpdatePreservesConfigAndSyncsGoMod(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新："+id+" (github.com/acme/weather@v1.3.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.3.0") ||
 		strings.Contains(lockText, "replace:") {
 		t.Fatalf("lockText:\n%s", lockText)
@@ -678,7 +677,7 @@ func TestRunPluginUpdateRollsBackAfterGoModFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lockPath := filepath.Join(dir, host.PluginLockFile)
+	lockPath := host.PluginLockPath(dir)
 	beforeLockText := readTestFile(t, lockPath)
 	beforeGenerated := readTestFile(t, filepath.Join(dir, "plugins.gen.go"))
 	beforeMain := readTestFile(t, filepath.Join(dir, "main.go"))
@@ -739,7 +738,7 @@ func TestRunPluginUpdatePinsLatestBeforeWriting(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新："+cmdTestWeatherID+" (github.com/acme/weather@v1.4.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.4.0") || strings.Contains(lockText, "latest") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -783,7 +782,7 @@ func TestRunPluginUpdateClearReplacePinsLatest(t *testing.T) {
 	if !strings.Contains(out.String(), "插件已更新："+cmdTestWeatherID+" (github.com/acme/weather@v1.4.0)") {
 		t.Fatalf("update output:\n%s", out.String())
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.4.0") ||
 		strings.Contains(lockText, "replace:") {
 		t.Fatalf("lockText:\n%s", lockText)
@@ -820,7 +819,7 @@ func TestRunPluginUpdateVersionResolutionErrorDoesNotWrite(t *testing.T) {
 		!strings.Contains(err.Error(), "module not found") {
 		t.Fatalf("err = %v", err)
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.2.3") ||
 		strings.Contains(lockText, "latest") {
 		t.Fatalf("lockText should remain unchanged:\n%s", lockText)
@@ -970,7 +969,7 @@ func TestRunPluginStatus(t *testing.T) {
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := host.EnsurePluginConfigEntry(filepath.Join(dir, "anybot.yaml"), cmdTestWeatherID); err != nil {
+	if _, err := host.EnsurePluginConfigEntry(host.ConfigPath(dir), cmdTestWeatherID); err != nil {
 		t.Fatal(err)
 	}
 	out, _, restore := captureOutput(t)
@@ -988,10 +987,8 @@ func TestRunPluginStatus(t *testing.T) {
 func TestRunPluginStatusUsesConfigPathDirectoryForLock(t *testing.T) {
 	dir := t.TempDir()
 	other := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1023,7 +1020,7 @@ func TestRunPluginInspect(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "名称：help") ||
 		!strings.Contains(out.String(), "ID："+helpID) ||
-		!strings.Contains(out.String(), "配置文件："+filepath.Join(dir, "plugins.d", helpID+".yaml")) ||
+		!strings.Contains(out.String(), "配置文件："+filepath.Join(dir, host.ConfigDirName, helpID+".yaml")) ||
 		!strings.Contains(out.String(), "当前配置：") ||
 		!strings.Contains(out.String(), "默认配置：") ||
 		!strings.Contains(out.String(), "command: help") {
@@ -1032,7 +1029,7 @@ func TestRunPluginInspect(t *testing.T) {
 }
 
 func TestRunPluginRejectsDirAndConfigTogether(t *testing.T) {
-	err := run([]string{"plugin", "status", "-dir", t.TempDir(), "-config", filepath.Join(t.TempDir(), "anybot.yaml")})
+	err := run([]string{"plugin", "status", "-dir", t.TempDir(), "-config", host.ConfigPath(t.TempDir())})
 	if err == nil || !strings.Contains(err.Error(), "不能同时指定 -dir 和 -config") {
 		t.Fatalf("err = %v", err)
 	}
@@ -1040,10 +1037,8 @@ func TestRunPluginRejectsDirAndConfigTogether(t *testing.T) {
 
 func TestRunPluginCheck(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1093,17 +1088,17 @@ func TestRunPluginRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "插件已移除："+id) ||
-		!strings.Contains(out.String(), "配置已移除："+filepath.ToSlash(filepath.Join(dir, "plugins.d", id+".yaml"))) {
+		!strings.Contains(out.String(), "配置已移除："+filepath.ToSlash(filepath.Join(dir, host.ConfigDirName, id+".yaml"))) {
 		t.Fatalf("remove output:\n%s", out.String())
 	}
-	config := readTestFile(t, filepath.Join(dir, "anybot.yaml"))
+	config := readTestFile(t, host.ConfigPath(dir))
 	if strings.Contains(config, "weather:") {
 		t.Fatalf("config:\n%s", config)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins.d", id+".yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, host.ConfigDirName, id+".yaml")); !os.IsNotExist(err) {
 		t.Fatalf("plugin config should be removed: %v", err)
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if strings.Contains(lockText, "github.com/acme/weather") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -1119,10 +1114,8 @@ func TestRunPluginRemoveUsesConfigPathDirectoryForLock(t *testing.T) {
 	}
 	dir := t.TempDir()
 	other := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1136,14 +1129,14 @@ func TestRunPluginRemoveUsesConfigPathDirectoryForLock(t *testing.T) {
 	if len(calls) == 0 || !strings.HasPrefix(calls[0], dir+" go mod edit") {
 		t.Fatalf("calls should run in config directory: %#v", calls)
 	}
-	if _, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile)); err != nil {
+	if _, err := host.LoadPluginLock(host.PluginLockPath(dir)); err != nil {
 		t.Fatal(err)
 	}
-	lockText := readTestFile(t, filepath.Join(dir, host.PluginLockFile))
+	lockText := readTestFile(t, host.PluginLockPath(dir))
 	if strings.Contains(lockText, "github.com/acme/weather") {
 		t.Fatalf("config directory lock should remove weather:\n%s", lockText)
 	}
-	otherLockText := readTestFile(t, filepath.Join(other, host.PluginLockFile))
+	otherLockText := readTestFile(t, host.PluginLockPath(other))
 	if !strings.Contains(otherLockText, "github.com/acme/ghost") {
 		t.Fatalf("other directory lock should be untouched:\n%s", otherLockText)
 	}
@@ -1160,10 +1153,8 @@ func TestRunPluginRemoveDropsVersionedGoModEntries(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: false\nconfig: {}\n")
 	oldRunner := commandRunner
 	defer func() { commandRunner = oldRunner }()
@@ -1205,12 +1196,10 @@ func TestRunPluginRemoveRollsBackAfterGoModFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	configPath := host.ConfigPath(dir)
+	writeTestConfig(t, configPath, "runtime:\n  log_level: info\n")
 	pluginConfig := writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: true\nconfig:\n  city: Hangzhou\n")
-	lockPath := filepath.Join(dir, host.PluginLockFile)
+	lockPath := host.PluginLockPath(dir)
 	beforeLockText := readTestFile(t, lockPath)
 	beforeConfig := readTestFile(t, pluginConfig)
 	beforeGoMod := readTestFile(t, filepath.Join(dir, "go.mod"))
@@ -1246,10 +1235,8 @@ func TestRunPluginRemoveAllowsBuiltinInstall(t *testing.T) {
 
 func TestRunPluginSync(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestEchoID, Builtin: "echo"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1262,7 +1249,7 @@ func TestRunPluginSync(t *testing.T) {
 	if !strings.Contains(out.String(), "插件配置已同步：") {
 		t.Fatalf("sync output:\n%s", out.String())
 	}
-	updated := readTestFile(t, filepath.Join(dir, "plugins.d", cmdTestEchoID+".yaml"))
+	updated := readTestFile(t, filepath.Join(dir, host.ConfigDirName, cmdTestEchoID+".yaml"))
 	if !strings.Contains(updated, "command: echo") {
 		t.Fatalf("config:\n%s", updated)
 	}
@@ -1270,10 +1257,8 @@ func TestRunPluginSync(t *testing.T) {
 
 func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestEchoID, Builtin: "echo"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1287,7 +1272,7 @@ func TestRunPluginSyncSkipsDisabledUnknownPlugin(t *testing.T) {
 	if !strings.Contains(out.String(), "未知插件已跳过："+cmdTestLegacyID+"（已禁用）") {
 		t.Fatalf("sync output:\n%s", out.String())
 	}
-	updated := readTestFile(t, filepath.Join(dir, "plugins.d", cmdTestEchoID+".yaml"))
+	updated := readTestFile(t, filepath.Join(dir, host.ConfigDirName, cmdTestEchoID+".yaml"))
 	if !strings.Contains(updated, "command: echo") {
 		t.Fatalf("plugin config:\n%s", updated)
 	}
@@ -1319,10 +1304,8 @@ func TestRunPluginSyncSkipsExternalLockPlugin(t *testing.T) {
 
 func TestRunPluginConfigResetSyncsBuiltinDefaults(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1347,14 +1330,12 @@ func TestRunPluginConfigResetSyncsBuiltinDefaults(t *testing.T) {
 
 func TestRunPluginConfigResetUsesPluginConfigDir(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	pluginPath := filepath.Join(dir, "plugins.d", cmdTestHelpID+".yaml")
+	config := host.ConfigPath(dir)
+	pluginPath := filepath.Join(dir, host.ConfigDirName, cmdTestHelpID+".yaml")
 	if err := os.Mkdir(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1397,10 +1378,8 @@ func TestRunPluginConfigResetMustFollowPluginName(t *testing.T) {
 
 func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestHelpID, Builtin: "help"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1413,10 +1392,8 @@ func TestRunPluginConfigResetRejectsMixedSetAndReset(t *testing.T) {
 
 func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	pluginPath := writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: true\nconfig:\n  city: Hangzhou\n  unit: c\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
@@ -1438,10 +1415,8 @@ func TestRunPluginConfigResetLockPluginWaitsForGeneratedHost(t *testing.T) {
 
 func TestRunPluginEnableDisable(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestEchoID, Builtin: "echo"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1471,10 +1446,8 @@ func TestRunPluginEnableDisable(t *testing.T) {
 
 func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestRateLimitID, Builtin: "ratelimit"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1487,7 +1460,7 @@ func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置已同步：1 项更新") {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	updated := readTestFile(t, filepath.Join(dir, "plugins.d", cmdTestRateLimitID+".yaml"))
+	updated := readTestFile(t, filepath.Join(dir, host.ConfigDirName, cmdTestRateLimitID+".yaml"))
 	if !strings.Contains(updated, "enabled: true") ||
 		!strings.Contains(updated, "limit: 5") ||
 		!strings.Contains(updated, "window: 1m") {
@@ -1497,10 +1470,8 @@ func TestRunPluginEnableSyncsBuiltinDefaults(t *testing.T) {
 
 func TestRunPluginEnableRejectsUnknownTarget(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	err := run([]string{"plugin", "enable", host.ShortPluginID(cmdTestGhostID), "-dir", dir})
 	if err == nil {
 		t.Fatal("unknown plugin should be rejected")
@@ -1515,10 +1486,8 @@ func TestRunPluginEnableRejectsUnknownTarget(t *testing.T) {
 
 func TestRunPluginEnableRejectsUnknownConfiguredTarget(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	pluginPath := writeTestPluginConfig(t, dir, cmdTestGhostID, "enabled: false\nconfig: {}\n")
 	err := run([]string{"plugin", "enable", host.ShortPluginID(cmdTestGhostID), "-dir", dir})
 	if err == nil {
@@ -1534,10 +1503,8 @@ func TestRunPluginEnableRejectsUnknownConfiguredTarget(t *testing.T) {
 
 func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	pluginPath := writeTestPluginConfig(t, dir, cmdTestLegacyID, "enabled: true\nconfig: {}\n")
 	out, _, restore := captureOutput(t)
 	defer restore()
@@ -1554,10 +1521,8 @@ func TestRunPluginDisableAllowsUnknownConfiguredTarget(t *testing.T) {
 
 func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1570,7 +1535,7 @@ func TestRunPluginEnableAllowsLockPlugin(t *testing.T) {
 		!strings.Contains(out.String(), "默认配置待构建同步："+cmdTestWeatherID) {
 		t.Fatalf("enable output:\n%s", out.String())
 	}
-	if updated := readTestFile(t, filepath.Join(dir, "plugins.d", cmdTestWeatherID+".yaml")); !strings.Contains(updated, "enabled: true") {
+	if updated := readTestFile(t, filepath.Join(dir, host.ConfigDirName, cmdTestWeatherID+".yaml")); !strings.Contains(updated, "enabled: true") {
 		t.Fatalf("config:\n%s", updated)
 	}
 }
@@ -1594,12 +1559,10 @@ func TestRunDoctorSkipsGeneratedExternalPluginChecks(t *testing.T) {
 	}
 	out.Reset()
 	errOut.Reset()
-	config := filepath.Join(dir, "anybot.yaml")
+	config := host.ConfigPath(dir)
 	data := readTestFile(t, config)
 	data = strings.ReplaceAll(data, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
-	if err := os.WriteFile(config, []byte(data), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, config, data)
 	if err := run([]string{"doctor", "-config", config}); err != nil {
 		t.Fatal(err)
 	}
@@ -1630,12 +1593,10 @@ func TestRunDoctorStillRejectsUnknownConfiguredPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTestPluginConfig(t, dir, cmdTestGhostID, "enabled: true\nconfig: {}\n")
-	config := filepath.Join(dir, "anybot.yaml")
+	config := host.ConfigPath(dir)
 	data := readTestFile(t, config)
 	data = strings.ReplaceAll(data, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
-	if err := os.WriteFile(config, []byte(data), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, config, data)
 	err := run([]string{"doctor", "-config", config})
 	if err == nil || !strings.Contains(err.Error(), "未知插件") || !strings.Contains(err.Error(), cmdTestGhostID) {
 		t.Fatalf("err = %v", err)
@@ -1667,7 +1628,7 @@ func TestRunBuildInvokesGoTool(t *testing.T) {
 	if !strings.Contains(out.String(), "构建完成："+filepath.Join(dir, "bot")) {
 		t.Fatalf("build output:\n%s", out.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, host.PluginLockFile)); err != nil {
+	if _, err := os.Stat(host.PluginLockPath(dir)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1791,12 +1752,10 @@ var Plugin = absdk.Define(absdk.Spec[Config]{
 	if err := run([]string{"plugin", "enable", host.ShortPluginID(id), "-dir", botDir}); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(botDir, "anybot.yaml")
+	configPath := host.ConfigPath(botDir)
 	config := readTestFile(t, configPath)
 	config = strings.ReplaceAll(config, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, configPath, config)
 	if err := run([]string{"build", "-dir", botDir}); err != nil {
 		t.Fatal(err)
 	}
@@ -1890,10 +1849,8 @@ func TestRunDelegatesEnabledExternalPluginToGeneratedHost(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather", Version: "v1.2.3"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1932,10 +1889,8 @@ func TestRunDirDelegatesEnabledExternalPluginToGeneratedHost(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather", Version: "v1.2.3"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1964,7 +1919,7 @@ func TestRunDirDelegatesEnabledExternalPluginToGeneratedHost(t *testing.T) {
 }
 
 func TestRunRejectsDirAndConfigTogether(t *testing.T) {
-	err := run([]string{"run", "-dir", t.TempDir(), "-config", filepath.Join(t.TempDir(), "anybot.yaml")})
+	err := run([]string{"run", "-dir", t.TempDir(), "-config", host.ConfigPath(t.TempDir())})
 	if err == nil || !strings.Contains(err.Error(), "不能同时指定 -dir 和 -config") {
 		t.Fatalf("err = %v", err)
 	}
@@ -1972,10 +1927,8 @@ func TestRunRejectsDirAndConfigTogether(t *testing.T) {
 
 func TestRunIgnoresDisabledExternalPlugin(t *testing.T) {
 	dir := t.TempDir()
-	config := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\nadapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\nadapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather", Version: "v1.2.3"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1984,7 +1937,7 @@ func TestRunIgnoresDisabledExternalPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1996,15 +1949,13 @@ func TestRunIgnoresDisabledExternalPlugin(t *testing.T) {
 func TestRunRejectsExternalPluginWithNonDefaultConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "bot.yaml")
-	if err := os.WriteFile(config, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
 	if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{Dir: dir, ID: cmdTestWeatherID, Module: "github.com/acme/weather", Version: "v1.2.3"}); err != nil {
 		t.Fatal(err)
 	}
-	writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: true\nconfig: {}\n")
+	writeTestConfig(t, filepath.Join(dir, cmdTestWeatherID+".yaml"), "enabled: true\nconfig: {}\n")
 	err := run([]string{"run", "-config", config})
-	if err == nil || !strings.Contains(err.Error(), "需要使用工作目录中的 anybot.yaml") {
+	if err == nil || !strings.Contains(err.Error(), "需要使用工作目录中的 config/anybot.yaml") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -2258,7 +2209,7 @@ func frameworkGoModCalls(dir string, deps []moduleDependency) []string {
 
 func readOnlyPluginID(t *testing.T, dir string) string {
 	t.Helper()
-	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2270,7 +2221,7 @@ func readOnlyPluginID(t *testing.T, dir string) string {
 
 func pluginIDByBuiltin(t *testing.T, dir, source string) string {
 	t.Helper()
-	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2285,7 +2236,7 @@ func pluginIDByBuiltin(t *testing.T, dir, source string) string {
 
 func onlyExternalPluginID(t *testing.T, dir string) string {
 	t.Helper()
-	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2306,14 +2257,22 @@ func onlyExternalPluginID(t *testing.T, dir string) string {
 
 func writeTestPluginConfig(t *testing.T, dir, id, content string) string {
 	t.Helper()
-	path := filepath.Join(dir, "plugins.d", id+".yaml")
+	path := filepath.Join(dir, host.ConfigDirName, id+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestConfig(t, path, content)
+	return path
+}
+
+func writeTestConfig(t *testing.T, path, content string) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return path
 }
 
 func readTestFile(t *testing.T, path string) string {

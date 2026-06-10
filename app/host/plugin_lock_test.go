@@ -26,7 +26,7 @@ func TestAddPluginInstallGeneratesLockAndHost(t *testing.T) {
 	if lock.Plugins[0].ID != testWeatherID {
 		t.Fatalf("plugin id = %q", lock.Plugins[0].ID)
 	}
-	lockText := readFile(t, filepath.Join(dir, PluginLockFile))
+	lockText := readFile(t, PluginLockPath(dir))
 	if !strings.Contains(lockText, "id: "+testWeatherID) ||
 		!strings.Contains(lockText, "module: github.com/acme/anybot-weather") ||
 		strings.Contains(lockText, "name:") {
@@ -79,7 +79,7 @@ func TestEnsurePluginHostCreatesEmptyHost(t *testing.T) {
 	if lock.Module != "anybot.local/bot" || len(lock.Plugins) != 0 {
 		t.Fatalf("lock = %#v", lock)
 	}
-	lockText := readFile(t, filepath.Join(dir, PluginLockFile))
+	lockText := readFile(t, PluginLockPath(dir))
 	if !strings.Contains(lockText, "module: anybot.local/bot") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -107,7 +107,7 @@ func TestLoadPluginLockAcceptsCustomPath(t *testing.T) {
 
 func TestLoadPluginLockValidatesLock(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, PluginLockFile)
+	path := PluginLockPath(dir)
 	if err := os.WriteFile(path, []byte(`module: anybot.local/bot
 plugins:
   - id: `+testWeatherID+`
@@ -129,7 +129,7 @@ func TestAddPluginInstallRejectsInvalidIDBeforeWriting(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `plugin id "bad/name" is invalid`) {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, PluginLockFile)); !os.IsNotExist(err) {
+	if _, err := os.Stat(PluginLockPath(dir)); !os.IsNotExist(err) {
 		t.Fatalf("lock should not be written: %v", err)
 	}
 }
@@ -149,7 +149,7 @@ func TestAddPluginInstallParsesVersionAndReplace(t *testing.T) {
 	if item.Module != "github.com/acme/weather" || item.Version != "v1.2.3" || item.Replace != "../weather" {
 		t.Fatalf("plugin = %#v", item)
 	}
-	lockText := readFile(t, filepath.Join(dir, PluginLockFile))
+	lockText := readFile(t, PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.2.3") ||
 		!strings.Contains(lockText, "id: "+testWeatherID) ||
 		!strings.Contains(lockText, "replace: ../weather") {
@@ -169,7 +169,7 @@ func TestRenderPluginHostUpdatesGeneratedMain(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, generatedMain), []byte(generatedHeader+"\n\npackage main\n\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	lock, err := LoadPluginLock(filepath.Join(dir, PluginLockFile))
+	lock, err := LoadPluginLock(PluginLockPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestUpdatePluginInstallUpdatesMetadata(t *testing.T) {
 	if len(lock.Plugins) != 1 || lock.Plugins[0] != updated {
 		t.Fatalf("lock = %#v", lock)
 	}
-	lockText := readFile(t, filepath.Join(dir, PluginLockFile))
+	lockText := readFile(t, PluginLockPath(dir))
 	if !strings.Contains(lockText, "version: v1.3.0") ||
 		strings.Contains(lockText, "replace:") {
 		t.Fatalf("lockText:\n%s", lockText)
@@ -324,7 +324,7 @@ func TestRemovePluginInstallUpdatesLockAndHost(t *testing.T) {
 	if removed.Module != "github.com/acme/weather" || len(lock.Plugins) != 1 || lock.Plugins[0].ID != testMemoryID {
 		t.Fatalf("removed=%#v lock=%#v", removed, lock)
 	}
-	lockText := readFile(t, filepath.Join(dir, PluginLockFile))
+	lockText := readFile(t, PluginLockPath(dir))
 	if strings.Contains(lockText, "github.com/acme/weather") || !strings.Contains(lockText, "github.com/acme/memory") {
 		t.Fatalf("lockText:\n%s", lockText)
 	}
@@ -388,9 +388,7 @@ var Plugin = absdk.Define(absdk.Spec[Config]{
 	runGo(t, botDir, "mod", "edit", "-replace", "example.com/weather="+pluginDir)
 	runGo(t, botDir, "mod", "tidy")
 	runGo(t, botDir, "build", "-o", "anybot-bot", ".")
-	if err := os.WriteFile(filepath.Join(botDir, "anybot.yaml"), []byte("adapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, ConfigPath(botDir), "adapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n")
 	binary := filepath.Join(botDir, "anybot-bot")
 	weatherShortID := ShortPluginID(testWeatherID)
 	out := runCommand(t, botDir, binary, "plugin", "enable", weatherShortID)
@@ -398,7 +396,7 @@ var Plugin = absdk.Define(absdk.Spec[Config]{
 		!strings.Contains(out, "默认配置已同步：1 项更新") {
 		t.Fatalf("plugin enable:\n%s", out)
 	}
-	pluginConfig := readFile(t, filepath.Join(botDir, "plugins.d", testWeatherID+".yaml"))
+	pluginConfig := readFile(t, filepath.Join(botDir, ConfigDirName, testWeatherID+".yaml"))
 	if !strings.Contains(pluginConfig, "enabled: true") ||
 		!strings.Contains(pluginConfig, "command: weather") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
@@ -422,7 +420,7 @@ var Plugin = absdk.Define(absdk.Spec[Config]{
 	if !strings.Contains(out, "插件配置已更新："+testWeatherID) {
 		t.Fatalf("plugin config:\n%s", out)
 	}
-	pluginConfig = readFile(t, filepath.Join(botDir, "plugins.d", testWeatherID+".yaml"))
+	pluginConfig = readFile(t, filepath.Join(botDir, ConfigDirName, testWeatherID+".yaml"))
 	if !strings.Contains(pluginConfig, "command: forecast") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
@@ -431,7 +429,7 @@ var Plugin = absdk.Define(absdk.Spec[Config]{
 		!strings.Contains(out, "默认配置已同步：1 项更新") {
 		t.Fatalf("plugin config reset:\n%s", out)
 	}
-	pluginConfig = readFile(t, filepath.Join(botDir, "plugins.d", testWeatherID+".yaml"))
+	pluginConfig = readFile(t, filepath.Join(botDir, ConfigDirName, testWeatherID+".yaml"))
 	if !strings.Contains(pluginConfig, "command: weather") || strings.Contains(pluginConfig, "command: forecast") {
 		t.Fatalf("plugin config:\n%s", pluginConfig)
 	}
@@ -472,16 +470,14 @@ func TestGeneratedPluginLockBuildsStarterPlugin(t *testing.T) {
 	runGo(t, botDir, "mod", "edit", "-replace", module+"="+pluginDir)
 	runGo(t, botDir, "mod", "tidy")
 	runGo(t, botDir, "build", "-o", "anybot-bot", ".")
-	if err := os.WriteFile(filepath.Join(botDir, "anybot.yaml"), []byte("adapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestConfig(t, ConfigPath(botDir), "adapter:\n  transport:\n    listen: \"127.0.0.1:0\"\n")
 	binary := filepath.Join(botDir, "anybot-bot")
 	memoryShortID := ShortPluginID(testMemoryID)
 	out := runCommand(t, botDir, binary, "plugin", "enable", memoryShortID)
 	if !strings.Contains(out, "插件已启用："+testMemoryID) {
 		t.Fatalf("plugin enable %s:\n%s", name, out)
 	}
-	pluginConfig := readFile(t, filepath.Join(botDir, "plugins.d", testMemoryID+".yaml"))
+	pluginConfig := readFile(t, filepath.Join(botDir, ConfigDirName, testMemoryID+".yaml"))
 	if !strings.Contains(pluginConfig, "enabled: true") ||
 		!strings.Contains(pluginConfig, "command: buddy") {
 		t.Fatalf("plugin config %s:\n%s", name, pluginConfig)

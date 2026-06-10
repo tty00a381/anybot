@@ -21,7 +21,7 @@ import (
 
 func runDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	configPath := fs.String("config", "anybot.yaml", "配置文件")
+	configPath := fs.String("config", host.DefaultConfigPath, "配置文件")
 	connect := fs.Bool("connect", false, "检查远端动作接口是否可连接")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -33,12 +33,13 @@ func runDoctor(args []string) error {
 	if _, err := host.NewLogger(cfg.Runtime.LogLevel, stderr); err != nil {
 		return err
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(filepath.Dir(*configPath), host.PluginLockFile))
+	workDir := host.WorkDirForConfig(*configPath)
+	lock, err := host.LoadPluginLock(host.PluginLockPath(workDir))
 	if err != nil {
 		return err
 	}
 	if err := host.ValidateConfigWithLock(doctorValidationConfig(cfg, lock), host.EmptyRegistry(), lock); err != nil {
-		return withExternalPluginHint(err, filepath.Dir(*configPath))
+		return withExternalPluginHint(err, workDir)
 	}
 	adapterCfg := cfgAdapter(cfg)
 	if err := checkListen(adapterCfg); err != nil {
@@ -58,7 +59,7 @@ func runDoctor(args []string) error {
 	enabled := doctorEnabledPlugins(cfg, lock)
 	abs, _ := filepath.Abs(*configPath)
 	printSummary(abs, cfg, enabled)
-	printDoctorExternalPluginHint(cfg, lock, filepath.Dir(*configPath))
+	printDoctorExternalPluginHint(cfg, lock, workDir)
 	fmt.Fprintf(stdout, "配置可用：%s\n", abs)
 	return nil
 }

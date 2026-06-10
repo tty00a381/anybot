@@ -10,10 +10,8 @@ import (
 
 func TestInspectPluginBuiltinIncludesConfigAndDefaults(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := ConfigPath(dir)
+	writeTestConfig(t, path, "runtime:\n  log_level: info\n")
 	if err := writePluginConfigFile(dir, testHelpID, `enabled: true
 config:
   command: docs
@@ -28,7 +26,7 @@ config:
 	if inspect.Source != "builtin" || inspect.ID != testHelpID || inspect.Name != "help" || !inspect.Configured || !inspect.Enabled || !inspect.Available {
 		t.Fatalf("inspect = %#v", inspect)
 	}
-	if inspect.ConfigPath != filepath.Join(dir, "plugins.d", testHelpID+".yaml") || inspect.CheckState != pluginCheckOK {
+	if inspect.ConfigPath != filepath.Join(dir, ConfigDirName, testHelpID+".yaml") || inspect.CheckState != pluginCheckOK {
 		t.Fatalf("inspect = %#v", inspect)
 	}
 	if !strings.Contains(inspect.ConfigYAML, "command: docs") ||
@@ -51,14 +49,12 @@ config:
 
 func TestInspectPluginAcceptsYMLConfig(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
+	path := ConfigPath(dir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(dir, "plugins.d"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	pluginPath := filepath.Join(dir, "plugins.d", testEchoID+".yml")
+	writeTestConfig(t, path, "runtime:\n  log_level: info\n")
+	pluginPath := filepath.Join(dir, ConfigDirName, testEchoID+".yml")
 	if err := os.WriteFile(pluginPath, []byte("enabled: false\nconfig: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -74,10 +70,8 @@ func TestInspectPluginAcceptsYMLConfig(t *testing.T) {
 
 func TestInspectPluginExternalUnavailable(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := ConfigPath(dir)
+	writeTestConfig(t, path, "runtime:\n  log_level: info\n")
 	if err := writePluginConfigFile(dir, testWeatherID, `enabled: true
 config:
   city: Hangzhou

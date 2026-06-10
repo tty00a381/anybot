@@ -52,16 +52,16 @@ func pluginUsage() {
 	fmt.Fprintln(stdout, `anybot plugin 命令：
   anybot plugin add <module[@version]> [-version 版本] [-replace 本地路径] [-dir 目录]
   anybot plugin update <id> [-version 版本] [-replace 本地路径|-clear-replace] [-dir 目录]
-  anybot plugin remove <id> [-dir 目录|-config anybot.yaml]
+  anybot plugin remove <id> [-dir 目录|-config config/anybot.yaml]
   anybot plugin list [-dir 目录]
-  anybot plugin status [-dir 目录|-config anybot.yaml]
-  anybot plugin inspect <id> [-dir 目录|-config anybot.yaml]
-  anybot plugin config <id> <key=value>... [-dir 目录|-config anybot.yaml]
-  anybot plugin config <id> -reset <key>... [-dir 目录|-config anybot.yaml]
-  anybot plugin check [-dir 目录|-config anybot.yaml]
-  anybot plugin sync [-dir 目录|-config anybot.yaml]
-  anybot plugin enable <id> [-dir 目录|-config anybot.yaml]
-  anybot plugin disable <id> [-dir 目录|-config anybot.yaml]`)
+  anybot plugin status [-dir 目录|-config config/anybot.yaml]
+  anybot plugin inspect <id> [-dir 目录|-config config/anybot.yaml]
+  anybot plugin config <id> <key=value>... [-dir 目录|-config config/anybot.yaml]
+  anybot plugin config <id> -reset <key>... [-dir 目录|-config config/anybot.yaml]
+  anybot plugin check [-dir 目录|-config config/anybot.yaml]
+  anybot plugin sync [-dir 目录|-config config/anybot.yaml]
+  anybot plugin enable <id> [-dir 目录|-config config/anybot.yaml]
+  anybot plugin disable <id> [-dir 目录|-config config/anybot.yaml]`)
 }
 
 func runPluginAdd(args []string) (err error) {
@@ -101,7 +101,7 @@ func runPluginAdd(args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	configPath := filepath.Join(*dir, "anybot.yaml")
+	configPath := host.ConfigPath(*dir)
 	rollback, err := snapshotFiles(pluginAddTouchedFiles(*dir, configPath, pluginID))
 	if err != nil {
 		return err
@@ -247,7 +247,7 @@ func runPluginRemove(args []string) (err error) {
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("用法：anybot plugin remove <id> [-dir 目录|-config anybot.yaml]")
+		return fmt.Errorf("用法：anybot plugin remove <id> [-dir 目录|-config config/anybot.yaml]")
 	}
 	cfgTarget, err := newPluginConfigTarget(*dir, *config, flagSetExplicit(fs, "dir"), flagSetExplicit(fs, "config"))
 	if err != nil {
@@ -300,7 +300,7 @@ func runPluginList(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(*dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(*dir))
 	if err != nil {
 		return err
 	}
@@ -395,7 +395,7 @@ func pluginHostTouchedFiles(dir string) []string {
 		dir = "."
 	}
 	return []string{
-		filepath.Join(dir, host.PluginLockFile),
+		host.PluginLockPath(dir),
 		filepath.Join(dir, "plugins.gen.go"),
 		filepath.Join(dir, "main.go"),
 		filepath.Join(dir, "go.mod"),
@@ -521,7 +521,7 @@ func previewPluginModuleUpdate(dir, target string, opts host.UpdatePluginInstall
 	if opts.SetReplace && opts.ClearReplace {
 		return host.PluginInstall{}, host.PluginLock{}, fmt.Errorf("-replace and -clear-replace cannot be used together")
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
 	if err != nil {
 		return host.PluginInstall{}, host.PluginLock{}, err
 	}
@@ -727,14 +727,14 @@ func newPluginConfigTarget(dir, configPath string, dirSet, configSet bool) (plug
 		return pluginConfigTarget{}, fmt.Errorf("anybot plugin 不能同时指定 -dir 和 -config")
 	}
 	if configPath == "" {
-		configPath = filepath.Join(dir, "anybot.yaml")
+		configPath = host.ConfigPath(dir)
 	} else {
-		dir = filepath.Dir(configPath)
+		dir = host.WorkDirForConfig(configPath)
 	}
 	return pluginConfigTarget{
 		dir:        dir,
 		configPath: configPath,
-		lockPath:   filepath.Join(dir, host.PluginLockFile),
+		lockPath:   host.PluginLockPath(dir),
 	}, nil
 }
 
@@ -799,7 +799,7 @@ func parseHostPluginCommandArgs(args []string) (target pluginConfigTarget, comma
 		}
 	}
 	if command == "config" && (!seenConfigTarget || len(commandArgs) < 3) {
-		return pluginConfigTarget{}, nil, fmt.Errorf("用法：anybot plugin config <id> <key=value>... [-dir 目录|-config anybot.yaml]，或 anybot plugin config <id> -reset <key>...")
+		return pluginConfigTarget{}, nil, fmt.Errorf("用法：anybot plugin config <id> <key=value>... [-dir 目录|-config config/anybot.yaml]，或 anybot plugin config <id> -reset <key>...")
 	}
 	target, err = newPluginConfigTarget(dir, configPath, dirSet, configSet)
 	if err != nil {

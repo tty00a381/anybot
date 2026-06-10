@@ -57,7 +57,7 @@ type PluginEntry struct {
 // LoadConfig 从 YAML 文件读取 anybot 配置。
 func LoadConfig(path string) (Config, error) {
 	if path == "" {
-		path = "anybot.yaml"
+		path = DefaultConfigPath
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -148,6 +148,7 @@ func pluginEnabled(entry PluginEntry) bool {
 
 func (cfg *Config) loadPluginConfigs(configPath string) error {
 	dir := PluginConfigDir(configPath)
+	configFile := filepath.Base(configPath)
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
@@ -157,6 +158,9 @@ func (cfg *Config) loadPluginConfigs(configPath string) error {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
+			continue
+		}
+		if entry.Name() == configFile {
 			continue
 		}
 		id, ok, err := pluginConfigID(entry.Name())
@@ -185,16 +189,22 @@ func (cfg *Config) loadPluginConfigs(configPath string) error {
 	return nil
 }
 
-// PluginConfigDir 返回当前机器人目录下固定的插件配置目录。
+// PluginConfigDir 返回插件实例配置目录。
 func PluginConfigDir(configPath string) string {
-	base := filepath.Dir(configPath)
-	if base == "" {
-		base = "."
+	if configPath == "" {
+		configPath = DefaultConfigPath
 	}
-	return filepath.Join(base, "plugins.d")
+	dir := filepath.Dir(configPath)
+	if dir == "" {
+		return "."
+	}
+	return dir
 }
 
 func pluginConfigID(file string) (string, bool, error) {
+	if file == ConfigFileName {
+		return "", false, nil
+	}
 	ext := filepath.Ext(file)
 	if ext != ".yaml" && ext != ".yml" {
 		return "", false, nil
@@ -210,9 +220,5 @@ func resolveConfigRelativePath(configPath, value string) string {
 	if value == "" || filepath.IsAbs(value) {
 		return value
 	}
-	base := filepath.Dir(configPath)
-	if base == "" {
-		base = "."
-	}
-	return filepath.Join(base, value)
+	return filepath.Join(WorkDirForConfig(configPath), value)
 }

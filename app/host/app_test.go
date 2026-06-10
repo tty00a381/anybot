@@ -142,16 +142,14 @@ func TestNewAppGrantsGlobalMiddlewareToBuiltinRatelimit(t *testing.T) {
 
 func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	pluginPath := filepath.Join(dir, "plugins.d", testWeatherID+".yaml")
+`)
+	pluginPath := filepath.Join(dir, ConfigDirName, testWeatherID+".yaml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -184,16 +182,14 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 
 func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	pluginPath := filepath.Join(dir, "plugins.d", testMemoryID+".yaml")
+`)
+	pluginPath := filepath.Join(dir, ConfigDirName, testMemoryID+".yaml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -226,15 +222,13 @@ func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 
 func TestNewAppUsesPersistentStoreFromConfigPath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -262,8 +256,8 @@ func TestNewAppUsesPersistentStoreFromConfigPath(t *testing.T) {
 
 func TestNewAppCanDisablePersistentStore(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
   store:
     type: memory
 adapter:
@@ -271,9 +265,7 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -292,15 +284,13 @@ adapter:
 
 func TestNewAppDoesNotUseRuntimeStateByDefault(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -319,8 +309,8 @@ func TestNewAppDoesNotUseRuntimeStateByDefault(t *testing.T) {
 
 func TestNewAppRejectsEscapingStorePath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
   store:
     type: file
     path: ../store.json
@@ -329,9 +319,7 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -343,9 +331,9 @@ adapter:
 
 func TestNewAppRejectsAbsoluteStorePath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
+	configPath := ConfigPath(dir)
 	storePath := filepath.Join(t.TempDir(), "store.json")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	writeTestConfig(t, configPath, `runtime:
   store:
     type: file
     path: `+storePath+`
@@ -354,9 +342,7 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -368,17 +354,15 @@ adapter:
 
 func TestNewAppTrimsRuntimeDataDirForStorePath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
   data_dir: " state "
 adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -400,15 +384,13 @@ adapter:
 
 func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -442,8 +424,8 @@ func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
 
 func TestValidateConfigRejectsInvalidRuntimeState(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
   store:
     type: file
     path: ../store.json
@@ -452,9 +434,7 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -466,9 +446,9 @@ adapter:
 
 func TestValidateConfigRejectsAbsoluteStorePath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
+	configPath := ConfigPath(dir)
 	storePath := filepath.Join(t.TempDir(), "store.json")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	writeTestConfig(t, configPath, `runtime:
   store:
     type: file
     path: `+storePath+`
@@ -477,9 +457,7 @@ adapter:
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -491,17 +469,15 @@ adapter:
 
 func TestNewAppInjectsPluginDataDir(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`runtime:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
   data_dir: state
 adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -537,15 +513,13 @@ adapter:
 
 func TestNewAppUsesPluginIDForDataDir(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(configPath, []byte(`adapter:
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
   protocol: onebot11
   transport:
     type: reverse_ws
     listen: "127.0.0.1:0"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	if err := writePluginConfigFile(dir, testAdminID, "enabled: true\nconfig: {}\n"); err != nil {
 		t.Fatal(err)
 	}

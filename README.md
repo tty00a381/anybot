@@ -20,10 +20,25 @@ anybot init mybot
 
 这将在当前目录下创建一个名为 `mybot` 的目录，并在其中生成一个机器人。
 
-现在，进入这个目录：
+进入这个目录，列出其中的文件：
 
 ```sh
-cd mybot
+cd mybot && ls
+```
+
+看到的目录结构应该如下：
+
+```text
+mybot/
+├── plugins.lock
+├── config/
+│   ├── anybot.yaml
+│   ├── plg_xxx.yaml
+├── main.go
+├── plugins.gen.go
+├── go.mod
+├── .env.example
+└── README.md
 ```
 
 在运行机器人之前，建议先检查一下环境：
@@ -50,16 +65,14 @@ anybot up
 
 > 除了 OneBot v11，AnyBot 还计划支持更多协议，如 OneBot v12、Telegram Bot API、Discord API 等。这将在未来的版本中逐步实现。
 
-
-
 ## 修改配置
 
-AnyBot 的工作目录里主要有两类配置：
+机器人目录下会有两类配置：
 
-- `anybot.yaml`：机器人本身的配置，例如日志、运行时状态、协议适配器、监听地址、安全设置等。
-- `plugins.d/`：插件配置目录，每个插件实例都有一个由 `PluginID` 命名的配置文件。
+- `config/anybot.yaml`：机器人本身的配置，例如日志、运行时状态、协议适配器、监听地址、安全设置等。
+- `config/<PluginID>.yaml`：插件实例配置文件。
 
-一般只需要先改 `anybot.yaml`：
+一般只需要先改 `config/anybot.yaml`：
 
 ```yaml
 adapter:
@@ -86,7 +99,7 @@ export ONEBOT_ACCESS_TOKEN=你的令牌
 anybot doctor
 ```
 
-插件配置不写在 `anybot.yaml` 里，而是写在 `plugins.d/<PluginID>.yaml` 中。这样同一个插件可以安装多次，也不会因为插件改名影响本地数据和配置。
+插件配置不写在 `config/anybot.yaml` 里，而是写在 `config/<PluginID>.yaml` 中。这样同一个插件可以安装多次，也不会因为插件改名影响本地数据和配置。
 
 ## 管理插件
 
@@ -103,7 +116,7 @@ anybot plugin status
 anybot plugin inspect <id>
 ```
 
-这里的 `<id>` 可以写完整的 `PluginID`，也可以写 `status` 输出中能唯一匹配的短前缀。插件名称只是展示用，真正稳定的是本地安装时生成并写入 `anybot.lock` 的 `PluginID`。
+这里的 `<id>` 可以写完整的 `PluginID`，也可以写 `status` 输出中能唯一匹配的短前缀。插件名称只是展示用，真正稳定的是本地安装时生成并写入 `plugins.lock` 的 `PluginID`。
 
 安装外部插件：
 
@@ -184,11 +197,11 @@ anybot plugin enable <id> -dir ../mybot
 anybot up -dir ../mybot
 ```
 
-如果只是想看写法，可以先读 `examples/plugins`。那里放的是能编译、能运行、面向插件作者的示例。
+如果只是想看写法，可以先读 `examples/plugins`，那里有一些示例插件。
 
 ## 做出贡献
 
-AnyBot 还在快速成型中，欢迎围绕真实使用场景提交改进。比较适合贡献的方向包括：协议适配器、内置插件、插件 SDK、示例、文档，以及让 CLI 更清爽的细节。
+AnyBot 还在快速成型中，欢迎围绕真实使用场景提交改进。比较适合贡献的方向有：协议适配器、内置插件、插件 SDK、示例等。
 
 仓库结构大致如下：
 
@@ -200,21 +213,14 @@ AnyBot 还在快速成型中，欢迎围绕真实使用场景提交改进。比�
 - `core`：核心库，是框架的能力基础。
 - `adapters/onebot11`：OneBot v11 适配器。
 
-提交前至少运行：
+提交前记得运行测试：
 
 ```sh
 go test ./...
 go vet ./...
 ```
 
-如果改动涉及 CLI、脚手架或插件安装流程，建议再真实跑一遍：
-
-```sh
-anybot init .local/debug
-anybot up -dir .local/debug
-```
-
-文档和示例也按这个标准写：让第一次接触 AnyBot 的人能顺着命令跑起来，让插件作者能直接照着结构写出第一个插件。
+欢迎各种功能性的贡献 —— 当然，**清爽的代码**、清晰的文档也很有必要。
 
 ## 许可证
 

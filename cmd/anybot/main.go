@@ -95,7 +95,7 @@ func runInit(args []string) error {
 		targetDir = *dir
 	}
 	files := []initFile{
-		{name: "anybot.yaml", content: defaultConfig},
+		{name: host.DefaultConfigPath, content: defaultConfig},
 		{name: host.PluginLockFile},
 		{name: ".env.example", content: defaultEnvExample},
 		{name: "README.md", content: defaultReadme},
@@ -106,11 +106,11 @@ func runInit(args []string) error {
 	if err := host.CheckGeneratedHostWritable(targetDir, *force); err != nil {
 		return err
 	}
-	if err := checkInitDir(targetDir, "plugins.d"); err != nil {
+	if err := checkInitDir(targetDir, host.ConfigDirName); err != nil {
 		return err
 	}
 	if *force {
-		if err := os.RemoveAll(filepath.Join(targetDir, "plugins.d")); err != nil {
+		if err := os.RemoveAll(filepath.Join(targetDir, host.ConfigDirName)); err != nil {
 			return err
 		}
 	}
@@ -119,14 +119,14 @@ func runInit(args []string) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(targetDir, "plugins.d"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(targetDir, host.ConfigDirName), 0o755); err != nil {
 		return err
 	}
 	lock, err := host.NewDefaultPluginLock()
 	if err != nil {
 		return err
 	}
-	if err := host.SavePluginLock(filepath.Join(targetDir, host.PluginLockFile), lock); err != nil {
+	if err := host.SavePluginLock(host.PluginLockPath(targetDir), lock); err != nil {
 		return err
 	}
 	for _, item := range lock.Plugins {
@@ -134,7 +134,7 @@ func runInit(args []string) error {
 		if content == "" {
 			continue
 		}
-		if err := writeFile(filepath.Join(targetDir, "plugins.d", item.ID+".yaml"), content, *force); err != nil {
+		if err := writeFile(filepath.Join(targetDir, host.ConfigDirName, item.ID+".yaml"), content, *force); err != nil {
 			return err
 		}
 	}
@@ -227,7 +227,7 @@ func checkInitDir(dir, name string) error {
 
 func runHost(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	configPath := fs.String("config", "anybot.yaml", "配置文件")
+	configPath := fs.String("config", host.DefaultConfigPath, "配置文件")
 	dir := fs.String("dir", "", "机器人工作目录")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -242,22 +242,22 @@ func runHost(args []string) error {
 		if configSet {
 			return fmt.Errorf("anybot run 不能同时指定 -dir 和 -config")
 		}
-		*configPath = filepath.Join(*dir, "anybot.yaml")
+		*configPath = host.ConfigPath(*dir)
 	}
 	cfg, err := host.LoadConfig(*configPath)
 	if err != nil {
 		return err
 	}
-	lock, err := host.LoadPluginLock(filepath.Join(filepath.Dir(*configPath), host.PluginLockFile))
+	workDir := host.WorkDirForConfig(*configPath)
+	lock, err := host.LoadPluginLock(host.PluginLockPath(workDir))
 	if err != nil {
 		return err
 	}
 	if lockHasEnabledExternalPlugins(cfg, lock) {
-		dir := filepath.Dir(*configPath)
-		if filepath.Base(*configPath) != "anybot.yaml" {
-			return fmt.Errorf("已启用外部插件时 anybot run 需要使用工作目录中的 anybot.yaml；自定义配置请先执行 anybot build -dir %s 后运行生成宿主", cleanDisplayDir(dir))
+		if filepath.Clean(*configPath) != filepath.Clean(host.ConfigPath(workDir)) {
+			return fmt.Errorf("已启用外部插件时 anybot run 需要使用工作目录中的 %s；自定义配置请先执行 anybot build -dir %s 后运行生成宿主", filepath.ToSlash(host.DefaultConfigPath), cleanDisplayDir(workDir))
 		}
-		return runGeneratedHost(generatedHostRunOptions{dir: dir, output: "anybot-bot"})
+		return runGeneratedHost(generatedHostRunOptions{dir: workDir, output: "anybot-bot"})
 	}
 	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
 	if err != nil {
@@ -265,7 +265,7 @@ func runHost(args []string) error {
 	}
 	app, err := host.NewApp(cfg, host.EmptyRegistry(), logger, host.WithConfigPath(*configPath), host.WithRuntimeState(), host.WithPluginLock(lock))
 	if err != nil {
-		return withExternalPluginHint(err, filepath.Dir(*configPath))
+		return withExternalPluginHint(err, workDir)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -309,7 +309,7 @@ func withExternalPluginHint(err error, dir string) error {
 	if !errors.As(err, &unknown) {
 		return err
 	}
-	lock, lockErr := host.LoadPluginLock(filepath.Join(dir, host.PluginLockFile))
+	lock, lockErr := host.LoadPluginLock(host.PluginLockPath(dir))
 	if lockErr != nil {
 		return err
 	}

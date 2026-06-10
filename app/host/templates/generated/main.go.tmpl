@@ -24,7 +24,7 @@ func main() {
 		if err := host.RunPluginCommand(host.PluginCommandOptions{
 			Args:       os.Args[2:],
 			Output:     os.Stdout,
-			ConfigPath: "anybot.yaml",
+			ConfigPath: host.DefaultConfigPath,
 			LockPath:   host.PluginLockFile,
 			Registry:   external,
 		}); err != nil {
@@ -33,7 +33,7 @@ func main() {
 		return
 	}
 
-	cfg, err := host.LoadConfig("anybot.yaml")
+	cfg, err := host.LoadConfig(host.DefaultConfigPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	app, err := host.NewApp(cfg, external, logger, host.WithConfigPath("anybot.yaml"), host.WithRuntimeState(), host.WithPluginLock(lock))
+	app, err := host.NewApp(cfg, external, logger, host.WithConfigPath(host.DefaultConfigPath), host.WithRuntimeState(), host.WithPluginLock(lock))
 	if err != nil {
 		log.Fatal(err)
 	}

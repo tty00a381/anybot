@@ -78,7 +78,7 @@ func TestSetPluginEnabledCreatesEntry(t *testing.T) {
 func TestSetPluginEnabledUpdatesExistingYMLConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := writeHostConfig(t, dir)
-	pluginPath := filepath.Join(dir, "plugins.d", testWeatherID+".yml")
+	pluginPath := filepath.Join(dir, ConfigDirName, testWeatherID+".yml")
 	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -442,15 +442,13 @@ func TestSyncPluginConfigEntriesForLockRejectsUnknownConfig(t *testing.T) {
 
 func writeHostConfig(t *testing.T, dir string) string {
 	t.Helper()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := ConfigPath(dir)
+	writeTestConfig(t, path, "runtime:\n  log_level: info\n")
 	return path
 }
 
 func pluginConfigPath(dir, id string) string {
-	return filepath.Join(dir, "plugins.d", id+".yaml")
+	return filepath.Join(dir, ConfigDirName, id+".yaml")
 }
 
 func yamlScalar(value string) yaml.Node {

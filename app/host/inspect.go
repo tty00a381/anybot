@@ -33,7 +33,7 @@ type PluginInspect struct {
 // InspectPlugin 合并注册表、插件安装锁和配置文件，返回单个插件的可读视图。
 func InspectPlugin(configPath string, registry absdk.Registry, lock PluginLock, id string) (PluginInspect, error) {
 	if configPath == "" {
-		configPath = "anybot.yaml"
+		configPath = DefaultConfigPath
 	}
 	if id == "" {
 		return PluginInspect{}, fmt.Errorf("plugin id is required")

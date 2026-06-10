@@ -2,8 +2,6 @@ package host
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,7 +18,7 @@ func TestRunPluginCommandStatus(t *testing.T) {
 		Args:       []string{"status"},
 		Output:     &out,
 		ConfigPath: configPath,
-		LockPath:   filepath.Join(dir, PluginLockFile),
+		LockPath:   PluginLockPath(dir),
 		Registry:   EmptyRegistry(),
 	})
 	if err != nil {
@@ -62,7 +60,7 @@ func TestRunPluginCommandEnableSyncsDefaultConfig(t *testing.T) {
 		Args:       []string{"enable", ShortPluginID(testHelpID)},
 		Output:     &out,
 		ConfigPath: configPath,
-		LockPath:   filepath.Join(dir, PluginLockFile),
+		LockPath:   PluginLockPath(dir),
 		Registry:   EmptyRegistry(),
 	})
 	if err != nil {
@@ -94,7 +92,7 @@ config:
 		Args:       []string{"config", ShortPluginID(testHelpID), "command=assist"},
 		Output:     &out,
 		ConfigPath: configPath,
-		LockPath:   filepath.Join(dir, PluginLockFile),
+		LockPath:   PluginLockPath(dir),
 		Registry:   EmptyRegistry(),
 	})
 	if err != nil {
@@ -119,7 +117,7 @@ func TestRunPluginCommandCheckReportsFailures(t *testing.T) {
 		Args:       []string{"check"},
 		Output:     &out,
 		ConfigPath: configPath,
-		LockPath:   filepath.Join(dir, PluginLockFile),
+		LockPath:   PluginLockPath(dir),
 		Registry:   EmptyRegistry(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "插件配置检查失败") {
@@ -132,16 +130,14 @@ func TestRunPluginCommandCheckReportsFailures(t *testing.T) {
 
 func writePluginCommandLock(t *testing.T, dir string, installs ...PluginInstall) {
 	t.Helper()
-	if err := SavePluginLock(filepath.Join(dir, PluginLockFile), PluginLock{Plugins: installs}); err != nil {
+	if err := SavePluginLock(PluginLockPath(dir), PluginLock{Plugins: installs}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func writePluginCommandConfig(t *testing.T, dir string) string {
 	t.Helper()
-	path := filepath.Join(dir, "anybot.yaml")
-	if err := os.WriteFile(path, []byte("runtime:\n  log_level: info\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := ConfigPath(dir)
+	writeTestConfig(t, path, "runtime:\n  log_level: info\n")
 	return path
 }

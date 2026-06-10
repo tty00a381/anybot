@@ -1,0 +1,83 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+      - scripts/release.sh
+      - .github/workflows/release.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare version
+        id: version
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must be vX.Y.Z, got: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "release already exists: $version"
+            exit 0
+          fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "$version")"
+            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "tag $version already points to $tag_commit, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Build artifacts
+        if: steps.version.outputs.exists != 'true'
+        run: scripts/release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Create tag
+        if: steps.version.outputs.exists != 'true'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "$version")"
+            if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "tag $version already points to $tag_commit, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+          else
+            git tag "$version" "$GITHUB_SHA"
+            git push origin "$version"
+          fi
+
+      - name: Upload GitHub Release
+        if: steps.version.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: AnyBot ${{ steps.version.outputs.version }}
+          prerelease: false
+          make_latest: true
+          files: dist/${{ steps.version.outputs.version }}/*

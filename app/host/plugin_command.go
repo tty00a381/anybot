@@ -31,7 +31,7 @@ func RunPluginCommand(opts PluginCommandOptions) error {
 	}
 	configPath := strings.TrimSpace(opts.ConfigPath)
 	if configPath == "" {
-		configPath = "anybot.yaml"
+		configPath = DefaultConfigPath
 	}
 	lockPath := strings.TrimSpace(opts.LockPath)
 	if lockPath == "" {

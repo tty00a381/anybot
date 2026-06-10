@@ -136,7 +136,7 @@ func ParsePluginConfigPath(input string) ([]string, error) {
 	return absdk.ParseConfigPath(input)
 }
 
-// EnsurePluginConfigEntry 确保 plugins.d/<id>.yaml 占位项存在。
+// EnsurePluginConfigEntry 确保 config/<id>.yaml 占位项存在。
 func EnsurePluginConfigEntry(path, id string) (bool, error) {
 	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil || exists {
@@ -149,7 +149,7 @@ func EnsurePluginConfigEntry(path, id string) (bool, error) {
 	return true, nil
 }
 
-// SetPluginEnabled 设置 plugins.d/<id>.yaml 中的 enabled。
+// SetPluginEnabled 设置 config/<id>.yaml 中的 enabled。
 func SetPluginEnabled(path, id string, enabled bool) (bool, error) {
 	entryPath, _, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
@@ -166,7 +166,7 @@ func SetPluginEnabled(path, id string, enabled bool) (bool, error) {
 	return true, saveYAMLDocument(entryPath, doc)
 }
 
-// SetPluginConfigValues 写入 plugins.d/<id>.yaml 中的 config 字段。
+// SetPluginConfigValues 写入 config/<id>.yaml 中的 config 字段。
 func SetPluginConfigValues(path, id string, assignments []PluginConfigAssignment) (bool, error) {
 	if len(assignments) == 0 {
 		return false, fmt.Errorf("plugin config assignment is required")
@@ -186,7 +186,7 @@ func SetPluginConfigValues(path, id string, assignments []PluginConfigAssignment
 	return true, saveYAMLDocument(entryPath, doc)
 }
 
-// RemovePluginConfigValues 删除 plugins.d/<id>.yaml 里的 config 字段覆盖。
+// RemovePluginConfigValues 删除 config/<id>.yaml 里的 config 字段覆盖。
 func RemovePluginConfigValues(path, id string, paths [][]string) (bool, error) {
 	count, err := removePluginConfigValues(path, id, paths)
 	return count > 0, err
@@ -214,7 +214,7 @@ func removePluginConfigValues(path, id string, paths [][]string) (int, error) {
 	return count, saveYAMLDocument(entryPath, doc)
 }
 
-// RemovePluginConfigEntry 删除 plugins.d/<id>.yaml。
+// RemovePluginConfigEntry 删除 config/<id>.yaml。
 func RemovePluginConfigEntry(path, id string) (bool, error) {
 	entryPath, exists, err := pluginConfigEntryPathForUpdate(PluginConfigDir(path), id)
 	if err != nil {
@@ -247,7 +247,7 @@ func SyncPluginConfigEntriesForLock(path string, registry absdk.Registry, lock P
 // SyncPluginConfigEntry 同步单个可加载插件的默认配置。
 func SyncPluginConfigEntry(path string, registry absdk.Registry, id string) (PluginConfigEntrySyncResult, error) {
 	if path == "" {
-		path = "anybot.yaml"
+		path = DefaultConfigPath
 	}
 	if id == "" {
 		return PluginConfigEntrySyncResult{}, fmt.Errorf("plugin id is required")
@@ -284,7 +284,7 @@ func SyncPluginConfigEntry(path string, registry absdk.Registry, id string) (Plu
 
 func syncPluginConfigEntries(path string, registry absdk.Registry, allowUnavailable map[string]struct{}) (PluginConfigSyncResult, error) {
 	if path == "" {
-		path = "anybot.yaml"
+		path = DefaultConfigPath
 	}
 	locations, err := pluginConfigEntryLocations(path)
 	if err != nil {
