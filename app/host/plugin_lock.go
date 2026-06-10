@@ -240,10 +240,26 @@ func UpdatePluginInstall(opts UpdatePluginInstallOptions) (PluginInstall, Plugin
 	if opts.ClearReplace {
 		updated.Replace = ""
 	}
-	lock.Plugins[index] = updated
+	before := append([]PluginInstall(nil), lock.Plugins...)
+	for i := range lock.Plugins {
+		if lock.Plugins[i].Module == original.Module {
+			lock.Plugins[i].Version = updated.Version
+			lock.Plugins[i].Replace = updated.Replace
+			continue
+		}
+		if lock.Plugins[i].ID == original.ID {
+			lock.Plugins[i] = updated
+		}
+	}
 	lock.applyDefaults()
 	updated = lock.Plugins[index]
-	changed := original != updated
+	changed := false
+	for i := range lock.Plugins {
+		if lock.Plugins[i] != before[i] {
+			changed = true
+			break
+		}
+	}
 	if !changed {
 		return updated, lock, false, nil
 	}
@@ -297,11 +313,8 @@ func (lock *PluginLock) add(item PluginInstall) error {
 		if existing.ID == item.ID {
 			return fmt.Errorf("plugin id %s already exists", item.ID)
 		}
-		if item.Module != "" && existing.Module == item.Module {
-			return fmt.Errorf("plugin module %s already exists", item.Module)
-		}
-		if item.Builtin != "" && existing.Builtin == item.Builtin {
-			return fmt.Errorf("builtin plugin %s already exists", item.Builtin)
+		if err := validateSharedPluginSource(existing, item); err != nil {
+			return err
 		}
 	}
 	lock.Plugins = append(lock.Plugins, item)
@@ -349,8 +362,7 @@ func defaultPluginLock() PluginLock {
 func ValidatePluginLock(lock PluginLock) error {
 	lock.applyDefaults()
 	seenIDs := map[string]struct{}{}
-	seenModules := map[string]struct{}{}
-	seenBuiltins := map[string]struct{}{}
+	seenSources := map[string]PluginInstall{}
 	for _, item := range lock.Plugins {
 		if err := ValidatePluginInstall(item); err != nil {
 			return err
@@ -360,19 +372,25 @@ func ValidatePluginLock(lock PluginLock) error {
 		}
 		seenIDs[item.ID] = struct{}{}
 		if item.Module != "" {
-			if _, exists := seenModules[item.Module]; exists {
-				return fmt.Errorf("plugin module %s already exists", item.Module)
+			if existing, exists := seenSources[item.Module]; exists {
+				if err := validateSharedPluginSource(existing, item); err != nil {
+					return err
+				}
 			}
-			seenModules[item.Module] = struct{}{}
-		}
-		if item.Builtin != "" {
-			if _, exists := seenBuiltins[item.Builtin]; exists {
-				return fmt.Errorf("builtin plugin %s already exists", item.Builtin)
-			}
-			seenBuiltins[item.Builtin] = struct{}{}
+			seenSources[item.Module] = item
 		}
 	}
 	return nil
+}
+
+func validateSharedPluginSource(existing, item PluginInstall) error {
+	if item.Module == "" || existing.Module != item.Module {
+		return nil
+	}
+	if existing.Version == item.Version && existing.Replace == item.Replace {
+		return nil
+	}
+	return fmt.Errorf("plugin module %s already uses version %q and replace %q", item.Module, existing.Version, existing.Replace)
 }
 
 // ValidatePluginInstall 校验单个插件记录。

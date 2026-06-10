@@ -102,9 +102,6 @@ func (app *App) Runtime() *sdk.App {
 // InstallDefault 用插件默认配置安装插件定义。
 func (app *App) InstallDefault(definitions ...sdk.Definition) error {
 	for _, definition := range definitions {
-		if definition == nil {
-			continue
-		}
 		if err := sdk.InstallDefaultWith(app.Runtime(), app.environment, definition); err != nil {
 			return err
 		}
@@ -112,12 +109,21 @@ func (app *App) InstallDefault(definitions ...sdk.Definition) error {
 	return nil
 }
 
+// InstallConfig 使用给定 typed config 安装插件定义。
+func InstallConfig[T any](app *App, definition sdk.DefinitionOf[T], config T) error {
+	if app == nil {
+		return ErrAppUnavailable
+	}
+	plugin, err := definition.BuildWith(config)
+	if err != nil {
+		return err
+	}
+	return sdk.InstallWith(app.Runtime(), app.environment, plugin)
+}
+
 // Install 安装已按测试配置构建好的插件对象。
 func (app *App) Install(plugins ...sdk.Plugin) error {
 	for _, plugin := range plugins {
-		if plugin == nil {
-			continue
-		}
 		if err := sdk.InstallWith(app.Runtime(), app.environment, plugin); err != nil {
 			return err
 		}

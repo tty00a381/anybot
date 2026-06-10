@@ -41,10 +41,11 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 
 // AppOptions 描述框架运行时的附加参数。
 type AppOptions struct {
-	ConfigPath    string
-	RuntimeState  bool
-	PluginLock    PluginLock
-	HasPluginLock bool
+	ConfigPath            string
+	RuntimeState          bool
+	PluginConfigWriteback bool
+	PluginLock            PluginLock
+	HasPluginLock         bool
 }
 
 // AppOption 调整框架运行时装配。
@@ -61,6 +62,14 @@ func WithConfigPath(path string) AppOption {
 func WithRuntimeState() AppOption {
 	return func(opts *AppOptions) {
 		opts.RuntimeState = true
+	}
+}
+
+// WithPluginConfigWriteback 授予插件运行期写回自身部署配置的能力。
+// 普通外部插件默认不应得到该能力；运行期状态应优先使用 State、Session 或 DataDir。
+func WithPluginConfigWriteback() AppOption {
+	return func(opts *AppOptions) {
+		opts.PluginConfigWriteback = true
 	}
 }
 
@@ -120,7 +129,7 @@ func NewApp(cfg Config, registry absdk.Registry, logger *slog.Logger, appOptions
 			pluginEnv.DataDir = dataDir
 		}
 	}
-	if configPath != "" {
+	if hostOpts.PluginConfigWriteback && configPath != "" {
 		pluginEnv.ConfigStore = newPluginConfigStore(configPath)
 	}
 	if workers, ok, err := parseWorkers(cfg.Runtime.Workers); err != nil {

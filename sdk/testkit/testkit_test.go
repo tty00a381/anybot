@@ -110,6 +110,33 @@ func TestAppProvidesHostCapabilities(t *testing.T) {
 	}
 }
 
+func TestInstallConfigUsesTypedConfig(t *testing.T) {
+	type config struct {
+		Command string
+	}
+	plugin := sdk.Define(sdk.Spec[config]{
+		Manifest:      sdk.Manifest{Name: "configured"},
+		DefaultConfig: config{Command: "hello"},
+		Setup: func(ctx *sdk.Context, cfg config) error {
+			ctx.Command(cfg.Command).Handle(func(c *sdk.EventContext) error {
+				_, err := c.ReplyText("configured")
+				return err
+			})
+			return nil
+		},
+	})
+	app := NewApp()
+	if err := InstallConfig(app, plugin, config{Command: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.DispatchText("/hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.LastReplyText(); got != "configured" {
+		t.Fatalf("reply = %q", got)
+	}
+}
+
 func TestDispatchRejectsNilApp(t *testing.T) {
 	var app *App
 	if err := app.DispatchText("/hello"); err != ErrAppUnavailable {

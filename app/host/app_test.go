@@ -140,7 +140,7 @@ func TestNewAppGrantsGlobalMiddlewareToBuiltinRatelimit(t *testing.T) {
 	}
 }
 
-func TestNewAppInjectsPluginConfigStore(t *testing.T) {
+func TestNewAppDoesNotInjectPluginConfigStoreByDefault(t *testing.T) {
 	dir := t.TempDir()
 	configPath := ConfigPath(dir)
 	writeTestConfig(t, configPath, `adapter:
@@ -165,7 +165,10 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 		Manifest:      absdk.Manifest{Name: "minecraft"},
 		DefaultConfig: struct{}{},
 		Setup: func(ctx *absdk.Context, _ struct{}) error {
-			return ctx.Config().Set(context.Background(), "bridge.group_to_game", "prefix")
+			if ctx.Config().Available() {
+				t.Fatal("plugin config writeback should be unavailable by default")
+			}
+			return nil
 		},
 	})
 	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
@@ -175,12 +178,12 @@ func TestNewAppInjectsPluginConfigStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := readFile(t, pluginPath)
-	if !strings.Contains(out, "bridge:") || !strings.Contains(out, "group_to_game: prefix") {
+	if strings.Contains(out, "bridge:") || strings.Contains(out, "group_to_game: prefix") {
 		t.Fatalf("plugin config:\n%s", out)
 	}
 }
 
-func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
+func TestNewAppInjectsPluginConfigStoreWhenExplicitlyEnabled(t *testing.T) {
 	dir := t.TempDir()
 	configPath := ConfigPath(dir)
 	writeTestConfig(t, configPath, `adapter:
@@ -211,7 +214,7 @@ func TestNewAppUsesLoadedConfigPathForPluginConfigStore(t *testing.T) {
 	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewApp(cfg, registry, slog.Default()); err != nil {
+	if _, err := NewApp(cfg, registry, slog.Default(), WithPluginConfigWriteback()); err != nil {
 		t.Fatal(err)
 	}
 	out := readFile(t, pluginPath)

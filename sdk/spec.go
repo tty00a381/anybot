@@ -34,22 +34,23 @@ type Spec[T any] struct {
 	Setup SetupFunc[T]
 }
 
-type typedDefinition[T any] struct {
+// DefinitionOf 是一个 typed config 插件定义。
+type DefinitionOf[T any] struct {
 	spec Spec[T]
 }
 
 // Define 创建 typed config 插件定义。
-func Define[T any](spec Spec[T]) Definition {
-	return typedDefinition[T]{spec: spec}
+func Define[T any](spec Spec[T]) DefinitionOf[T] {
+	return DefinitionOf[T]{spec: spec}
 }
 
 // Manifest 返回插件清单。
-func (d typedDefinition[T]) Manifest() Manifest {
+func (d DefinitionOf[T]) Manifest() Manifest {
 	return d.spec.Manifest
 }
 
 // Factory 返回可供运行框架注册的插件工厂。
-func (d typedDefinition[T]) Factory() Factory {
+func (d DefinitionOf[T]) Factory() Factory {
 	return Factory{
 		Info:    d.spec.Manifest,
 		Default: d.spec.DefaultConfig,
@@ -76,12 +77,24 @@ func (d typedDefinition[T]) Factory() Factory {
 }
 
 // Build 使用默认配置创建插件对象，主要供嵌入式程序和插件测试使用。
-func (d typedDefinition[T]) Build() (Plugin, error) {
+func (d DefinitionOf[T]) Build() (Plugin, error) {
 	return d.Factory().Build(yaml.Node{})
 }
 
+// BuildWith 使用给定配置创建插件对象，主要供插件测试和嵌入式程序使用。
+func (d DefinitionOf[T]) BuildWith(config T) (Plugin, error) {
+	cfg, err := cloneTypedConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	if err := validateTypedConfig(cfg); err != nil {
+		return nil, err
+	}
+	return configuredPlugin[T]{definition: d, config: cfg}, nil
+}
+
 type configuredPlugin[T any] struct {
-	definition typedDefinition[T]
+	definition DefinitionOf[T]
 	config     T
 }
 

@@ -243,16 +243,43 @@ require github.com/acme/weather v1.2.3
 	}
 }
 
-func TestAddPluginInstallRejectsDuplicates(t *testing.T) {
+func TestAddPluginInstallAllowsMultipleInstancesOfSameSource(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := AddPluginInstall(AddPluginInstallOptions{Dir: dir, ID: testWeatherID, Module: "github.com/acme/weather"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AddPluginInstall(AddPluginInstallOptions{Dir: dir, ID: testMemoryID, Module: "github.com/acme/weather"}); err == nil {
-		t.Fatal("duplicate module should be rejected")
+	lock, err := AddPluginInstall(AddPluginInstallOptions{Dir: dir, ID: testMemoryID, Module: "github.com/acme/weather"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lock.Plugins) != 2 ||
+		lock.Plugins[0].Module != "github.com/acme/weather" ||
+		lock.Plugins[1].Module != "github.com/acme/weather" {
+		t.Fatalf("lock = %#v", lock)
 	}
 	if _, err := AddPluginInstall(AddPluginInstallOptions{Dir: dir, ID: testWeatherID, Module: "github.com/acme/weather2"}); err == nil {
 		t.Fatal("duplicate id should be rejected")
+	}
+}
+
+func TestAddPluginInstallRejectsConflictingSharedModuleMetadata(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := AddPluginInstall(AddPluginInstallOptions{
+		Dir:     dir,
+		ID:      testWeatherID,
+		Module:  "github.com/acme/weather",
+		Version: "v1.2.3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := AddPluginInstall(AddPluginInstallOptions{
+		Dir:     dir,
+		ID:      testMemoryID,
+		Module:  "github.com/acme/weather",
+		Version: "v1.3.0",
+	})
+	if err == nil || !strings.Contains(err.Error(), `plugin module github.com/acme/weather already uses version "v1.2.3"`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -293,6 +320,39 @@ func TestUpdatePluginInstallUpdatesMetadata(t *testing.T) {
 	generated := readFile(t, filepath.Join(dir, generatedPlugins))
 	if !strings.Contains(generated, `registry.Register(plugin0.Plugin.Factory().WithPluginID("`+testWeatherID+`"))`) {
 		t.Fatalf("generated:\n%s", generated)
+	}
+}
+
+func TestUpdatePluginInstallUpdatesSharedModuleMetadata(t *testing.T) {
+	dir := t.TempDir()
+	for _, id := range []string{testWeatherID, testMemoryID} {
+		if _, err := AddPluginInstall(AddPluginInstallOptions{
+			Dir:     dir,
+			ID:      id,
+			Module:  "github.com/acme/weather",
+			Version: "v1.2.3",
+			Replace: "../weather",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	updated, lock, changed, err := UpdatePluginInstall(UpdatePluginInstallOptions{
+		Dir:          dir,
+		ID:           testWeatherID,
+		Version:      "v1.3.0",
+		SetVersion:   true,
+		ClearReplace: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || updated.ID != testWeatherID || updated.Version != "v1.3.0" || updated.Replace != "" {
+		t.Fatalf("updated=%#v changed=%v", updated, changed)
+	}
+	for _, item := range lock.Plugins {
+		if item.Module == "github.com/acme/weather" && (item.Version != "v1.3.0" || item.Replace != "") {
+			t.Fatalf("shared module metadata not updated: %#v", lock.Plugins)
+		}
 	}
 }
 

@@ -93,6 +93,19 @@ func runPluginAdd(args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	lockBeforeAdd, err := host.LoadPluginLock(host.PluginLockPath(*dir))
+	if err != nil {
+		return err
+	}
+	existing, hasExisting := pluginModuleByModule(lockBeforeAdd, modulePath)
+	if hasExisting {
+		if *version == "" && moduleVersion == "" {
+			*version = existing.Version
+		}
+		if replacePath == "" && !flagSetExplicit(fs, "replace") {
+			replacePath = existing.Replace
+		}
+	}
 	pinnedVersion, err := pinPluginModuleVersion(modulePath, *version, replacePath)
 	if err != nil {
 		return err
@@ -270,11 +283,11 @@ func runPluginRemove(args []string) (err error) {
 	defer func() {
 		joinRollbackError(&err, committed, rollback)
 	}()
-	removed, _, err := host.RemovePluginInstall(host.RemovePluginInstallOptions{Dir: cfgTarget.dir, ID: pluginID})
+	removed, lock, err := host.RemovePluginInstall(host.RemovePluginInstallOptions{Dir: cfgTarget.dir, ID: pluginID})
 	if err != nil {
 		return err
 	}
-	if err := dropPluginGoMod(cfgTarget.dir, removed); err != nil {
+	if err := dropPluginGoModIfUnused(cfgTarget.dir, removed, lock); err != nil {
 		return err
 	}
 	changed := false
@@ -585,6 +598,15 @@ func resolveLockPluginID(lock host.PluginLock, target string) (string, error) {
 func pluginModuleByID(lock host.PluginLock, id string) (host.PluginInstall, bool) {
 	for _, item := range lock.Plugins {
 		if item.ID == id {
+			return item, true
+		}
+	}
+	return host.PluginInstall{}, false
+}
+
+func pluginModuleByModule(lock host.PluginLock, module string) (host.PluginInstall, bool) {
+	for _, item := range lock.Plugins {
+		if item.Module == module {
 			return item, true
 		}
 	}

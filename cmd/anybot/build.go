@@ -354,3 +354,15 @@ func dropPluginGoMod(dir string, plugin host.PluginInstall) error {
 	}
 	return nil
 }
+
+func dropPluginGoModIfUnused(dir string, plugin host.PluginInstall, lock host.PluginLock) error {
+	if plugin.Module == "" {
+		return nil
+	}
+	for _, remaining := range lock.Plugins {
+		if remaining.Module == plugin.Module {
+			return nil
+		}
+	}
+	return dropPluginGoMod(dir, plugin)
+}

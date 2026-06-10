@@ -943,20 +943,44 @@ func TestRunPluginAddAllowsModuleNamedLikeBuiltin(t *testing.T) {
 	}
 }
 
-func TestRunPluginAddRejectsDuplicateModule(t *testing.T) {
+func TestRunPluginAddAllowsMultipleInstancesOfSameModule(t *testing.T) {
+	resolveCalls := 0
 	setTestModuleVersionResolver(t, func(module, query string) (string, error) {
+		resolveCalls++
 		if module != "github.com/acme/help" || query != "latest" {
 			t.Fatalf("resolve %s@%s", module, query)
 		}
 		return "v1.2.3", nil
 	})
 	dir := t.TempDir()
+	out, _, restore := captureOutput(t)
+	defer restore()
 	if err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir})
-	if err == nil || !strings.Contains(err.Error(), "plugin module github.com/acme/help already exists") {
-		t.Fatalf("err = %v", err)
+	out.Reset()
+	if err := run([]string{"plugin", "add", "github.com/acme/help", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if resolveCalls != 1 {
+		t.Fatalf("duplicate module should reuse locked version, resolveCalls=%d", resolveCalls)
+	}
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lock.Plugins) != 2 ||
+		lock.Plugins[0].Module != "github.com/acme/help" ||
+		lock.Plugins[1].Module != "github.com/acme/help" ||
+		lock.Plugins[0].ID == lock.Plugins[1].ID {
+		t.Fatalf("lock = %#v", lock)
+	}
+	if err := run([]string{"plugin", "list", "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), host.ShortPluginID(lock.Plugins[0].ID)+"\tgithub.com/acme/help@v1.2.3") ||
+		!strings.Contains(out.String(), host.ShortPluginID(lock.Plugins[1].ID)+"\tgithub.com/acme/help@v1.2.3") {
+		t.Fatalf("list output:\n%s", out.String())
 	}
 }
 
@@ -1172,6 +1196,44 @@ func TestRunPluginRemoveDropsVersionedGoModEntries(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestRunPluginRemoveKeepsSharedModuleGoModEntries(t *testing.T) {
+	dir := t.TempDir()
+	for _, id := range []string{cmdTestWeatherID, cmdTestGhostID} {
+		if _, err := host.AddPluginInstall(host.AddPluginInstallOptions{
+			Dir:     dir,
+			ID:      id,
+			Module:  "github.com/acme/weather",
+			Version: "v1.2.3",
+			Replace: "../weather",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := host.ConfigPath(dir)
+	writeTestConfig(t, config, "runtime:\n  log_level: info\n")
+	writeTestPluginConfig(t, dir, cmdTestWeatherID, "enabled: false\nconfig: {}\n")
+	oldRunner := commandRunner
+	defer func() { commandRunner = oldRunner }()
+	var calls []string
+	commandRunner = func(dir, name string, args ...string) error {
+		calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+		return nil
+	}
+	if err := run([]string{"plugin", "remove", host.ShortPluginID(cmdTestWeatherID), "-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("shared module should stay in go.mod, calls = %#v", calls)
+	}
+	lock, err := host.LoadPluginLock(host.PluginLockPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lock.Plugins) != 1 || lock.Plugins[0].ID != cmdTestGhostID || lock.Plugins[0].Module != "github.com/acme/weather" {
+		t.Fatalf("lock = %#v", lock)
 	}
 }
 

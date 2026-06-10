@@ -74,6 +74,9 @@ func Install(app *App, plugins ...Plugin) error {
 		return fmt.Errorf("anybot: app is nil")
 	}
 	for _, plugin := range plugins {
+		if plugin == nil {
+			return fmt.Errorf("anybot: plugin is nil")
+		}
 		if err := InstallWith(app, Environment{}, plugin); err != nil {
 			return err
 		}
@@ -89,6 +92,9 @@ func InstallDefault(app *App, definitions ...Definition) error {
 		return fmt.Errorf("anybot: app is nil")
 	}
 	for _, definition := range definitions {
+		if definition == nil {
+			return fmt.Errorf("anybot: plugin definition is nil")
+		}
 		if err := InstallDefaultWith(app, Environment{}, definition); err != nil {
 			return err
 		}
@@ -102,7 +108,7 @@ func InstallDefaultWith(app *App, env Environment, definition Definition) error 
 		return fmt.Errorf("anybot: app is nil")
 	}
 	if definition == nil {
-		return nil
+		return fmt.Errorf("anybot: plugin definition is nil")
 	}
 	plugin, err := definition.Build()
 	if err != nil {
@@ -128,6 +134,7 @@ func InstallWithID(app *App, id string, plugin Plugin) error {
 }
 
 // InstallCoreWith 将 SDK 插件安装到底层 core.App，供运行框架装配插件时使用。
+// 普通插件作者应使用 anybot 运行框架、testkit，或 Install/InstallDefaultWith。
 func InstallCoreWith(app *core.App, env Environment, plugin Plugin) error {
 	if app == nil {
 		return fmt.Errorf("anybot: app is nil")
@@ -140,7 +147,7 @@ func InstallCoreWith(app *core.App, env Environment, plugin Plugin) error {
 		}
 	}
 	if plugin == nil {
-		return nil
+		return fmt.Errorf("anybot: plugin is nil")
 	}
 	manifest := plugin.Manifest()
 	if err := plugin.Setup(newCoreContext(app, manifest, WithEnvironment(env))); err != nil {
@@ -380,7 +387,8 @@ func TaskImmediate() TaskOption { return core.TaskImmediate() }
 // TaskCritical 让任务失败时停止 App.Run，并把任务错误作为运行错误返回。
 func TaskCritical() TaskOption { return core.TaskCritical() }
 
-// Runtime 返回底层 core.App，供测试、嵌入式程序或框架适配代码使用。
+// Runtime 返回底层 core.App，供高级测试、嵌入式程序或框架适配代码使用。
+// 普通插件不应依赖 core.App；优先使用 SDK 暴露的窄接口。
 func (a *App) Runtime() *core.App {
 	return coreApp(a)
 }

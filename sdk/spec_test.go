@@ -47,6 +47,38 @@ func TestDefinitionFactoryBuildsConfiguredPlugin(t *testing.T) {
 	}
 }
 
+func TestDefinitionBuildWithUsesTypedConfig(t *testing.T) {
+	type config struct {
+		Command string `yaml:"command"`
+	}
+	var called bool
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "hello", Version: "1.0.0"},
+		DefaultConfig: config{Command: "hello"},
+		Setup: func(ctx *Context, cfg config) error {
+			ctx.Command(cfg.Command).Handle(func(*EventContext) error {
+				called = true
+				return nil
+			})
+			return nil
+		},
+	})
+	plugin, err := definition.BuildWith(config{Command: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	if err := Install(app, plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dispatch(context.Background(), &core.Event{Type: "message", Text: "/hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("configured command did not run")
+	}
+}
+
 func TestDefinitionIsNotInstallablePlugin(t *testing.T) {
 	definition := Define(Spec[struct{}]{
 		Manifest:      Manifest{Name: "hello"},
@@ -149,6 +181,33 @@ func TestDefinitionClonesDefaultConfig(t *testing.T) {
 	}
 	if len(seen) != 2 || seen[0] != "default" || seen[1] != "default" {
 		t.Fatalf("seen = %#v", seen)
+	}
+}
+
+func TestDefinitionBuildWithClonesConfig(t *testing.T) {
+	type config struct {
+		Tags []string `yaml:"tags"`
+	}
+	input := config{Tags: []string{"custom"}}
+	var seen string
+	definition := Define(Spec[config]{
+		Manifest:      Manifest{Name: "clone"},
+		DefaultConfig: config{Tags: []string{"default"}},
+		Setup: func(_ *Context, cfg config) error {
+			seen = cfg.Tags[0]
+			cfg.Tags[0] = "mutated"
+			return nil
+		},
+	})
+	plugin, err := definition.BuildWith(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(NewApp(), plugin); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "custom" || input.Tags[0] != "custom" {
+		t.Fatalf("seen=%q input=%#v", seen, input)
 	}
 }
 
@@ -306,6 +365,22 @@ func TestInstallRejectsNilApp(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if err := InstallDefaultWith(nil, Environment{}, nil); err == nil || err.Error() != "anybot: app is nil" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInstallRejectsNilPluginInputs(t *testing.T) {
+	app := NewApp()
+	if err := Install(app, nil); err == nil || err.Error() != "anybot: plugin is nil" {
+		t.Fatalf("err = %v", err)
+	}
+	if err := InstallWith(app, Environment{}, nil); err == nil || err.Error() != "anybot: plugin is nil" {
+		t.Fatalf("err = %v", err)
+	}
+	if err := InstallDefault(app, nil); err == nil || err.Error() != "anybot: plugin definition is nil" {
+		t.Fatalf("err = %v", err)
+	}
+	if err := InstallDefaultWith(app, Environment{}, nil); err == nil || err.Error() != "anybot: plugin definition is nil" {
 		t.Fatalf("err = %v", err)
 	}
 }

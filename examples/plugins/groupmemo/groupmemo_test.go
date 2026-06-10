@@ -3,9 +3,7 @@ package groupmemo
 import (
 	"testing"
 
-	absdk "github.com/tty00a381/anybot/sdk"
 	"github.com/tty00a381/anybot/sdk/testkit"
-	"gopkg.in/yaml.v3"
 )
 
 func TestGroupMemoStoresPerGroup(t *testing.T) {
@@ -36,12 +34,11 @@ func TestGroupMemoStoresPerGroup(t *testing.T) {
 
 func TestGroupMemoAllowedGroups(t *testing.T) {
 	app := testkit.NewApp(testkit.WithSuperUsers("root"))
-	plugin := buildPlugin(t, `view_command: memo
-set_command: remember
-allowed_groups:
-  - "100"
-`)
-	if err := app.Install(plugin); err != nil {
+	if err := testkit.InstallConfig(app, Plugin, Config{
+		ViewCommand:   "memo",
+		SetCommand:    "remember",
+		AllowedGroups: []string{"100"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.DispatchText("/remember 不应该写入", testkit.FromUser("root"), testkit.InGroup("200")); err != nil {
@@ -56,17 +53,4 @@ allowed_groups:
 	if got := app.LastReplyText(); got != "群便签已更新。" {
 		t.Fatalf("allowed group reply = %q", got)
 	}
-}
-
-func buildPlugin(t *testing.T, config string) absdk.Plugin {
-	t.Helper()
-	var node yaml.Node
-	if err := yaml.Unmarshal([]byte(config), &node); err != nil {
-		t.Fatal(err)
-	}
-	plugin, err := Plugin.Factory().Build(node)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return plugin
 }
