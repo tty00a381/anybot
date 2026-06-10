@@ -30,6 +30,25 @@ config:
 	}
 }
 
+func TestLoadConfigResolvesEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ANYBOT_TEST_ACCESS_TOKEN", "secret")
+	config := ConfigPath(dir)
+	writeTestConfig(t, config, `adapter:
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:6700"
+    access_token: !env ANYBOT_TEST_ACCESS_TOKEN
+`)
+	cfg, err := LoadConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Adapter.Transport.AccessToken != "secret" {
+		t.Fatalf("access token = %q", cfg.Adapter.Transport.AccessToken)
+	}
+}
+
 func TestLoadConfigRejectsInlinePlugins(t *testing.T) {
 	dir := t.TempDir()
 	config := ConfigPath(dir)

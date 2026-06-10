@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,9 +46,6 @@ func runDoctor(args []string) error {
 	}
 	if err := checkListenerToken(adapterCfg); err != nil {
 		return err
-	}
-	for _, warning := range doctorWarnings(adapterCfg) {
-		fmt.Fprintf(stderr, "警告：%s\n", warning)
 	}
 	if *connect {
 		if err := checkRemote(adapterCfg); err != nil {
@@ -131,14 +127,6 @@ func checkListenerToken(cfg onebot11.Config) error {
 	return fmt.Errorf("%s 监听非本机地址时必须配置可用访问令牌", cfg.Transport.Type)
 }
 
-func doctorWarnings(cfg onebot11.Config) []string {
-	var warnings []string
-	if cfg.Transport.Type != "reverse_ws" && cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) == "" && cfg.Transport.AccessToken == "" {
-		warnings = append(warnings, fmt.Sprintf("环境变量 %s 未设置，出站动作连接将不携带访问令牌", cfg.Transport.AccessTokenEnv))
-	}
-	return warnings
-}
-
 func transportListens(cfg onebot11.Config) bool {
 	return cfg.Transport.Type == "reverse_ws" || (cfg.Transport.Type == "http" && cfg.Transport.Listen != "")
 }
@@ -156,10 +144,7 @@ func listenIsLocal(listen string) bool {
 }
 
 func accessTokenAvailable(cfg onebot11.Config) bool {
-	if cfg.Transport.AccessToken != "" {
-		return true
-	}
-	return cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) != ""
+	return cfg.Transport.AccessToken != ""
 }
 
 func checkRemote(cfg onebot11.Config) error {
@@ -234,13 +219,7 @@ func addHeaders(header http.Header, cfg onebot11.Config) {
 }
 
 func accessToken(cfg onebot11.Config) string {
-	if cfg.Transport.AccessToken != "" {
-		return cfg.Transport.AccessToken
-	}
-	if cfg.Transport.AccessTokenEnv == "" {
-		return ""
-	}
-	return os.Getenv(cfg.Transport.AccessTokenEnv)
+	return cfg.Transport.AccessToken
 }
 
 func printSummary(path string, cfg host.Config, plugins []string) {

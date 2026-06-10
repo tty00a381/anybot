@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tty00a381/anybot/adapters/onebot11"
+	"github.com/tty00a381/anybot/internal/yamlenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -66,8 +67,16 @@ func LoadConfig(path string) (Config, error) {
 	if err := rejectInlinePluginConfigs(path, data); err != nil {
 		return Config{}, err
 	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return Config{}, err
+	}
+	resolved, err := yamlenv.Resolve(doc, "config")
+	if err != nil {
+		return Config{}, err
+	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := resolved.Decode(&cfg); err != nil {
 		return Config{}, err
 	}
 	cfg.configPath = path

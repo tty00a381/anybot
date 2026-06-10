@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tty00a381/anybot/internal/yamlenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,7 +25,6 @@ type TransportConfig struct {
 	Path                 string            `yaml:"path"`
 	URL                  string            `yaml:"url"`
 	AccessToken          string            `yaml:"access_token"`
-	AccessTokenEnv       string            `yaml:"access_token_env"`
 	Headers              map[string]string `yaml:"headers"`
 	MaxEventBytes        int64             `yaml:"max_event_bytes"`
 	DialTimeout          string            `yaml:"dial_timeout"`
@@ -45,8 +45,16 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return Config{}, err
+	}
+	resolved, err := yamlenv.Resolve(doc, "onebot11 config")
+	if err != nil {
+		return Config{}, err
+	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := resolved.Decode(&cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -138,12 +146,8 @@ func (cfg Config) Options(extra ...Option) ([]Option, error) {
 	if cfg.Transport.MaxEventBytes > 0 {
 		opts = append(opts, WithMaxEventBytes(cfg.Transport.MaxEventBytes))
 	}
-	token := cfg.Transport.AccessToken
-	if token == "" && cfg.Transport.AccessTokenEnv != "" {
-		token = os.Getenv(cfg.Transport.AccessTokenEnv)
-	}
-	if token != "" {
-		opts = append(opts, WithAccessToken(token))
+	if cfg.Transport.AccessToken != "" {
+		opts = append(opts, WithAccessToken(cfg.Transport.AccessToken))
 	}
 	for key, value := range cfg.Transport.Headers {
 		opts = append(opts, WithHeader(key, value))

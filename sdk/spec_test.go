@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -217,14 +218,32 @@ func TestDefinitionFactoryResolvesEnvConfig(t *testing.T) {
 	}
 }
 
-func TestDefinitionFactoryRejectsMissingEnvConfig(t *testing.T) {
+func TestDefinitionFactoryResolvesMissingEnvConfigAsEmpty(t *testing.T) {
 	type config struct {
 		Token string `yaml:"token"`
 	}
+	envName := "ANYBOT_MISSING_TOKEN"
+	old, ok := os.LookupEnv(envName)
+	t.Cleanup(func() {
+		if ok {
+			if err := os.Setenv(envName, old); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := os.Unsetenv(envName); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if err := os.Unsetenv(envName); err != nil {
+		t.Fatal(err)
+	}
+	var seen string
 	definition := Define(Spec[config]{
 		Manifest:      Manifest{Name: "secret"},
 		DefaultConfig: config{},
-		Setup: func(*Context, config) error {
+		Setup: func(_ *Context, cfg config) error {
+			seen = cfg.Token
 			return nil
 		},
 	})
@@ -232,9 +251,15 @@ func TestDefinitionFactoryRejectsMissingEnvConfig(t *testing.T) {
 	if err := yaml.Unmarshal([]byte("token: !env ANYBOT_MISSING_TOKEN\n"), &node); err != nil {
 		t.Fatal(err)
 	}
-	_, err := definition.Factory().Build(node)
-	if err == nil || err.Error() != "plugin config environment variable ANYBOT_MISSING_TOKEN is not set" {
-		t.Fatalf("err = %v", err)
+	plugin, err := definition.Factory().Build(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(NewApp(), plugin); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "" {
+		t.Fatalf("token = %q", seen)
 	}
 }
 

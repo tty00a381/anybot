@@ -14,7 +14,7 @@ adapter:
     type: reverse_ws
     listen: "127.0.0.1:6700"
     path: "/"
-    access_token_env: ONEBOT_ACCESS_TOKEN
+    access_token: !env ONEBOT_ACCESS_TOKEN
     max_event_bytes: 1048576
     action_timeout: 10s
 

@@ -81,13 +81,13 @@ adapter:
     type: reverse_ws
     listen: "127.0.0.1:6700"
     path: "/"
-    access_token_env: ONEBOT_ACCESS_TOKEN
+    access_token: !env ONEBOT_ACCESS_TOKEN
 
 security:
   superusers: []
 ```
 
-`listen` 是 AnyBot 监听的地址，实现端需要连接到这个地址。`access_token_env` 是访问令牌所在的环境变量名，运行前设置对应环境变量即可：
+`listen` 是 AnyBot 监听的地址，实现端需要连接到这个地址。`access_token` 是访问令牌；不想把令牌明文写进配置时，可以使用 `!env` 从环境变量读取：
 
 ```sh
 export ONEBOT_ACCESS_TOKEN=你的令牌
@@ -115,8 +115,6 @@ anybot plugins
 anybot plugin status
 anybot plugin inspect <id>
 ```
-
-这里的 `<id>` 可以写完整的 `PluginID`，也可以写 `status` 输出中能唯一匹配的短前缀。插件名称只是展示用，真正稳定的是本地安装时生成并写入 `plugins.lock` 的 `PluginID`。
 
 安装外部插件：
 
@@ -150,11 +148,7 @@ anybot plugin disable <id>
 anybot plugin remove <id>
 ```
 
-启用了外部插件后，推荐直接使用 `anybot up`。它会构建生成宿主、同步插件配置、检查插件配置，然后启动机器人。
-
 ## 编写插件
-
-插件作者通常只需要依赖 `github.com/tty00a381/anybot/sdk`。不需要直接使用 `core`。
 
 创建一个插件模块：
 
