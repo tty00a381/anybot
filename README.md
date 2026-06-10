@@ -57,11 +57,11 @@ anybot up
 
 默认情况下，AnyBot 会使用 **OneBot v11¹** 协议、**反向 WebSocket³** 连接 **实现端²**。若要改用其他协议或连接方式，可以参考下一节，修改配置文件中的相关字段。
 >
-> **¹ OneBot** 是一个通用的聊天机器人协议, 定义了事件、消息段、动作等抽象概念，屏蔽了不同聊天平台的差异。**v11** 是 OneBot 目前的主流版本。
+> **¹ OneBot** 是一个通用的聊天机器人协议, 定义了事件、消息段、动作等抽象概念，屏蔽了不同聊天平台的差异，极大便利了机器人的开发 。**v11** 是 OneBot 目前的主流版本。
 >
-> **² 实现端** 就是实现了上述协议的程序，负责与聊天平台通信、将平台消息转换为协议中的事件，供机器人应用端消费。常见的实现端有 [NapCatQQ](https://github.com/NapNeko/NapCatQQ)、[Lagrange](https://github.com/LagrangeDev/Lagrange) 等。
+> **² 实现端** 就是实现了上述协议的程序，负责与聊天平台通信、将平台消息转换为协议中的事件，供机器人消费。常见的实现端有 [NapCatQQ](https://github.com/NapNeko/NapCatQQ)、[Lagrange](https://github.com/LagrangeDev/Lagrange) 等。
 >
-> **³ 反向 WebSocket** 是一种连接方式，机器人框架作为服务器监听一个地址，实现端作为客户端连接到这个地址。相比 HTTP 轮询、Webhook 等传统方式，反向 WebSocket 可以更高效地传递事件和消息，减少延迟和资源消耗。
+> **³ 反向 WebSocket** 是一种通讯方式：机器人充当服务器，监听一个地址；实现端充当客户端，连接到这个地址，并向机器人推送事件、接收来自机器人的指令。
 
 > 除了 OneBot v11，AnyBot 还计划支持更多协议，如 OneBot v12、Telegram Bot API、Discord API 等。这将在未来的版本中逐步实现。
 
@@ -69,10 +69,10 @@ anybot up
 
 机器人目录下会有两类配置：
 
-- `config/anybot.yaml`：机器人本身的配置，例如日志、运行时状态、协议适配器、监听地址、安全设置等。
-- `config/<PluginID>.yaml`：插件实例配置文件。
+1. `config/anybot.yaml`：机器人本身的配置。
+2. `config/<PluginID>.yaml`：插件们的配置。
 
-一般只需要先改 `config/anybot.yaml`：
+### `config/anybot.yaml`
 
 ```yaml
 adapter:
@@ -87,19 +87,13 @@ security:
   superusers: []
 ```
 
-`listen` 是 AnyBot 监听的地址，实现端需要连接到这个地址。`access_token` 是访问令牌；不想把令牌明文写进配置时，可以使用 `!env` 从环境变量读取：
+> AnyBot 支持在配置文件里通过 `!env` 引用环境变量，这样就可以把敏感参数放在环境变量里，避免泄露。
 
 ```sh
 export ONEBOT_ACCESS_TOKEN=你的令牌
 ```
 
-修改后建议先检查配置：
-
-```sh
-anybot doctor
-```
-
-插件配置不写在 `config/anybot.yaml` 里，而是写在 `config/<PluginID>.yaml` 中。这样同一个插件可以安装多次，也不会因为插件改名影响本地数据和配置。
+修改后的配置文件，需要重启机器人才能生效。
 
 ## 管理插件
 
@@ -195,7 +189,7 @@ anybot up -dir ../mybot
 
 ## 做出贡献
 
-AnyBot 还在快速成型中，欢迎围绕真实使用场景提交改进。比较适合贡献的方向有：协议适配器、内置插件、插件 SDK、示例等。
+AnyBot 还在快速成型中，欢迎围绕真实使用场景提交改进。目前比较适合贡献的方向有：协议适配器、内置插件、插件 SDK、示例等。
 
 仓库结构大致如下：
 
@@ -214,7 +208,7 @@ go test ./...
 go vet ./...
 ```
 
-欢迎各种功能性的贡献 —— 当然，**清爽的代码**、清晰的文档也很有必要。
+*欢迎各种功能性的贡献 —— 当然，清爽的代码，清晰的文档，也很有必要。*
 
 ## 许可证
 
