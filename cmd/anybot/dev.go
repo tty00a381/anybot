@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tty00a381/anybot/adapters/onebot11"
 	"github.com/tty00a381/anybot/internal/scaffold"
 )
 
@@ -16,16 +15,10 @@ func runDev(args []string) error {
 		return nil
 	}
 	switch args[0] {
-	case "init":
-		return runDevInit(args[1:])
 	case "plugin":
 		return runDevPlugin(args[1:])
 	case "new":
 		return runDevNew(args[1:])
-	case "doctor":
-		return runDevDoctor(args[1:])
-	case "run":
-		return runDevRun(args[1:])
 	case "help", "-h", "--help":
 		devUsage()
 		return nil
@@ -36,40 +29,8 @@ func runDev(args []string) error {
 
 func devUsage() {
 	fmt.Fprintln(stdout, `anybot dev 命令：
-  anybot dev init [-module 模块名] [-dir 目录] [-force] [-anybot-version 版本] [-replace AnyBot源码路径]
   anybot dev plugin <名称> [-dir 目录] [-force] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]
-  anybot dev plugin <名称> -in-project [-dir 目录] [-force]
-  anybot dev new plugin <名称> [同 anybot dev plugin]
-  anybot dev doctor [-config core.yaml] [-connect]
-  anybot dev run [go run 参数...]`)
-}
-
-func runDevInit(args []string) error {
-	fs := flag.NewFlagSet("dev init", flag.ContinueOnError)
-	module := fs.String("module", "example.com/bot", "Go 模块路径")
-	dir := fs.String("dir", ".", "目标目录")
-	anybotVersion := fs.String("anybot-version", "", "核心库项目依赖的 AnyBot 版本")
-	replace := fs.String("replace", "", "核心库项目 go.mod 中的 AnyBot 本地源码替换路径")
-	force := fs.Bool("force", false, "覆盖已有文件")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	opts := scaffold.ProjectOptions{
-		Dir:           *dir,
-		Module:        *module,
-		AnyBotVersion: *anybotVersion,
-		AnyBotReplace: *replace,
-		Force:         *force,
-	}
-	if err := fillDevProjectDependency(&opts); err != nil {
-		return err
-	}
-	if err := scaffold.InitProject(opts); err != nil {
-		return err
-	}
-	fmt.Fprintf(stdout, "已生成核心库项目：%s\n", cleanDisplayDir(*dir))
-	printNextSteps(*dir, "go mod tidy", "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot dev doctor", "go run .")
-	return nil
+  anybot dev new plugin <名称> [同 anybot dev plugin]`)
 }
 
 func runDevNew(args []string) error {
@@ -87,10 +48,9 @@ func runDevNew(args []string) error {
 func runDevPlugin(args []string) error {
 	fs := flag.NewFlagSet("dev plugin", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "目标项目目录")
-	module := fs.String("module", "", "独立插件 Go 模块路径；为空时使用 example.com/anybot-plugin/<名称>")
-	anybotVersion := fs.String("anybot-version", "", "独立插件依赖的 AnyBot 版本")
-	replace := fs.String("replace", "", "独立插件 go.mod 中的 AnyBot 本地源码替换路径")
-	inProject := fs.Bool("in-project", false, "生成到现有核心库项目的 plugins/ 目录")
+	module := fs.String("module", "", "插件 Go 模块路径；为空时使用 example.com/anybot-plugin/<名称>")
+	anybotVersion := fs.String("anybot-version", "", "插件依赖的 AnyBot 版本")
+	replace := fs.String("replace", "", "插件 go.mod 中的 AnyBot 本地源码替换路径")
 	force := fs.Bool("force", false, "覆盖已有文件")
 	name, flagArgs, err := splitDevPluginArgs(args)
 	if err != nil {
@@ -100,12 +60,9 @@ func runDevPlugin(args []string) error {
 		return err
 	}
 	if name == "" {
-		return fmt.Errorf("用法：anybot dev plugin <名称> [-dir 目录] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]，或 anybot dev plugin <名称> -in-project")
+		return fmt.Errorf("用法：anybot dev plugin <名称> [-dir 目录] [-module 插件模块] [-anybot-version 版本] [-replace AnyBot源码路径]")
 	}
-	if *inProject && strings.TrimSpace(*module) != "" {
-		return fmt.Errorf("-in-project 不能与 -module 同时使用")
-	}
-	if !*inProject && strings.TrimSpace(*module) == "" {
+	if strings.TrimSpace(*module) == "" {
 		*module = defaultPluginModule(name)
 	}
 	opts := scaffold.PluginOptions{
@@ -123,13 +80,8 @@ func runDevPlugin(args []string) error {
 	if err != nil {
 		return err
 	}
-	if result.Standalone {
-		fmt.Fprintf(stdout, "已生成独立插件模块：%s (%s)\n", result.Name, result.Module)
-		printStandalonePluginNextSteps(*dir, result)
-		return nil
-	}
-	fmt.Fprintf(stdout, "已生成插件骨架：%s\n", result.Name)
-	printNextSteps(*dir, "在 Go 入口中 import ./plugins/"+result.Package+" 并使用 absdk.InstallDefaultWithID(app, \"plg_aaaaaaaaaaaaaaaaaaaaaaaaaa\", "+result.Package+".Plugin)", "go test ./...")
+	fmt.Fprintf(stdout, "已生成插件模块：%s (%s)\n", result.Name, result.Module)
+	printPluginModuleNextSteps(*dir, result)
 	return nil
 }
 
@@ -166,7 +118,7 @@ func modulePathName(name string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
+func printPluginModuleNextSteps(dir string, result scaffold.PluginResult) {
 	if strings.HasPrefix(result.Module, "example.com/anybot-plugin/") {
 		fmt.Fprintln(stdout, "提示：当前 module 是示例路径；发布或发给别人安装前，请用 -module github.com/<you>/<repo> 生成真实模块路径。")
 	}
@@ -189,31 +141,6 @@ func printStandalonePluginNextSteps(dir string, result scaffold.PluginResult) {
 	}
 }
 
-func fillDevProjectDependency(opts *scaffold.ProjectOptions) error {
-	if opts == nil {
-		return nil
-	}
-	opts.AnyBotVersion = strings.TrimSpace(opts.AnyBotVersion)
-	opts.AnyBotReplace = strings.TrimSpace(opts.AnyBotReplace)
-	if opts.AnyBotVersion == "" && opts.AnyBotReplace == "" {
-		dep := devPluginFrameworkDependency("github.com/tty00a381/anybot")
-		opts.AnyBotVersion = dep.Version
-		opts.AnyBotReplace = dep.Replace
-	}
-	if opts.AnyBotReplace == "" {
-		if opts.AnyBotVersion == "" || opts.AnyBotVersion == "v0.0.0" {
-			return fmt.Errorf("生成核心库项目需要可解析的 AnyBot 版本；请传 -anybot-version vX.Y.Z，或传 -replace /path/to/anybot 使用本地源码")
-		}
-		return nil
-	}
-	replace, err := normalizeReplacePath(opts.Dir, opts.AnyBotReplace)
-	if err != nil {
-		return err
-	}
-	opts.AnyBotReplace = replace
-	return nil
-}
-
 func fillDevPluginDependency(opts *scaffold.PluginOptions) error {
 	if opts == nil || strings.TrimSpace(opts.Module) == "" {
 		return nil
@@ -227,7 +154,7 @@ func fillDevPluginDependency(opts *scaffold.PluginOptions) error {
 	}
 	if opts.AnyBotReplace == "" {
 		if opts.AnyBotVersion == "" || opts.AnyBotVersion == "v0.0.0" {
-			return fmt.Errorf("生成独立插件需要可解析的 AnyBot 版本；请传 -anybot-version vX.Y.Z，或传 -replace /path/to/anybot 使用本地源码")
+			return fmt.Errorf("生成插件模块需要可解析的 AnyBot 版本；请传 -anybot-version vX.Y.Z，或传 -replace /path/to/anybot 使用本地源码")
 		}
 		return nil
 	}
@@ -278,8 +205,7 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 			strings.HasPrefix(arg, "-anybot-version=") || strings.HasPrefix(arg, "--anybot-version=") ||
 			strings.HasPrefix(arg, "-replace=") || strings.HasPrefix(arg, "--replace="):
 			flagArgs = append(flagArgs, arg)
-		case arg == "-force" || arg == "--force" ||
-			arg == "-in-project" || arg == "--in-project":
+		case arg == "-force" || arg == "--force":
 			flagArgs = append(flagArgs, arg)
 		case strings.HasPrefix(arg, "-"):
 			flagArgs = append(flagArgs, arg)
@@ -291,56 +217,4 @@ func splitDevPluginArgs(args []string) (string, []string, error) {
 		}
 	}
 	return name, flagArgs, nil
-}
-
-func runDevDoctor(args []string) error {
-	fs := flag.NewFlagSet("dev doctor", flag.ContinueOnError)
-	configPath := fs.String("config", "core.yaml", "配置文件")
-	connect := fs.Bool("connect", false, "检查远端动作接口是否可连接")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	cfg, err := onebot11.LoadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	if err := checkListen(cfg); err != nil {
-		return err
-	}
-	if err := checkListenerToken(cfg); err != nil {
-		return err
-	}
-	for _, warning := range doctorWarnings(cfg) {
-		fmt.Fprintf(stderr, "警告：%s\n", warning)
-	}
-	if *connect {
-		if err := checkRemote(cfg); err != nil {
-			return err
-		}
-	}
-	abs, _ := filepath.Abs(*configPath)
-	printDevDoctorSummary(abs, cfg)
-	fmt.Fprintf(stdout, "配置可用：%s\n", abs)
-	return nil
-}
-
-func printDevDoctorSummary(path string, cfg onebot11.Config) {
-	fmt.Fprintf(stdout, "配置文件：%s\n", path)
-	fmt.Fprintf(stdout, "协议：%s\n", cfg.Protocol)
-	fmt.Fprintf(stdout, "传输：%s\n", cfg.Transport.Type)
-	switch cfg.Transport.Type {
-	case "reverse_ws":
-		fmt.Fprintf(stdout, "监听：%s\n", cfg.Transport.Listen)
-		fmt.Fprintf(stdout, "路径：%s\n", doctorPath(cfg.Transport.Path))
-	case "http", "websocket":
-		fmt.Fprintf(stdout, "URL：%s\n", cfg.Transport.URL)
-	}
-}
-
-func runDevRun(args []string) error {
-	cmdArgs := append([]string{"run", "."}, args...)
-	return commandRunner(".", "go", cmdArgs...)
 }

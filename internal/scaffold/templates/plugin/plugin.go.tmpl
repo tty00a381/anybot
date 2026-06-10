@@ -1,0 +1,39 @@
+package {{.Package}}
+
+import (
+	"fmt"
+	"strings"
+
+	absdk "github.com/tty00a381/anybot/sdk"
+)
+
+// Config 配置 {{.DisplayName}} 插件。
+type Config struct {
+	Command string `yaml:"command"`
+}
+
+// Validate 校验 {{.DisplayName}} 插件配置。
+func (cfg Config) Validate() error {
+	if strings.TrimSpace(cfg.Command) == "" {
+		return fmt.Errorf("command 不能为空")
+	}
+	return nil
+}
+
+// Plugin 是 {{.DisplayName}} 插件导出的 AnyBot 插件定义。
+//
+// 通过 anybot plugin add 安装时，运行框架会生成并注入 PluginID。插件代码
+// 不应自行持久化安装身份。
+var Plugin = absdk.Define(absdk.Spec[Config]{
+	Manifest: absdk.Manifest{Name: {{printf "%q" .Manifest}}, Version: "0.1.0", Description: {{printf "%q" (printf "%s 插件" .DisplayName)}}},
+	DefaultConfig: Config{Command: {{printf "%q" .Command}}},
+	Setup: func(ctx *absdk.Context, cfg Config) error {
+		ctx.Command(cfg.Command).
+			Name("command").
+			Handle(func(c *absdk.EventContext) error {
+				_, err := c.ReplyText({{printf "%q" (printf "%s 已启动" .DisplayName)}})
+				return err
+			})
+		return nil
+	},
+})

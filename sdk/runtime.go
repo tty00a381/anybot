@@ -112,7 +112,7 @@ func InstallDefaultWith(app *App, env Environment, definition Definition) error 
 }
 
 // InstallDefaultWithID 使用默认配置和显式稳定 PluginID 安装插件定义。
-// 适合项目内或嵌入式机器人直接安装多个插件时隔离状态、任务和路由名称。
+// 适合嵌入式机器人直接安装多个插件时隔离状态、任务和路由名称。
 func InstallDefaultWithID(app *App, id string, definition Definition) error {
 	return InstallDefaultWith(app, Environment{PluginID: id}, definition)
 }

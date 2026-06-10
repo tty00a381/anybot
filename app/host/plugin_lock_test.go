@@ -460,7 +460,7 @@ func TestGeneratedPluginLockBuildsStarterPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Name != name || !result.Standalone {
+	if result.Name != name {
 		t.Fatalf("plugin result = %#v", result)
 	}
 

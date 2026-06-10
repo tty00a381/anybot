@@ -2,6 +2,7 @@ package scaffold
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"go/format"
 	"go/token"
@@ -15,14 +16,16 @@ import (
 	modmodule "golang.org/x/mod/module"
 )
 
-// ProjectOptions 配置项目脚手架的目标目录、模块名、框架依赖和覆盖策略。
-type ProjectOptions struct {
-	Dir           string
-	Module        string
-	Force         bool
-	AnyBotVersion string
-	AnyBotReplace string
-}
+//go:embed templates/plugin/*.tmpl
+var scaffoldTemplates embed.FS
+
+const (
+	pluginFileTemplate   = "templates/plugin/plugin.go.tmpl"
+	pluginTestTemplate   = "templates/plugin/plugin_test.go.tmpl"
+	pluginReadmeTemplate = "templates/plugin/README.md.tmpl"
+	pluginGoModTemplate  = "templates/plugin/go.mod.tmpl"
+	pluginGoSumTemplate  = "templates/plugin/go.sum.tmpl"
+)
 
 // PluginOptions 配置插件脚手架的目标项目、插件名和覆盖策略。
 type PluginOptions struct {
@@ -36,12 +39,11 @@ type PluginOptions struct {
 
 // PluginResult 描述插件脚手架写入结果。
 type PluginResult struct {
-	Name       string // 面向用户展示的插件名。
-	Package    string // 生成的 Go 包名和文件名前缀。
-	Module     string
-	Standalone bool
-	TestReady  bool
-	Files      []string
+	Name      string // 面向用户展示的插件名。
+	Package   string // 生成的 Go 包名和文件名前缀。
+	Module    string
+	TestReady bool
+	Files     []string
 }
 
 type scaffoldFile struct {
@@ -59,51 +61,7 @@ type pluginScaffoldData struct {
 	AnyBotReplace string
 }
 
-type projectScaffoldData struct {
-	Module        string
-	AnyBotVersion string
-	AnyBotReplace string
-}
-
-// InitProject 写入一个使用 OneBot v11 反向 WebSocket 的最小机器人项目。
-func InitProject(opts ProjectOptions) error {
-	if opts.Dir == "" {
-		opts.Dir = "."
-	}
-	if opts.Module == "" {
-		opts.Module = "example.com/bot"
-	}
-	if err := modmodule.CheckPath(opts.Module); err != nil {
-		return fmt.Errorf("核心库项目模块路径 %q 无效: %w", opts.Module, err)
-	}
-	data := projectScaffoldData{
-		Module:        opts.Module,
-		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
-		AnyBotReplace: strings.TrimSpace(opts.AnyBotReplace),
-	}
-	goMod, err := projectGoMod(data)
-	if err != nil {
-		return err
-	}
-	files := []scaffoldFile{
-		{Name: "go.mod", Content: goMod},
-		{Name: "main.go", Content: mustFormat(render(projectMain, data))},
-		{Name: "core.yaml", Content: render(projectConfig, data)},
-		{Name: ".env.example", Content: "ONEBOT_ACCESS_TOKEN=\n"},
-		{Name: "README.md", Content: render(projectReadme, data)},
-	}
-	if err := checkFileConflicts(opts.Dir, files, opts.Force); err != nil {
-		return err
-	}
-	for _, file := range files {
-		if err := writeFile(filepath.Join(opts.Dir, file.Name), file.Content, opts.Force); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// NewPlugin 写入可被 anybot 加载的插件 SDK 骨架。
+// NewPlugin 写入插件模块 starter。
 func NewPlugin(opts PluginOptions) (PluginResult, error) {
 	if opts.Dir == "" {
 		opts.Dir = "."
@@ -112,6 +70,9 @@ func NewPlugin(opts PluginOptions) (PluginResult, error) {
 		return PluginResult{}, fmt.Errorf("插件名不能为空")
 	}
 	opts.Module = strings.TrimSpace(opts.Module)
+	if opts.Module == "" {
+		return PluginResult{}, fmt.Errorf("插件模块路径不能为空")
+	}
 	pkg := packageName(opts.Name)
 	displayName := pluginDisplayName(opts.Name, pkg)
 	data := pluginScaffoldData{
@@ -123,18 +84,10 @@ func NewPlugin(opts PluginOptions) (PluginResult, error) {
 		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
 		AnyBotReplace: strings.TrimSpace(opts.AnyBotReplace),
 	}
-	if opts.Module != "" {
-		return newStandalonePlugin(opts, data)
-	}
-	dir := filepath.Join(opts.Dir, "plugins", pkg)
-	path := filepath.Join(dir, pkg+".go")
-	if err := writeFile(path, mustFormat(render(pluginFile, data)), opts.Force); err != nil {
-		return PluginResult{}, err
-	}
-	return PluginResult{Name: data.Manifest, Package: pkg, Files: []string{path}}, nil
+	return newPluginModule(opts, data)
 }
 
-func newStandalonePlugin(opts PluginOptions, data pluginScaffoldData) (PluginResult, error) {
+func newPluginModule(opts PluginOptions, data pluginScaffoldData) (PluginResult, error) {
 	if err := modmodule.CheckPath(opts.Module); err != nil {
 		return PluginResult{}, fmt.Errorf("插件模块路径 %q 无效: %w", opts.Module, err)
 	}
@@ -144,13 +97,13 @@ func newStandalonePlugin(opts PluginOptions, data pluginScaffoldData) (PluginRes
 	}
 	files := []scaffoldFile{
 		{Name: "go.mod", Content: goMod},
-		{Name: data.Package + ".go", Content: mustFormat(render(pluginFile, data))},
-		{Name: data.Package + "_test.go", Content: mustFormat(render(pluginTestFile, data))},
-		{Name: "README.md", Content: render(pluginReadme, data)},
+		{Name: data.Package + ".go", Content: mustFormat(renderTemplate(pluginFileTemplate, data))},
+		{Name: data.Package + "_test.go", Content: mustFormat(renderTemplate(pluginTestTemplate, data))},
+		{Name: "README.md", Content: renderTemplate(pluginReadmeTemplate, data)},
 	}
 	testReady := data.AnyBotReplace != ""
 	if testReady {
-		files = insertScaffoldFile(files, 1, scaffoldFile{Name: "go.sum", Content: pluginGoSumFile})
+		files = insertScaffoldFile(files, 1, scaffoldFile{Name: "go.sum", Content: renderTemplate(pluginGoSumTemplate, data)})
 	}
 	if err := checkFileConflicts(opts.Dir, files, opts.Force); err != nil {
 		return PluginResult{}, err
@@ -163,7 +116,7 @@ func newStandalonePlugin(opts PluginOptions, data pluginScaffoldData) (PluginRes
 		}
 		paths = append(paths, path)
 	}
-	return PluginResult{Name: data.Manifest, Package: data.Package, Module: opts.Module, Standalone: true, TestReady: testReady, Files: paths}, nil
+	return PluginResult{Name: data.Manifest, Package: data.Package, Module: opts.Module, TestReady: testReady, Files: paths}, nil
 }
 
 func insertScaffoldFile(files []scaffoldFile, index int, file scaffoldFile) []scaffoldFile {
@@ -181,32 +134,11 @@ func anybotVersion(version string) string {
 	return version
 }
 
-func projectGoMod(data projectScaffoldData) (string, error) {
-	if data.AnyBotReplace == "" && data.AnyBotVersion == "v0.0.0" {
-		return "", fmt.Errorf("核心库项目需要有效 AnyBot 版本，或使用 -replace 指向本地 AnyBot 源码")
-	}
-	goMod := render(projectGoModFile, data)
-	file, err := modfile.Parse("go.mod", []byte(goMod), nil)
-	if err != nil {
-		return "", fmt.Errorf("核心库项目 go.mod 无效: %w", err)
-	}
-	if data.AnyBotReplace != "" {
-		if err := file.AddReplace("github.com/tty00a381/anybot", "", data.AnyBotReplace, ""); err != nil {
-			return "", fmt.Errorf("核心库项目 go.mod replace 无效: %w", err)
-		}
-	}
-	out, err := file.Format()
-	if err != nil {
-		return "", fmt.Errorf("核心库项目 go.mod 格式化失败: %w", err)
-	}
-	return string(out), nil
-}
-
 func pluginGoMod(data pluginScaffoldData) (string, error) {
 	if data.AnyBotReplace == "" && data.AnyBotVersion == "v0.0.0" {
-		return "", fmt.Errorf("独立插件需要有效 AnyBot 版本，或使用 -replace 指向本地 AnyBot 源码")
+		return "", fmt.Errorf("插件模块需要有效 AnyBot 版本，或使用 -replace 指向本地 AnyBot 源码")
 	}
-	goMod := render(pluginGoModFile, data)
+	goMod := renderTemplate(pluginGoModTemplate, data)
 	file, err := modfile.Parse("go.mod", []byte(goMod), nil)
 	if err != nil {
 		return "", fmt.Errorf("插件 go.mod 无效: %w", err)
@@ -248,8 +180,12 @@ func checkFileConflicts(dir string, files []scaffoldFile, force bool) error {
 	return nil
 }
 
-func render(src string, data any) string {
-	tpl := template.Must(template.New("scaffold").Parse(src))
+func renderTemplate(name string, data any) string {
+	src, err := scaffoldTemplates.ReadFile(name)
+	if err != nil {
+		panic(err)
+	}
+	tpl := template.Must(template.New(filepath.Base(name)).Parse(string(src)))
 	var buf bytes.Buffer
 	if err := tpl.Execute(&buf, data); err != nil {
 		panic(err)
@@ -321,267 +257,3 @@ func pluginDisplayName(name, fallback string) string {
 	}
 	return out
 }
-
-const projectGoModFile = `module {{.Module}}
-
-go 1.24.0
-
-require github.com/tty00a381/anybot {{.AnyBotVersion}}
-`
-
-const projectMain = `package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
-
-	"github.com/tty00a381/anybot/core"
-	"github.com/tty00a381/anybot/adapters/onebot11"
-)
-
-func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
-		fmt.Println("用法：go run .")
-		fmt.Println("配置：编辑 core.yaml，并让 OneBot v11 协议端连接反向 WebSocket")
-		return
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	adapter, err := onebot11.LoadAdapter("core.yaml")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	app := core.New(core.WithAdapter(adapter))
-	app.Use(core.Recover(), core.Trace())
-
-	app.Command("ping").Handle(func(c *core.Context) error {
-		_, err := c.ReplyText("pong")
-		return err
-	})
-
-	if err := app.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Fatal(err)
-	}
-}
-`
-
-const projectConfig = `protocol: onebot11
-transport:
-  # AnyBot 监听该地址，OneBot v11 协议端通过反向 WebSocket 主动连接。
-  type: reverse_ws
-  listen: "127.0.0.1:6700"
-  path: "/"
-  access_token_env: ONEBOT_ACCESS_TOKEN
-  max_event_bytes: 1048576
-  action_timeout: 10s
-`
-
-const projectReadme = `# AnyBot 核心库机器人
-
-本项目由 ` + "`anybot dev init`" + ` 生成，模块名为 ` + "`{{.Module}}`" + `。它直接使用 core 运行时，默认通过 OneBot v11 反向 WebSocket 接入；下面以 NapCat 为例，其他 OneBot v11 协议端也按同样方式接入。
-
-## 运行
-
-` + "```sh" + `
-go mod tidy
-export ONEBOT_ACCESS_TOKEN=你的令牌
-anybot dev doctor
-go run . --help
-go run .
-` + "```" + `
-
-## 协议端配置
-
-在 OneBot v11 协议端中启用反向 WebSocket，并连接到：
-
-` + "```text" + `
-ws://127.0.0.1:6700/
-` + "```" + `
-
-运行前配置访问令牌环境变量，并在协议端中填写同一个值：
-
-` + "```sh" + `
-export ONEBOT_ACCESS_TOKEN=你的令牌
-` + "```" + `
-
-## 目录
-
-- ` + "`main.go`" + `：机器人入口。
-- ` + "`core.yaml`" + `：本地运行配置，启动时由 ` + "`onebot11.LoadAdapter`" + ` 读取。
-- ` + "`.env.example`" + `：环境变量示例。
-- ` + "`plugins/`" + `：插件目录，按需生成。
-
-## 插件
-
-当前核心库项目里直接使用的插件，用 ` + "`-in-project`" + ` 生成到 ` + "`plugins/`" + `：
-
-` + "```sh" + `
-anybot dev plugin hello -in-project
-` + "```" + `
-
-默认推荐把要发布给别人使用的插件生成成独立模块：
-
-` + "```sh" + `
-anybot dev plugin hello -dir ../anybot-hello -module example.com/hello
-` + "```" + `
-
-项目内插件导出 ` + "`Plugin`" + `，适合直接写 Go 入口时显式安装：
-
-` + "```go" + `
-if err := absdk.InstallDefaultWithID(app, "plg_aaaaaaaaaaaaaaaaaaaaaaaaaa", hello.Plugin); err != nil {
-	log.Fatal(err)
-}
-` + "```" + `
-
-## 部署
-
-生产环境建议先构建二进制，再用 systemd、supervisor 或容器托管进程。请给协议端与机器人配置相同的访问令牌，并避免把反向 WebSocket 端口直接暴露到公网。
-`
-
-const pluginFile = `package {{.Package}}
-
-import (
-	"fmt"
-	"strings"
-
-	absdk "github.com/tty00a381/anybot/sdk"
-)
-
-// Config 配置 {{.DisplayName}} 插件。
-type Config struct {
-	Command string ` + "`yaml:\"command\"`" + `
-}
-
-// Validate 校验 {{.DisplayName}} 插件配置。
-func (cfg Config) Validate() error {
-	if strings.TrimSpace(cfg.Command) == "" {
-		return fmt.Errorf("command 不能为空")
-	}
-	return nil
-}
-
-// Plugin 是 {{.DisplayName}} 插件导出的 AnyBot 插件定义。
-//
-// 项目内直接安装多个有状态插件时，请用 absdk.InstallDefaultWithID 注入稳定
-// PluginID；通过 anybot plugin add 安装时，运行框架会自动生成并注入 PluginID。
-var Plugin = absdk.Define(absdk.Spec[Config]{
-	Manifest: absdk.Manifest{Name: {{printf "%q" .Manifest}}, Version: "0.1.0", Description: {{printf "%q" (printf "%s 插件" .DisplayName)}}},
-	DefaultConfig: Config{Command: {{printf "%q" .Command}}},
-	Setup: func(ctx *absdk.Context, cfg Config) error {
-		ctx.Command(cfg.Command).
-			Name("command").
-			Handle(func(c *absdk.EventContext) error {
-				_, err := c.ReplyText({{printf "%q" (printf "%s 已启动" .DisplayName)}})
-				return err
-			})
-		return nil
-	},
-})
-`
-
-const pluginTestFile = `package {{.Package}}
-
-import (
-	"testing"
-
-	"github.com/tty00a381/anybot/sdk/testkit"
-)
-
-func TestPluginRepliesToCommand(t *testing.T) {
-	app := testkit.NewApp()
-	if err := app.InstallDefault(Plugin); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.DispatchText({{printf "%q" (printf "/%s" .Command)}}); err != nil {
-		t.Fatal(err)
-	}
-	if got := app.LastReplyText(); got != {{printf "%q" (printf "%s 已启动" .DisplayName)}} {
-		t.Fatalf("reply = %q", got)
-	}
-}
-`
-
-const pluginReadme = `# {{.DisplayName}}
-
-{{.DisplayName}} 是一个 AnyBot SDK 插件。插件导出 ` + "`Plugin`" + `，运行框架可以通过 ` + "`anybot plugin add`" + ` 安装，也可以在 Go 代码中用 ` + "`absdk.InstallDefaultWithID(app, \"plg_...\", Plugin)`" + ` 显式安装。
-
-## 开发
-
-如果 ` + "`go.mod`" + ` 中带有本地 AnyBot ` + "`replace`" + `，可以直接测试：
-
-` + "```sh" + `
-go test ./...
-` + "```" + `
-
-如果依赖的是远端 AnyBot 版本，先补齐模块校验和：
-
-` + "```sh" + `
-go mod tidy
-go test ./...
-` + "```" + `
-
-## 本地安装
-
-在机器人工作目录中执行：
-
-` + "```sh" + `
-anybot plugin add {{.Module}} -replace <插件目录>
-anybot plugin status
-anybot plugin config <id> command={{.Command}}
-anybot plugin enable <id>
-anybot up
-` + "```" + `
-
-` + "`anybot up`" + ` 会构建带外部插件的运行框架、同步默认配置并检查插件配置。停止机器人后，也可以运行 ` + "`./anybot-bot plugin check`" + ` 复查。
-
-## 配置
-
-` + "```yaml" + `
-enabled: true
-config:
-  command: {{.Command}}
-` + "```" + `
-
-` + "`command`" + ` 是触发插件的命令名。插件会回复 ` + "`{{.DisplayName}} 已启动`" + `。
-
-## 发布
-
-发布前确认 module 路径就是插件包路径，并给仓库打 tag：
-
-` + "```sh" + `
-go test ./...
-git tag v0.1.0
-go list -m {{.Module}}@v0.1.0
-` + "```" + `
-
-发布 Go module 版本后，用户可以安装固定版本：
-
-` + "```sh" + `
-anybot plugin add {{.Module}}@v0.1.0
-anybot plugin status
-anybot plugin enable <id>
-anybot up
-` + "```" + `
-`
-
-const pluginGoModFile = `module {{.Module}}
-
-go 1.24.0
-
-require github.com/tty00a381/anybot {{.AnyBotVersion}}
-
-require gopkg.in/yaml.v3 v3.0.1 // indirect
-`
-
-const pluginGoSumFile = `gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
-gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
-gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-`

@@ -193,14 +193,22 @@ func TestRunVersionAndHelp(t *testing.T) {
 	if err := run([]string{"dev"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "anybot dev init") || !strings.Contains(out.String(), "anybot dev plugin") {
+	if !strings.Contains(out.String(), "anybot dev plugin") ||
+		!strings.Contains(out.String(), "anybot dev new plugin") ||
+		strings.Contains(out.String(), "anybot dev init") ||
+		strings.Contains(out.String(), "anybot dev doctor") ||
+		strings.Contains(out.String(), "anybot dev run") {
 		t.Fatalf("dev help output:\n%s", out.String())
 	}
 	out.Reset()
 	if err := run([]string{"dev", "help"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "anybot dev doctor") || !strings.Contains(out.String(), "anybot dev run") {
+	if !strings.Contains(out.String(), "anybot dev plugin") ||
+		!strings.Contains(out.String(), "anybot dev new plugin") ||
+		strings.Contains(out.String(), "anybot dev init") ||
+		strings.Contains(out.String(), "anybot dev doctor") ||
+		strings.Contains(out.String(), "anybot dev run") {
 		t.Fatalf("dev help output:\n%s", out.String())
 	}
 	out.Reset()
@@ -223,100 +231,7 @@ func TestRunVersionAndHelp(t *testing.T) {
 	}
 }
 
-func TestRunDevInitPluginAndDoctor(t *testing.T) {
-	root := t.TempDir()
-	anybotDir := filepath.Join(root, "anybot")
-	setTestFrameworkDependencies(t, []moduleDependency{
-		{Module: "github.com/tty00a381/anybot", Version: "v0.0.0", Replace: anybotDir},
-	})
-	dir := filepath.Join(root, "devbot")
-	out, _, restore := captureOutput(t)
-	defer restore()
-	if err := run([]string{"dev", "init", "-dir", dir, "-module", "example.com/devbot"}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "已生成核心库项目") ||
-		!strings.Contains(out.String(), "export ONEBOT_ACCESS_TOKEN=你的令牌") ||
-		!strings.Contains(out.String(), "anybot dev doctor") ||
-		!strings.Contains(out.String(), "go run .") {
-		t.Fatalf("dev init output:\n%s", out.String())
-	}
-	out.Reset()
-	if _, err := os.Stat(filepath.Join(dir, "core.yaml")); err != nil {
-		t.Fatal(err)
-	}
-	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
-	if !strings.Contains(goMod, "module example.com/devbot") ||
-		!strings.Contains(goMod, "require github.com/tty00a381/anybot v0.0.0") ||
-		!strings.Contains(goMod, "replace github.com/tty00a381/anybot => ../anybot") {
-		t.Fatalf("go.mod:\n%s", goMod)
-	}
-	mainGo := readTestFile(t, filepath.Join(dir, "main.go"))
-	if !strings.Contains(mainGo, `"github.com/tty00a381/anybot/core"`) {
-		t.Fatalf("main.go:\n%s", mainGo)
-	}
-
-	config := filepath.Join(dir, "core.yaml")
-	data := readTestFile(t, config)
-	data = strings.ReplaceAll(data, `listen: "127.0.0.1:6700"`, `listen: "127.0.0.1:0"`)
-	if err := os.WriteFile(config, []byte(data), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := run([]string{"dev", "doctor", "-config", config}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "传输：reverse_ws") {
-		t.Fatalf("dev doctor output:\n%s", out.String())
-	}
-	out.Reset()
-
-	if err := run([]string{"dev", "plugin", "hello-world", "-in-project", "-dir", dir}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "已生成插件骨架：hello-world") ||
-		!strings.Contains(out.String(), "absdk.InstallDefaultWithID") ||
-		!strings.Contains(out.String(), "go test ./...") {
-		t.Fatalf("dev plugin output:\n%s", out.String())
-	}
-	plugin := readTestFile(t, filepath.Join(dir, "plugins", "hello_world", "hello_world.go"))
-	if !strings.Contains(plugin, "var Plugin = absdk.Define") ||
-		!strings.Contains(plugin, "absdk.Spec[Config]") ||
-		!strings.Contains(plugin, "DefaultConfig: Config") ||
-		!strings.Contains(plugin, "Setup: func") ||
-		!strings.Contains(plugin, "absdk.EventContext") ||
-		strings.Contains(plugin, `"github.com/tty00a381/anybot/core"`) {
-		t.Fatalf("plugin scaffold:\n%s", plugin)
-	}
-}
-
-func TestRunDevInitReleaseVersion(t *testing.T) {
-	setTestFrameworkDependencies(t, releaseFrameworkDependencies("v1.2.3"))
-	dir := filepath.Join(t.TempDir(), "space dir", "devbot")
-	out, _, restore := captureOutput(t)
-	defer restore()
-	if err := run([]string{"dev", "init", "-dir", dir, "-module", "example.com/devbot"}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "go mod tidy") ||
-		!strings.Contains(out.String(), shellQuote(dir)) {
-		t.Fatalf("dev init output:\n%s", out.String())
-	}
-	goMod := readTestFile(t, filepath.Join(dir, "go.mod"))
-	if !strings.Contains(goMod, "require github.com/tty00a381/anybot v1.2.3") ||
-		strings.Contains(goMod, "replace github.com/tty00a381/anybot") {
-		t.Fatalf("go.mod:\n%s", goMod)
-	}
-}
-
-func TestRunDevInitRejectsUnknownFrameworkDependency(t *testing.T) {
-	setTestFrameworkDependencies(t, []moduleDependency{{Module: "github.com/tty00a381/anybot", Version: "v0.0.0"}})
-	err := run([]string{"dev", "init", "-dir", t.TempDir(), "-module", "example.com/devbot"})
-	if err == nil || !strings.Contains(err.Error(), "生成核心库项目需要可解析的 AnyBot 版本") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestRunDevPluginStandalone(t *testing.T) {
+func TestRunDevPluginModule(t *testing.T) {
 	root := t.TempDir()
 	anybotDir := filepath.Join(root, "anybot")
 	setTestFrameworkDependencies(t, []moduleDependency{
@@ -332,7 +247,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成独立插件模块：daily-weather (github.com/acme/anybot-weather)") ||
+	if !strings.Contains(out.String(), "已生成插件模块：daily-weather (github.com/acme/anybot-weather)") ||
 		!strings.Contains(out.String(), "go test ./...") ||
 		!strings.Contains(out.String(), "anybot plugin add github.com/acme/anybot-weather -replace "+dir) ||
 		!strings.Contains(out.String(), "anybot plugin status -dir <机器人工作目录>") ||
@@ -357,7 +272,7 @@ func TestRunDevPluginStandalone(t *testing.T) {
 	}
 }
 
-func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
+func TestRunDevPluginDefaultsToModule(t *testing.T) {
 	root := t.TempDir()
 	anybotDir := filepath.Join(root, "anybot")
 	setTestFrameworkDependencies(t, []moduleDependency{
@@ -369,7 +284,7 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 	if err := run([]string{"dev", "plugin", "hello-world", "-dir", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已生成独立插件模块：hello-world (example.com/anybot-plugin/hello-world)") ||
+	if !strings.Contains(out.String(), "已生成插件模块：hello-world (example.com/anybot-plugin/hello-world)") ||
 		!strings.Contains(out.String(), "当前 module 是示例路径") ||
 		!strings.Contains(out.String(), "anybot plugin add example.com/anybot-plugin/hello-world") {
 		t.Fatalf("dev plugin output:\n%s", out.String())
@@ -378,11 +293,11 @@ func TestRunDevPluginDefaultsToStandalone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "hello_world", "hello_world.go")); !os.IsNotExist(err) {
-		t.Fatalf("default plugin should be standalone, project plugin err=%v", err)
+		t.Fatalf("default plugin should be a module, project plugin err=%v", err)
 	}
 }
 
-func TestRunDevPluginStandaloneReleaseVersion(t *testing.T) {
+func TestRunDevPluginModuleReleaseVersion(t *testing.T) {
 	setTestFrameworkDependencies(t, releaseFrameworkDependencies("v1.2.3"))
 	dir := filepath.Join(t.TempDir(), "space dir", "weather")
 	out, _, restore := captureOutput(t)
@@ -408,14 +323,14 @@ func TestRunDevPluginStandaloneReleaseVersion(t *testing.T) {
 	}
 }
 
-func TestRunDevPluginStandaloneRejectsUnknownFrameworkDependency(t *testing.T) {
+func TestRunDevPluginModuleRejectsUnknownFrameworkDependency(t *testing.T) {
 	setTestFrameworkDependencies(t, []moduleDependency{{Module: "github.com/tty00a381/anybot", Version: "v0.0.0"}})
 	err := run([]string{
 		"dev", "plugin", "daily-weather",
 		"-dir", t.TempDir(),
 		"-module", "github.com/acme/anybot-weather",
 	})
-	if err == nil || !strings.Contains(err.Error(), "生成独立插件需要可解析的 AnyBot 版本") {
+	if err == nil || !strings.Contains(err.Error(), "生成插件模块需要可解析的 AnyBot 版本") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -469,28 +384,6 @@ adapter:
 	}
 	if !strings.Contains(err.Error(), "监听非本机地址时必须配置可用访问令牌") {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestRunDevDoctorWarnsForMissingOutboundTokenEnv(t *testing.T) {
-	dir := t.TempDir()
-	config := filepath.Join(dir, "core.yaml")
-	if err := os.WriteFile(config, []byte(`protocol: onebot11
-transport:
-  type: websocket
-  url: "ws://127.0.0.1:6700/"
-  access_token_env: ANYBOT_TEST_MISSING_TOKEN
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ANYBOT_TEST_MISSING_TOKEN", "")
-	_, errOut, restore := captureOutput(t)
-	defer restore()
-	if err := run([]string{"dev", "doctor", "-config", config}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(errOut.String(), "ANYBOT_TEST_MISSING_TOKEN 未设置") {
-		t.Fatalf("dev doctor stderr:\n%s", errOut.String())
 	}
 }
 

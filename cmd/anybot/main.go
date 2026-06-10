@@ -97,7 +97,7 @@ func runInit(args []string) error {
 	files := []initFile{
 		{name: "anybot.yaml", content: defaultConfig},
 		{name: host.PluginLockFile},
-		{name: ".env.example", content: "ONEBOT_ACCESS_TOKEN=\n"},
+		{name: ".env.example", content: defaultEnvExample},
 		{name: "README.md", content: defaultReadme},
 	}
 	if err := checkInitFiles(targetDir, files, *force); err != nil {
