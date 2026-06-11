@@ -13,7 +13,7 @@ type Config struct {
 }
 
 var Plugin = absdk.Define(absdk.Spec[Config]{
-	Manifest: absdk.Manifest{Name: "help", Version: "1.0.1", Description: "基础帮助命令"},
+	Manifest: absdk.Manifest{Name: "help", Version: "1.0.2", Description: "基础帮助命令"},
 	DefaultConfig: Config{
 		Command: "help",
 		Lines:   []string{"可用命令：", "/help 显示帮助"},

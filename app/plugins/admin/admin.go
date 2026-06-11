@@ -12,7 +12,7 @@ type Config struct {
 }
 
 var Plugin = absdk.Define(absdk.Spec[Config]{
-	Manifest:      absdk.Manifest{Name: "admin", Version: "1.0.1", Description: "超级用户命令"},
+	Manifest:      absdk.Manifest{Name: "admin", Version: "1.0.2", Description: "超级用户命令"},
 	DefaultConfig: Config{},
 	Setup: func(ctx *absdk.Context, cfg Config) error {
 		route := ctx.Command("admin").Name("command")
