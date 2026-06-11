@@ -25,7 +25,7 @@ func TestRunPluginCommandStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
-		!strings.Contains(out.String(), ShortPluginID(testHelpID)+"\thelp\t内置\t是\t是\t是\t1.0.1\t-") {
+		!strings.Contains(out.String(), ShortPluginID(testHelpID)+"\thelp\t内置\t是\t是\t是\t1.0.2\t-") {
 		t.Fatalf("status output:\n%s", out.String())
 	}
 }
