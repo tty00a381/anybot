@@ -70,7 +70,7 @@ func TestRunInitDoctorAndPlugins(t *testing.T) {
 	if err := run([]string{"plugins"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "help\t1.0.0") || !strings.Contains(out.String(), "echo\t1.0.0") {
+	if !strings.Contains(out.String(), "help\t1.0.1") || !strings.Contains(out.String(), "echo\t1.0.1") {
 		t.Fatalf("plugins output:\n%s", out.String())
 	}
 }
@@ -1002,7 +1002,7 @@ func TestRunPluginStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ID\t名称\t来源\t配置\t启用\t可加载\t版本\t模块") ||
-		!strings.Contains(out.String(), host.ShortPluginID(helpID)+"\thelp\t内置\t是\t是\t是\t1.0.0\t-") ||
+		!strings.Contains(out.String(), host.ShortPluginID(helpID)+"\thelp\t内置\t是\t是\t是\t1.0.1\t-") ||
 		!strings.Contains(out.String(), host.ShortPluginID(cmdTestWeatherID)+"\t-\t外部\t是\t否\t否\t-\tgithub.com/acme/weather") {
 		t.Fatalf("status output:\n%s", out.String())
 	}
