@@ -12,7 +12,7 @@ type Config struct {
 }
 
 var Plugin = absdk.Define(absdk.Spec[Config]{
-	Manifest:      absdk.Manifest{Name: "echo", Version: "1.0.0", Description: "复读命令"},
+	Manifest:      absdk.Manifest{Name: "echo", Version: "1.0.1", Description: "复读命令"},
 	DefaultConfig: Config{Command: "echo"},
 	Setup: func(ctx *absdk.Context, cfg Config) error {
 		ctx.Command(cfg.Command).Name("command").Handle(func(c *absdk.EventContext) error {
