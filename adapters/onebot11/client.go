@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 // Client 是 OneBot v11 的类型化动作客户端。
@@ -18,16 +18,20 @@ type Client struct {
 }
 
 // ClientFrom 从 AnyBot 上下文提取 OneBot v11 客户端。
-func ClientFrom(c *anybot.Context) (*Client, bool) {
-	if c == nil {
+//
+// c 可以是 *core.Context，也可以是 SDK 的 *sdk.EventContext 这类暴露
+// UnsafeCoreContext() *core.Context 的上下文。
+func ClientFrom(c any) (*Client, bool) {
+	coreCtx := coreContextFrom(c)
+	if coreCtx == nil {
 		return nil, false
 	}
-	client, ok := c.Client().(*Client)
+	client, ok := coreCtx.Client().(*Client)
 	return client, ok
 }
 
 // MustClient 从 AnyBot 上下文提取 OneBot v11 客户端；类型不匹配时 panic。
-func MustClient(c *anybot.Context) *Client {
+func MustClient(c any) *Client {
 	client, ok := ClientFrom(c)
 	if !ok {
 		panic("onebot11: context action client is not *onebot11.Client")
@@ -35,15 +39,11 @@ func MustClient(c *anybot.Context) *Client {
 	return client
 }
 
-// CallRaw 调用 OneBot v11 动作，并返回协议无关的原始响应封套。
-func (c *Client) CallRaw(ctx context.Context, action string, params any) (*anybot.ActionResponse, error) {
+// CallRaw 调用 OneBot v11 动作，并返回 OneBot v11 原始响应封套。
+func (c *Client) CallRaw(ctx context.Context, action string, params any) (*Response, error) {
 	ctx, cancel := c.withActionTimeout(ctx)
 	defer cancel()
-	resp, err := c.transport.CallRaw(ctx, action, params)
-	if err != nil {
-		return nil, err
-	}
-	return resp.actionResponse(), nil
+	return c.transport.CallRaw(ctx, action, params)
 }
 
 // Call 调用 OneBot v11 动作，并在成功时把 data 解码到 out。
@@ -58,7 +58,7 @@ func (c *Client) Call(ctx context.Context, action string, params any, out any) e
 		return fmt.Errorf("onebot11: action %s returned nil response", action)
 	}
 	if !resp.OK() {
-		return &anybot.ActionError{
+		return &ActionError{
 			Action:  action,
 			Status:  resp.Status,
 			RetCode: resp.RetCode,
@@ -83,7 +83,7 @@ func (c *Client) withActionTimeout(ctx context.Context) (context.Context, contex
 }
 
 // Send 根据 ReplyTarget 选择私聊或群聊动作发送消息。
-func (c *Client) Send(ctx context.Context, target anybot.ReplyTarget, chain message.Chain) (anybot.MessageReceipt, error) {
+func (c *Client) Send(ctx context.Context, target core.ReplyTarget, chain message.Chain) (core.MessageReceipt, error) {
 	var out struct {
 		MessageID flexibleInt64 `json:"message_id"`
 	}
@@ -94,27 +94,27 @@ func (c *Client) Send(ctx context.Context, target anybot.ReplyTarget, chain mess
 			"group_id": idParam(target.GroupID),
 			"message":  wire,
 		}, &out)
-		return anybot.MessageReceipt{ID: idString(out.MessageID.int64())}, err
+		return core.MessageReceipt{ID: idString(out.MessageID.int64())}, err
 	case target.UserID != "":
 		err := c.Call(ctx, "send_private_msg", map[string]any{
 			"user_id": idParam(target.UserID),
 			"message": wire,
 		}, &out)
-		return anybot.MessageReceipt{ID: idString(out.MessageID.int64())}, err
+		return core.MessageReceipt{ID: idString(out.MessageID.int64())}, err
 	default:
-		return anybot.MessageReceipt{}, fmt.Errorf("onebot11: no supported reply target")
+		return core.MessageReceipt{}, fmt.Errorf("%w: onebot11 has no supported reply target", core.ErrReplyTargetUnavailable)
 	}
 }
 
 // SendPrivateMessage 发送私聊消息，并返回消息 ID。
 func (c *Client) SendPrivateMessage(ctx context.Context, userID any, chain message.Chain) (string, error) {
-	receipt, err := c.Send(ctx, anybot.ReplyTarget{UserID: fmt.Sprint(userID)}, chain)
+	receipt, err := c.Send(ctx, core.ReplyTarget{UserID: fmt.Sprint(userID)}, chain)
 	return receipt.ID, err
 }
 
 // SendGroupMessage 发送群消息，并返回消息 ID。
 func (c *Client) SendGroupMessage(ctx context.Context, groupID any, chain message.Chain) (string, error) {
-	receipt, err := c.Send(ctx, anybot.ReplyTarget{GroupID: fmt.Sprint(groupID)}, chain)
+	receipt, err := c.Send(ctx, core.ReplyTarget{GroupID: fmt.Sprint(groupID)}, chain)
 	return receipt.ID, err
 }
 

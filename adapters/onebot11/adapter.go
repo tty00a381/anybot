@@ -3,8 +3,11 @@ package onebot11
 import (
 	"context"
 
-	"github.com/tty00a381/anybot"
+	"github.com/tty00a381/anybot/core"
 )
+
+// Protocol 表示 OneBot v11 协议标识。
+const Protocol core.Protocol = "onebot11"
 
 // Transport 定义 OneBot v11 事件接收与动作调用所需的底层传输能力。
 type Transport interface {
@@ -16,6 +19,7 @@ type Transport interface {
 type Adapter struct {
 	transport Transport
 	client    *Client
+	state     *adapterState
 }
 
 // New 基于自定义传输创建适配器，适合扩展或测试场景。
@@ -23,6 +27,7 @@ func New(transport Transport) *Adapter {
 	return &Adapter{
 		transport: transport,
 		client:    &Client{transport: transport},
+		state:     newAdapterState(),
 	}
 }
 
@@ -30,24 +35,40 @@ func newAdapter(transport Transport, opts options) *Adapter {
 	return &Adapter{
 		transport: transport,
 		client:    &Client{transport: transport, actionTimeout: opts.actionTimeout},
+		state:     opts.state,
 	}
 }
 
 // Protocol 返回适配器所属协议。
-func (a *Adapter) Protocol() anybot.Protocol {
-	return anybot.ProtocolOneBot11
+func (a *Adapter) Protocol() core.Protocol {
+	return Protocol
 }
 
 // Start 启动底层传输，并把 OneBot v11 事件标准化后投递给运行时。
-func (a *Adapter) Start(ctx context.Context, emit anybot.EmitFunc) error {
+func (a *Adapter) Start(ctx context.Context, emit core.EmitFunc) error {
 	return a.transport.Start(ctx, func(eventCtx context.Context, event *Event) error {
 		return emit(eventCtx, event.Normalize())
 	})
 }
 
 // Client 返回 OneBot v11 类型化动作客户端。
-func (a *Adapter) Client() anybot.ActionClient {
+func (a *Adapter) Client() core.ActionClient {
 	return a.client
+}
+
+// State 返回最近一次已知的 OneBot v11 动作通道状态。
+func (a *Adapter) State() core.AdapterState {
+	if a == nil || a.state == nil {
+		return core.AdapterState{Protocol: Protocol, Kind: core.AdapterStateUnknown}
+	}
+	return a.state.State()
+}
+
+// SetStateSink 设置协议无关的状态上报函数。
+func (a *Adapter) SetStateSink(sink core.AdapterStateSink) {
+	if a != nil && a.state != nil {
+		a.state.SetSink(sink)
+	}
 }
 
 // WebSocket 创建正向 WebSocket 适配器，由 AnyBot 主动连接协议端。

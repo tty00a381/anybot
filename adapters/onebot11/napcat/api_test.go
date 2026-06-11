@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/adapters/onebot11"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 func TestHistoryAndRawFallback(t *testing.T) {
-	client := &fakeClient{response: &anybot.ActionResponse{
+	client := &fakeClient{response: &onebot11.Response{
 		Status:  "ok",
 		RetCode: 0,
 		Data:    json.RawMessage(`{"messages":[{"message_id":"1","user_id":"42","group_id":"100","time":"10","raw_message":"hi"}]}`),
@@ -32,7 +33,7 @@ func TestHistoryAndRawFallback(t *testing.T) {
 }
 
 func TestDownloadFile(t *testing.T) {
-	client := &fakeClient{response: &anybot.ActionResponse{
+	client := &fakeClient{response: &onebot11.Response{
 		Status:  "ok",
 		RetCode: 0,
 		Data:    json.RawMessage(`{"file":"/tmp/a.png","size":"12"}`),
@@ -50,7 +51,7 @@ func TestDownloadFile(t *testing.T) {
 type fakeClient struct {
 	action   string
 	params   any
-	response *anybot.ActionResponse
+	response *onebot11.Response
 }
 
 func (c *fakeClient) Call(_ context.Context, action string, params any, out any) error {
@@ -59,12 +60,12 @@ func (c *fakeClient) Call(_ context.Context, action string, params any, out any)
 	return c.response.Decode(out)
 }
 
-func (c *fakeClient) CallRaw(_ context.Context, action string, params any) (*anybot.ActionResponse, error) {
+func (c *fakeClient) CallRaw(_ context.Context, action string, params any) (*onebot11.Response, error) {
 	c.action = action
 	c.params = params
 	return c.response, nil
 }
 
-func (*fakeClient) Send(context.Context, anybot.ReplyTarget, message.Chain) (anybot.MessageReceipt, error) {
-	return anybot.MessageReceipt{}, nil
+func (*fakeClient) Send(context.Context, core.ReplyTarget, message.Chain) (core.MessageReceipt, error) {
+	return core.MessageReceipt{}, nil
 }

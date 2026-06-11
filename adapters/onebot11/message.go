@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 // Message 是 OneBot v11 消息链类型别名。
@@ -16,19 +16,19 @@ type Message = message.Chain
 func Text(text string) message.Segment { return message.Text(text) }
 
 // At 创建 OneBot v11 提及消息段。
-func At(qq any) message.Segment { return message.At(qq) }
+func At(qq any) message.Segment { return message.Raw("at", map[string]any{"id": fmt.Sprint(qq)}) }
 
 // Reply 创建 OneBot v11 回复消息段。
-func Reply(id any) message.Segment { return message.Reply(id) }
+func Reply(id any) message.Segment { return message.Raw("reply", map[string]any{"id": fmt.Sprint(id)}) }
 
 // Image 创建 OneBot v11 图片消息段。
 func Image(file string) message.Segment { return message.Image(file) }
 
 // Face 创建 OneBot v11 表情消息段。
-func Face(id any) message.Segment { return message.Face(id) }
+func Face(id any) message.Segment { return message.Raw("face", map[string]any{"id": fmt.Sprint(id)}) }
 
 // Record 创建 OneBot v11 语音消息段。
-func Record(file string) message.Segment { return message.Record(file) }
+func Record(file string) message.Segment { return message.Raw("record", map[string]any{"file": file}) }
 
 // Video 创建 OneBot v11 视频消息段。
 func Video(file string) message.Segment { return message.Video(file) }

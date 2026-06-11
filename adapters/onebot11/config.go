@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/tty00a381/anybot/internal/yamlenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,25 +25,36 @@ type TransportConfig struct {
 	Path                 string            `yaml:"path"`
 	URL                  string            `yaml:"url"`
 	AccessToken          string            `yaml:"access_token"`
-	AccessTokenEnv       string            `yaml:"access_token_env"`
 	Headers              map[string]string `yaml:"headers"`
+	MaxEventBytes        int64             `yaml:"max_event_bytes"`
 	DialTimeout          string            `yaml:"dial_timeout"`
 	ActionTimeout        string            `yaml:"action_timeout"`
 	ReconnectInterval    string            `yaml:"reconnect_interval"`
 	ReconnectMaxInterval string            `yaml:"reconnect_max_interval"`
 }
 
-// LoadConfig 从 YAML 文件读取 OneBot v11 配置；path 为空时读取 anybot.yaml。
+// LoadConfig 从 YAML 文件读取 OneBot v11 配置；path 为空时读取 core.yaml。
 func LoadConfig(path string) (Config, error) {
 	if path == "" {
-		path = "anybot.yaml"
+		path = "core.yaml"
+	}
+	if filepath.Ext(path) != ".yaml" {
+		return Config{}, fmt.Errorf("onebot11: 配置文件 %s 必须使用 .yaml 扩展名", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return Config{}, err
+	}
+	resolved, err := yamlenv.Resolve(doc, "onebot11 config")
+	if err != nil {
+		return Config{}, err
+	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := resolved.Decode(&cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -130,12 +143,11 @@ func (cfg Config) Options(extra ...Option) ([]Option, error) {
 	if cfg.Transport.Path != "" {
 		opts = append(opts, WithPath(cfg.Transport.Path))
 	}
-	token := cfg.Transport.AccessToken
-	if token == "" && cfg.Transport.AccessTokenEnv != "" {
-		token = os.Getenv(cfg.Transport.AccessTokenEnv)
+	if cfg.Transport.MaxEventBytes > 0 {
+		opts = append(opts, WithMaxEventBytes(cfg.Transport.MaxEventBytes))
 	}
-	if token != "" {
-		opts = append(opts, WithAccessToken(token))
+	if cfg.Transport.AccessToken != "" {
+		opts = append(opts, WithAccessToken(cfg.Transport.AccessToken))
 	}
 	for key, value := range cfg.Transport.Headers {
 		opts = append(opts, WithHeader(key, value))

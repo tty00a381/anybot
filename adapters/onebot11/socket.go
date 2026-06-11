@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 type socketPeer struct {
@@ -61,7 +62,7 @@ func (p *socketPeer) callRaw(ctx context.Context, action string, params any) (*R
 	conn := p.currentConn()
 	if conn == nil {
 		p.removePending(echo)
-		return nil, errors.New("onebot11: websocket is not connected")
+		return nil, actionUnavailable("onebot11: websocket is not connected")
 	}
 
 	p.writeMu.Lock()
@@ -79,6 +80,10 @@ func (p *socketPeer) callRaw(ctx context.Context, action string, params any) (*R
 		p.removePending(echo)
 		return nil, ctx.Err()
 	}
+}
+
+func actionUnavailable(reason string) error {
+	return fmt.Errorf("%w: %s", core.ErrActionUnavailable, reason)
 }
 
 func (p *socketPeer) handleFrame(ctx context.Context, data []byte, sink func(context.Context, *Event) error) error {
@@ -125,9 +130,21 @@ func (p *socketPeer) replaceConn(conn *websocket.Conn) *websocket.Conn {
 	p.conn = conn
 	p.connMu.Unlock()
 	if old != nil && old != conn {
-		p.failPending(errors.New("onebot11: websocket connection replaced"))
+		p.failPending(actionUnavailable("onebot11: websocket connection replaced"))
 	}
 	return old
+}
+
+func (p *socketPeer) disconnectConn(conn *websocket.Conn, err error) bool {
+	p.connMu.Lock()
+	if p.conn != conn {
+		p.connMu.Unlock()
+		return false
+	}
+	p.conn = nil
+	p.connMu.Unlock()
+	p.failPending(err)
+	return true
 }
 
 func (p *socketPeer) removePending(echo string) {

@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/tty00a381/anybot/core"
 )
 
 type httpTransport struct {
@@ -28,11 +30,23 @@ func newHTTPTransport(apiURL, listenAddr string, opts options) *httpTransport {
 }
 
 func (t *httpTransport) Start(ctx context.Context, sink func(context.Context, *Event) error) error {
+	if t.listenAddr != "" {
+		if err := t.opts.checkPublicListener("http", t.listenAddr); err != nil {
+			return err
+		}
+	}
+	t.opts.emitAdapterState(ctx, core.AdapterState{
+		Protocol:    Protocol,
+		Kind:        core.AdapterStateReady,
+		ActionReady: t.apiURL != "",
+		Transport:   "http",
+		Reason:      "http transport started",
+	})
 	if t.listenAddr == "" {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	server := &http.Server{Addr: t.listenAddr, Handler: t.handler(sink)}
+	server := newWebhookServer(t.listenAddr, t.handler(sink))
 	errc := make(chan error, 1)
 	go func() {
 		t.opts.logger.Info("HTTP回调监听中", "addr", t.listenAddr, "path", t.opts.path)
@@ -44,7 +58,7 @@ func (t *httpTransport) Start(ctx context.Context, sink func(context.Context, *E
 	}()
 	select {
 	case <-ctx.Done():
-		_ = server.Shutdown(context.Background())
+		shutdownHTTPServer(server)
 		err := <-errc
 		if err != nil {
 			return err
@@ -66,6 +80,7 @@ func (t *httpTransport) handler(sink func(context.Context, *Event) error) http.H
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, t.opts.maxEventBytes)
 		defer r.Body.Close()
 		data, err := io.ReadAll(r.Body)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 type webSocketClient struct {
@@ -63,27 +64,50 @@ func (c *webSocketClient) connectOnce(ctx context.Context, sink func(context.Con
 		HTTPHeader: authHeaders(c.opts),
 	})
 	if err != nil {
+		if ctx.Err() == nil {
+			c.opts.emitAdapterState(ctx, core.AdapterState{
+				Protocol:  Protocol,
+				Kind:      core.AdapterStateDisconnected,
+				Transport: "websocket",
+				Reason:    "websocket dial failed",
+				Err:       err,
+			})
+		}
 		return err
 	}
+	conn.SetReadLimit(c.opts.maxEventBytes)
 
 	c.peer.setConn(conn)
 	info := ConnectionEvent{State: ConnectionConnected, Transport: "websocket", URL: c.url}
 	c.opts.emitConnection(ctx, info)
 	c.opts.logger.Info("正向WS已连接", "url", c.url)
+	closeNow := false
 	defer func() {
 		info.State = ConnectionDisconnected
 		c.opts.emitConnection(ctx, info)
 		c.peer.setConn(nil)
-		_ = conn.Close(websocket.StatusNormalClosure, "anybot reconnect")
-		c.peer.failPending(errors.New("onebot11: websocket disconnected"))
+		if closeNow {
+			_ = conn.CloseNow()
+		} else {
+			_ = conn.Close(websocket.StatusNormalClosure, "anybot reconnect")
+		}
+		c.peer.failPending(actionUnavailable("onebot11: websocket disconnected"))
 	}()
 
 	for {
 		messageType, data, err := conn.Read(ctx)
 		if err != nil {
+			if errors.Is(err, websocket.ErrMessageTooBig) {
+				logFrameError(c.opts.logger, err)
+			}
+			closeNow = ctx.Err() == nil
 			return err
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
+			continue
+		}
+		if err := c.opts.checkFrameSize(len(data)); err != nil {
+			logFrameError(c.opts.logger, err)
 			continue
 		}
 		if err := c.peer.handleFrame(ctx, data, sink); err != nil {

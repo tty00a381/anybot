@@ -1,28 +1,31 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
-	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
-	"time"
+	"syscall"
 
-	"github.com/coder/websocket"
-	"github.com/tty00a381/anybot/adapters/onebot11"
-	"github.com/tty00a381/anybot/internal/scaffold"
+	"github.com/tty00a381/anybot/app/host"
 )
 
 var version = "dev"
 var stdout io.Writer = os.Stdout
 var stderr io.Writer = os.Stderr
+var commandRunner = runExternalCommand
+
+type initFile struct {
+	name    string
+	content string
+}
+
+const defaultInitDir = "mybot"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -39,12 +42,20 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
-	case "new":
-		return runNew(args[1:])
 	case "run":
-		return runBot(args[1:])
+		return runHost(args[1:])
 	case "doctor":
 		return runDoctor(args[1:])
+	case "build":
+		return runBuild(args[1:])
+	case "up":
+		return runUp(args[1:])
+	case "plugins":
+		return runPlugins(args[1:])
+	case "plugin":
+		return runPlugin(args[1:])
+	case "dev":
+		return runDev(args[1:])
 	case "version":
 		fmt.Fprintf(stdout, "anybot %s\n", version)
 		return nil
@@ -58,42 +69,85 @@ func run(args []string) error {
 
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	module := fs.String("module", "example.com/bot", "Go 模块路径")
-	dir := fs.String("dir", ".", "目标目录")
+	dir := fs.String("dir", "", "目标目录")
 	force := fs.Bool("force", false, "覆盖已有文件")
-	if err := fs.Parse(args); err != nil {
+	dirArg, flagArgs, err := splitInitArgs(args)
+	if err != nil {
 		return err
 	}
-	return scaffold.InitProject(scaffold.ProjectOptions{Dir: *dir, Module: *module, Force: *force})
-}
-
-func runNew(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("用法：anybot new plugin <名称>")
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
 	}
-	switch args[0] {
-	case "plugin":
-		fs := flag.NewFlagSet("new plugin", flag.ContinueOnError)
-		dir := fs.String("dir", ".", "目标项目目录")
-		force := fs.Bool("force", false, "覆盖已有文件")
-		name, flagArgs, err := splitPluginArgs(args[1:])
-		if err != nil {
+	dirSet := false
+	fs.Visit(func(flag *flag.Flag) {
+		if flag.Name == "dir" {
+			dirSet = true
+		}
+	})
+	targetDir := defaultInitDir
+	if dirArg != "" {
+		targetDir = dirArg
+	}
+	if dirSet {
+		if dirArg != "" {
+			return fmt.Errorf("anybot init 不能同时指定目录参数和 -dir")
+		}
+		targetDir = *dir
+	}
+	files := []initFile{
+		{name: host.DefaultConfigPath, content: defaultConfig},
+		{name: host.PluginLockFile},
+		{name: ".env.example", content: defaultEnvExample},
+		{name: "README.md", content: defaultReadme},
+	}
+	if err := checkInitFiles(targetDir, files, *force); err != nil {
+		return err
+	}
+	if err := host.CheckGeneratedHostWritable(targetDir, *force); err != nil {
+		return err
+	}
+	if err := checkInitDir(targetDir, host.ConfigDirName); err != nil {
+		return err
+	}
+	if *force {
+		if err := os.RemoveAll(filepath.Join(targetDir, host.ConfigDirName)); err != nil {
 			return err
 		}
-		if err := fs.Parse(flagArgs); err != nil {
+	}
+	for _, file := range files {
+		if err := writeFile(filepath.Join(targetDir, file.name), file.content, *force); err != nil {
 			return err
 		}
-		if name == "" {
-			return fmt.Errorf("用法：anybot new plugin <名称>")
-		}
-		return scaffold.NewPlugin(scaffold.PluginOptions{Dir: *dir, Name: name, Force: *force})
-	default:
-		return fmt.Errorf("未知生成器 %q", args[0])
 	}
+	if err := os.MkdirAll(filepath.Join(targetDir, host.ConfigDirName), 0o755); err != nil {
+		return err
+	}
+	lock, err := host.NewDefaultPluginLock()
+	if err != nil {
+		return err
+	}
+	if err := host.SavePluginLock(host.PluginLockPath(targetDir), lock); err != nil {
+		return err
+	}
+	for _, item := range lock.Plugins {
+		content := defaultBuiltinPluginConfig(item.Builtin)
+		if content == "" {
+			continue
+		}
+		if err := writeFile(filepath.Join(targetDir, host.ConfigDirName, item.ID+".yaml"), content, *force); err != nil {
+			return err
+		}
+	}
+	if _, err := host.EnsurePluginHostForce(targetDir, *force); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "已初始化 AnyBot 工作目录：%s\n", cleanDisplayDir(targetDir))
+	printNextSteps(targetDir, "export ONEBOT_ACCESS_TOKEN=你的令牌", "anybot doctor", "anybot run")
+	return nil
 }
 
-func splitPluginArgs(args []string) (string, []string, error) {
-	var name string
+func splitInitArgs(args []string) (string, []string, error) {
+	var dir string
 	var flagArgs []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -108,204 +162,161 @@ func splitPluginArgs(args []string) (string, []string, error) {
 			flagArgs = append(flagArgs, arg)
 		case arg == "-force" || arg == "--force":
 			flagArgs = append(flagArgs, arg)
+		case strings.HasPrefix(arg, "-force=") || strings.HasPrefix(arg, "--force="):
+			flagArgs = append(flagArgs, arg)
 		case strings.HasPrefix(arg, "-"):
 			flagArgs = append(flagArgs, arg)
 		default:
-			if name != "" {
-				return "", nil, fmt.Errorf("只能指定一个插件名")
+			if dir != "" {
+				return "", nil, fmt.Errorf("只能指定一个初始化目录")
 			}
-			name = arg
+			dir = arg
 		}
 	}
-	return name, flagArgs, nil
+	return dir, flagArgs, nil
 }
 
-func runBot(args []string) error {
-	cmdArgs := append([]string{"run", "."}, args...)
-	cmd := exec.Command("go", cmdArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+func cleanDisplayDir(dir string) string {
+	if dir == "" {
+		return "."
+	}
+	return filepath.Clean(dir)
 }
 
-func runDoctor(args []string) error {
-	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	configPath := fs.String("config", "anybot.yaml", "配置文件")
-	connect := fs.Bool("connect", false, "检查远端 NapCat 是否可连接")
+func printNextSteps(dir string, commands ...string) {
+	fmt.Fprintln(stdout, "下一步：")
+	if clean := cleanDisplayDir(dir); clean != "." {
+		fmt.Fprintf(stdout, "  cd %s\n", shellQuote(clean))
+	}
+	for _, command := range commands {
+		if command != "" {
+			fmt.Fprintf(stdout, "  %s\n", command)
+		}
+	}
+}
+
+func checkInitFiles(dir string, files []initFile, force bool) error {
+	if force {
+		return nil
+	}
+	for _, file := range files {
+		path := filepath.Join(dir, file.name)
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("%s 已存在；使用 -force 覆盖", path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkInitDir(dir, name string) error {
+	path := filepath.Join(dir, name)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s 已存在且不是目录", path)
+	}
+	return nil
+}
+
+func runHost(args []string) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	configPath := fs.String("config", host.DefaultConfigPath, "配置文件")
+	dir := fs.String("dir", "", "机器人工作目录")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	cfg, err := onebot11.LoadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	for _, warning := range doctorWarnings(cfg) {
-		fmt.Fprintf(stderr, "警告：%s\n", warning)
-	}
-	switch cfg.Transport.Type {
-	case "reverse_ws":
-		ln, err := net.Listen("tcp", cfg.Transport.Listen)
-		if err != nil {
-			return fmt.Errorf("无法监听 %s: %w", cfg.Transport.Listen, err)
+	configSet := false
+	fs.Visit(func(flag *flag.Flag) {
+		if flag.Name == "config" {
+			configSet = true
 		}
-		_ = ln.Close()
-	case "http", "websocket":
-		if *connect {
-			if err := checkRemote(cfg); err != nil {
-				return err
-			}
-		}
-	default:
-		return fmt.Errorf("不支持传输 %q", cfg.Transport.Type)
-	}
-	abs, _ := filepath.Abs(*configPath)
-	printDoctorSummary(abs, cfg)
-	fmt.Fprintf(stdout, "配置可用：%s\n", abs)
-	return nil
-}
-
-func printDoctorSummary(path string, cfg onebot11.Config) {
-	fmt.Fprintf(stdout, "配置文件：%s\n", path)
-	fmt.Fprintf(stdout, "传输：%s\n", cfg.Transport.Type)
-	switch cfg.Transport.Type {
-	case "reverse_ws":
-		fmt.Fprintf(stdout, "监听：%s\n", cfg.Transport.Listen)
-		fmt.Fprintf(stdout, "路径：%s\n", doctorPath(cfg.Transport.Path))
-	case "http", "websocket":
-		fmt.Fprintf(stdout, "URL：%s\n", cfg.Transport.URL)
-	}
-}
-
-func doctorWarnings(cfg onebot11.Config) []string {
-	var warnings []string
-	if cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) == "" {
-		warnings = append(warnings, fmt.Sprintf("环境变量 %s 未设置", cfg.Transport.AccessTokenEnv))
-	}
-	if cfg.Transport.Type == "reverse_ws" && !reverseListenIsLocal(cfg.Transport.Listen) && !accessTokenAvailable(cfg) {
-		warnings = append(warnings, "反向 WebSocket 监听非本机地址且未配置可用访问令牌")
-	}
-	return warnings
-}
-
-func accessTokenAvailable(cfg onebot11.Config) bool {
-	if cfg.Transport.AccessToken != "" {
-		return true
-	}
-	return cfg.Transport.AccessTokenEnv != "" && os.Getenv(cfg.Transport.AccessTokenEnv) != ""
-}
-
-func reverseListenIsLocal(listen string) bool {
-	host, _, err := net.SplitHostPort(listen)
-	if err != nil {
-		return false
-	}
-	switch host {
-	case "127.0.0.1", "localhost", "::1":
-		return true
-	default:
-		return false
-	}
-}
-
-func doctorPath(path string) string {
-	if path == "" {
-		return "/"
-	}
-	return path
-}
-
-func checkRemote(cfg onebot11.Config) error {
-	switch cfg.Transport.Type {
-	case "http":
-		return checkHTTPAction(cfg)
-	case "websocket":
-		return checkWebSocketHandshake(cfg)
-	default:
-		return nil
-	}
-}
-
-func checkHTTPAction(cfg onebot11.Config) error {
-	url := strings.TrimRight(cfg.Transport.URL, "/") + "/get_version_info"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{}`)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	addDoctorHeaders(req.Header, cfg)
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("无法连接 NapCat HTTP %s: %w", cfg.Transport.URL, err)
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("NapCat HTTP 返回 %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
-	var action onebot11.Response
-	if err := json.Unmarshal(data, &action); err != nil {
-		return fmt.Errorf("NapCat HTTP 响应不是 OneBot 动作响应: %w", err)
-	}
-	if !action.OK() {
-		detail := action.Message
-		if detail == "" {
-			detail = action.Wording
-		}
-		return fmt.Errorf("NapCat HTTP 动作失败: status=%s retcode=%d %s", action.Status, action.RetCode, detail)
-	}
-	return nil
-}
-
-func checkWebSocketHandshake(cfg onebot11.Config) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	conn, _, err := websocket.Dial(ctx, cfg.Transport.URL, &websocket.DialOptions{
-		HTTPHeader: doctorHeaders(cfg),
 	})
+	if *dir != "" {
+		if configSet {
+			return fmt.Errorf("anybot run 不能同时指定 -dir 和 -config")
+		}
+		*configPath = host.ConfigPath(*dir)
+	}
+	cfg, err := host.LoadConfig(*configPath)
 	if err != nil {
-		return fmt.Errorf("无法连接 NapCat WebSocket %s: %w", cfg.Transport.URL, err)
+		return err
 	}
-	return conn.Close(websocket.StatusNormalClosure, "anybot doctor")
+	workDir := host.WorkDirForConfig(*configPath)
+	lock, err := host.LoadPluginLock(host.PluginLockPath(workDir))
+	if err != nil {
+		return err
+	}
+	if lockHasEnabledExternalPlugins(cfg, lock) {
+		if filepath.Clean(*configPath) != filepath.Clean(host.ConfigPath(workDir)) {
+			return fmt.Errorf("已启用外部插件时 anybot run 需要使用工作目录中的 %s；自定义配置请先执行 anybot build -dir %s 后运行生成宿主", filepath.ToSlash(host.DefaultConfigPath), cleanDisplayDir(workDir))
+		}
+		return runGeneratedHost(generatedHostRunOptions{dir: workDir, output: "anybot-bot"})
+	}
+	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
+	if err != nil {
+		return err
+	}
+	app, err := host.NewApp(cfg, host.EmptyRegistry(), logger, host.WithConfigPath(*configPath), host.WithRuntimeState(), host.WithPluginLock(lock))
+	if err != nil {
+		return withExternalPluginHint(err, workDir)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := app.Run(ctx); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
 }
 
-func doctorHeaders(cfg onebot11.Config) http.Header {
-	header := make(http.Header, len(cfg.Transport.Headers)+1)
-	addDoctorHeaders(header, cfg)
-	return header
+func lockHasEnabledExternalPlugins(cfg host.Config, lock host.PluginLock) bool {
+	for _, item := range lock.Plugins {
+		if item.Module == "" {
+			continue
+		}
+		entry, ok := cfg.Plugins[item.ID]
+		if ok && cliPluginEntryEnabled(entry) {
+			return true
+		}
+	}
+	return false
 }
 
-func addDoctorHeaders(header http.Header, cfg onebot11.Config) {
-	for key, value := range cfg.Transport.Headers {
-		header.Add(key, value)
-	}
-	if token := doctorAccessToken(cfg); token != "" {
-		header.Set("Authorization", "Bearer "+token)
-	}
+func cliPluginEntryEnabled(entry host.PluginEntry) bool {
+	return entry.Enabled == nil || *entry.Enabled
 }
 
-func doctorAccessToken(cfg onebot11.Config) string {
-	if cfg.Transport.AccessToken != "" {
-		return cfg.Transport.AccessToken
+func writeFile(path, content string, force bool) error {
+	if !force {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("%s 已存在；使用 -force 覆盖", path)
+		}
 	}
-	if cfg.Transport.AccessTokenEnv == "" {
-		return ""
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
 	}
-	return os.Getenv(cfg.Transport.AccessTokenEnv)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func usage() {
-	fmt.Fprintln(stdout, `anybot 命令：
-  anybot init [-module 模块名] [-dir 目录] [-force]
-  anybot new plugin <名称> [-dir 目录] [-force]
-  anybot run [go run 参数...]
-  anybot doctor [-config anybot.yaml] [-connect]
-  anybot version`)
+func withExternalPluginHint(err error, dir string) error {
+	var unknown host.UnknownPluginError
+	if !errors.As(err, &unknown) {
+		return err
+	}
+	lock, lockErr := host.LoadPluginLock(host.PluginLockPath(dir))
+	if lockErr != nil {
+		return err
+	}
+	for _, item := range lock.Plugins {
+		if item.ID == unknown.ID && item.Module != "" {
+			return fmt.Errorf("%w；%s 是插件锁中的外部插件，请使用 anybot up 构建并运行生成宿主，或先执行 anybot plugin disable %s", err, unknown.ID, host.ShortPluginID(unknown.ID))
+		}
+	}
+	return err
 }

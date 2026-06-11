@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 type reverseWSServer struct {
@@ -26,7 +27,16 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	if s.addr == "" {
 		return errors.New("onebot11: reverse websocket addr is required")
 	}
-	server := &http.Server{Addr: s.addr, Handler: s.handler(sink)}
+	if err := s.opts.checkPublicListener("reverse_ws", s.addr); err != nil {
+		return err
+	}
+	server := newHTTPServer(s.addr, s.handler(sink))
+	s.opts.emitAdapterState(ctx, core.AdapterState{
+		Protocol:  Protocol,
+		Kind:      core.AdapterStateDisconnected,
+		Transport: "reverse_ws",
+		Reason:    "waiting for reverse websocket connection",
+	})
 	errc := make(chan error, 1)
 	go func() {
 		s.opts.logger.Info("反向WS监听中", "addr", s.addr, "path", s.opts.path)
@@ -38,7 +48,8 @@ func (s *reverseWSServer) Start(ctx context.Context, sink func(context.Context, 
 	}()
 	select {
 	case <-ctx.Done():
-		_ = server.Shutdown(context.Background())
+		s.closeCurrentConn()
+		shutdownHTTPServer(server)
 		err := <-errc
 		if err != nil {
 			return err
@@ -61,6 +72,7 @@ func (s *reverseWSServer) handler(sink func(context.Context, *Event) error) http
 			logFrameError(s.opts.logger, err)
 			return
 		}
+		conn.SetReadLimit(s.opts.maxEventBytes)
 		s.handleConn(r.Context(), conn, r.RemoteAddr, sink)
 	})
 	return mux
@@ -78,27 +90,44 @@ func (s *reverseWSServer) handleConn(ctx context.Context, conn *websocket.Conn, 
 	info.State = ConnectionConnected
 	s.opts.emitConnection(ctx, info)
 	s.opts.logger.Info("反向WS已连接")
+	closeNow := false
 	defer func() {
 		info.State = ConnectionDisconnected
 		s.opts.emitConnection(ctx, info)
-		if s.peer.currentConn() == conn {
-			s.peer.setConn(nil)
+		s.peer.disconnectConn(conn, actionUnavailable("onebot11: reverse websocket disconnected"))
+		if closeNow {
+			_ = conn.CloseNow()
+		} else {
+			_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
 		}
-		_ = conn.Close(websocket.StatusNormalClosure, "anybot disconnect")
-		s.peer.failPending(errors.New("onebot11: reverse websocket disconnected"))
 	}()
 
 	for {
 		messageType, data, err := conn.Read(ctx)
 		if err != nil {
+			if errors.Is(err, websocket.ErrMessageTooBig) {
+				logFrameError(s.opts.logger, err)
+			}
+			closeNow = ctx.Err() == nil
 			return
 		}
 		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
 			continue
 		}
+		if err := s.opts.checkFrameSize(len(data)); err != nil {
+			logFrameError(s.opts.logger, err)
+			continue
+		}
 		if err := s.peer.handleFrame(ctx, data, sink); err != nil {
 			logFrameError(s.opts.logger, err)
 		}
+	}
+}
+
+func (s *reverseWSServer) closeCurrentConn() {
+	conn := s.peer.currentConn()
+	if conn != nil {
+		_ = conn.CloseNow()
 	}
 }
 

@@ -1,0 +1,576 @@
+package host
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/tty00a381/anybot/adapters/onebot11"
+	absdk "github.com/tty00a381/anybot/sdk"
+)
+
+func TestNewAppInstallsConfiguredPlugins(t *testing.T) {
+	enabled := true
+	disabled := false
+	var called bool
+	registry := absdk.NewRegistry()
+	help := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "help"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			ctx.Command("help").Handle(func(*absdk.EventContext) error {
+				called = true
+				return nil
+			})
+			return nil
+		},
+	})
+	echo := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "echo"},
+		DefaultConfig: struct{}{},
+		Setup: func(*absdk.Context, struct{}) error {
+			t.Fatal("disabled plugin should not be installed")
+			return nil
+		},
+	})
+	if err := registry.Register(help.Factory().WithPluginID(testHelpID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(echo.Factory().WithPluginID(testEchoID)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{
+			testHelpID: {Enabled: &enabled},
+			testEchoID: {Enabled: &disabled},
+		},
+	}
+	app, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dispatch(context.Background(), &absdk.Event{Type: "message", Text: "/help"}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("enabled plugin route did not run")
+	}
+	names, err := EnabledPlugins(cfg, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(names, []string{testHelpID}) {
+		t.Fatalf("enabled = %#v", names)
+	}
+}
+
+func TestNewAppInjectsSuperUsers(t *testing.T) {
+	enabled := true
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Security: SecurityConfig{SuperUsers: []string{"42"}},
+		Plugins: map[string]PluginEntry{
+			testAdminID: {Enabled: &enabled},
+		},
+	}
+	lock := builtinLock(builtinInstall(testAdminID, "admin"))
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState(), WithPluginLock(lock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !app.IsSuperUser("42") || app.IsSuperUser("7") {
+		t.Fatalf("superusers = %#v", app.SuperUsers())
+	}
+}
+
+func TestNewAppDoesNotGrantGlobalMiddlewareToOrdinaryPlugins(t *testing.T) {
+	enabled := true
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{
+			testWeatherID: {Enabled: &enabled},
+		},
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "policy"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			return ctx.UseGlobal(absdk.Timeout(0))
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState())
+	if !errors.Is(err, absdk.ErrGlobalMiddlewareUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNewAppGrantsGlobalMiddlewareToBuiltinRatelimit(t *testing.T) {
+	enabled := true
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{
+			testRateLimitID: {Enabled: &enabled},
+		},
+	}
+	lock := builtinLock(builtinInstall(testRateLimitID, "ratelimit"))
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState(), WithPluginLock(lock)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNewAppDoesNotInjectPluginConfigStoreByDefault(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	pluginPath := filepath.Join(dir, ConfigDirName, testWeatherID+".yaml")
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "minecraft"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			if ctx.Config().Available() {
+				t.Fatal("plugin config writeback should be unavailable by default")
+			}
+			return nil
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testWeatherID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default(), WithConfigPath(configPath)); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, pluginPath)
+	if strings.Contains(out, "bridge:") || strings.Contains(out, "group_to_game: prefix") {
+		t.Fatalf("plugin config:\n%s", out)
+	}
+}
+
+func TestNewAppInjectsPluginConfigStoreWhenExplicitlyEnabled(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	pluginPath := filepath.Join(dir, ConfigDirName, testMemoryID+".yaml")
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("enabled: true\nconfig: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			return ctx.Config().Set(context.Background(), "state.path", "memory.db")
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default(), WithPluginConfigWriteback()); err != nil {
+		t.Fatal(err)
+	}
+	out := readFile(t, pluginPath)
+	if !strings.Contains(out, "state:") || !strings.Contains(out, "path: memory.db") {
+		t.Fatalf("plugin config:\n%s", out)
+	}
+}
+
+func TestNewAppUsesPersistentStoreFromConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Store().Set(context.Background(), "binding", []byte("uuid"), 0); err != nil {
+		t.Fatal(err)
+	}
+	storePath := filepath.Join(dir, ".anybot", "store.json")
+	if _, err := os.Stat(storePath); err != nil {
+		t.Fatal(err)
+	}
+	next, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, ok, err := next.Store().Get(context.Background(), "binding")
+	if err != nil || !ok || string(data) != "uuid" {
+		t.Fatalf("ok=%v err=%v data=%q", ok, err, data)
+	}
+}
+
+func TestNewAppCanDisablePersistentStore(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
+  store:
+    type: memory
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Store().Set(context.Background(), "binding", []byte("uuid"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".anybot", "store.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("store file should not exist: %v", err)
+	}
+}
+
+func TestNewAppDoesNotUseRuntimeStateByDefault(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Store().Set(context.Background(), "binding", []byte("uuid"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".anybot", "store.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("store file should not exist: %v", err)
+	}
+}
+
+func TestNewAppRejectsEscapingStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
+  store:
+    type: file
+    path: ../store.json
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNewAppRejectsAbsoluteStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	storePath := filepath.Join(t.TempDir(), "store.json")
+	writeTestConfig(t, configPath, `runtime:
+  store:
+    type: file
+    path: `+storePath+`
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState()); err == nil || !strings.Contains(err.Error(), "必须是相对 runtime.data_dir 的路径") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNewAppTrimsRuntimeDataDirForStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
+  data_dir: " state "
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewApp(cfg, EmptyRegistry(), slog.Default(), WithRuntimeState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Store().Set(context.Background(), "binding", []byte("uuid"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state", "store.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, " state ", "store.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("untrimmed store file should not exist: %v", err)
+	}
+}
+
+func TestValidateConfigDoesNotInstallPlugins(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var installed bool
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(*absdk.Context, struct{}) error {
+			installed = true
+			return nil
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateConfig(cfg, registry); err != nil {
+		t.Fatal(err)
+	}
+	if installed {
+		t.Fatal("ValidateConfig should not execute plugin setup")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".anybot", "store.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("store file should not exist: %v", err)
+	}
+}
+
+func TestValidateConfigRejectsInvalidRuntimeState(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
+  store:
+    type: file
+    path: ../store.json
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateConfig(cfg, EmptyRegistry()); err == nil || !strings.Contains(err.Error(), "runtime.store.path") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateConfigRejectsAbsoluteStorePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	storePath := filepath.Join(t.TempDir(), "store.json")
+	writeTestConfig(t, configPath, `runtime:
+  store:
+    type: file
+    path: `+storePath+`
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateConfig(cfg, EmptyRegistry()); err == nil || !strings.Contains(err.Error(), "必须是相对 runtime.data_dir 的路径") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNewAppInjectsPluginDataDir(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `runtime:
+  data_dir: state
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	if err := writePluginConfigFile(dir, testMemoryID, "enabled: true\nconfig: {}\n"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dataDir string
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "memory"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			var err error
+			dataDir, err = ctx.DataDir()
+			return err
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testMemoryID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState()); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "state", "plugins", testMemoryID)
+	if dataDir != want {
+		t.Fatalf("dataDir = %q, want %q", dataDir, want)
+	}
+	if info, err := os.Stat(dataDir); err != nil || !info.IsDir() {
+		t.Fatalf("data dir stat: info=%#v err=%v", info, err)
+	}
+}
+
+func TestNewAppUsesPluginIDForDataDir(t *testing.T) {
+	dir := t.TempDir()
+	configPath := ConfigPath(dir)
+	writeTestConfig(t, configPath, `adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:0"
+`)
+	if err := writePluginConfigFile(dir, testAdminID, "enabled: true\nconfig: {}\n"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dataDir string
+	registry := absdk.NewRegistry()
+	module := absdk.Define(absdk.Spec[struct{}]{
+		Manifest:      absdk.Manifest{Name: "minecraft"},
+		DefaultConfig: struct{}{},
+		Setup: func(ctx *absdk.Context, _ struct{}) error {
+			var err error
+			dataDir, err = ctx.DataDir()
+			return err
+		},
+	})
+	if err := registry.Register(module.Factory().WithPluginID(testAdminID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApp(cfg, registry, slog.Default(), WithRuntimeState()); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, ".anybot", "plugins", testAdminID)
+	if dataDir != want {
+		t.Fatalf("dataDir = %q, want %q", dataDir, want)
+	}
+}
+
+func TestNewAppRejectsUnknownPlugin(t *testing.T) {
+	cfg := Config{
+		Adapter: AdapterConfig{
+			Protocol:  "onebot11",
+			Transport: onebotTransport("reverse_ws", "127.0.0.1:0"),
+		},
+		Plugins: map[string]PluginEntry{testGhostID: {}},
+	}
+	if _, err := NewApp(cfg, EmptyRegistry(), slog.Default()); err == nil {
+		t.Fatal("unknown plugin should be rejected")
+	} else {
+		var unknown UnknownPluginError
+		if !errors.As(err, &unknown) || unknown.ID != testGhostID {
+			t.Fatalf("err = %#v", err)
+		}
+	}
+}
+
+func onebotTransport(kind, listen string) onebot11.TransportConfig {
+	return onebot11.TransportConfig{Type: kind, Listen: listen}
+}

@@ -1,0 +1,52 @@
+name: release dev
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-dev
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare version
+        id: version
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          version="v0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build artifacts
+        run: scripts/release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Create tag
+        run: |
+          git tag "${{ steps.version.outputs.version }}" "$GITHUB_SHA"
+          git push origin "${{ steps.version.outputs.version }}"
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: AnyBot ${{ steps.version.outputs.version }}
+          prerelease: true
+          make_latest: false
+          files: dist/${{ steps.version.outputs.version }}/*

@@ -1,0 +1,22 @@
+runtime:
+  log_level: info
+  workers: auto
+  buffer: 256
+  serial: conversation
+  data_dir: .anybot
+  store:
+    type: file
+    path: store.json
+
+adapter:
+  protocol: onebot11
+  transport:
+    type: reverse_ws
+    listen: "127.0.0.1:6700"
+    path: "/"
+    access_token: !env ONEBOT_ACCESS_TOKEN
+    max_event_bytes: 1048576
+    action_timeout: 10s
+
+security:
+  superusers: []

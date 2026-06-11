@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
+	absdk "github.com/tty00a381/anybot/sdk"
 )
 
 func TestParseCQAndRender(t *testing.T) {
@@ -96,10 +97,10 @@ func TestEventUnmarshalClearsMissingFields(t *testing.T) {
 
 func TestContextHelpers(t *testing.T) {
 	raw := &Event{PostType: "message", UserID: 42}
-	ctx := anybot.New(
-		anybot.WithAdapter(New(&recordTransport{})),
+	ctx := core.New(
+		core.WithAdapter(New(&recordTransport{})),
 	)
-	c := anybot.NewTestContext(ctx, raw.Normalize())
+	c := core.NewTestContext(ctx, raw.Normalize())
 	client, ok := ClientFrom(c)
 	if !ok || client == nil {
 		t.Fatal("client not found")
@@ -107,5 +108,16 @@ func TestContextHelpers(t *testing.T) {
 	event, ok := EventFrom(c)
 	if !ok || event.UserID != 42 {
 		t.Fatalf("event=%#v ok=%v", event, ok)
+	}
+
+	sdkApp := absdk.NewApp(absdk.WithAdapter(New(&recordTransport{})))
+	sdkCtx := absdk.NewTestContext(sdkApp, raw.Normalize())
+	client, ok = ClientFrom(sdkCtx)
+	if !ok || client == nil {
+		t.Fatal("sdk client not found")
+	}
+	event, ok = EventFrom(sdkCtx)
+	if !ok || event.UserID != 42 {
+		t.Fatalf("sdk event=%#v ok=%v", event, ok)
 	}
 }

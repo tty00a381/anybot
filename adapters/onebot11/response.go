@@ -2,8 +2,7 @@ package onebot11
 
 import (
 	"encoding/json"
-
-	"github.com/tty00a381/anybot"
+	"fmt"
 )
 
 // Response 表示 OneBot v11 动作响应，并保留原始 JSON。
@@ -16,6 +15,26 @@ type Response struct {
 	Echo    string          `json:"echo,omitempty"`
 
 	Raw json.RawMessage `json:"-"`
+}
+
+// ActionError 描述一次被 OneBot v11 协议端拒绝或返回失败状态的动作调用。
+type ActionError struct {
+	Action  string
+	Status  string
+	RetCode int
+	Message string
+	Wording string
+}
+
+func (e *ActionError) Error() string {
+	detail := e.Message
+	if detail == "" {
+		detail = e.Wording
+	}
+	if detail == "" {
+		detail = "action failed"
+	}
+	return fmt.Sprintf("%s: status=%s retcode=%d: %s", e.Action, e.Status, e.RetCode, detail)
 }
 
 // UnmarshalJSON 兼容数字或字符串形式的 retcode。
@@ -52,19 +71,4 @@ func (r *Response) Decode(out any) error {
 		return nil
 	}
 	return json.Unmarshal(r.Data, out)
-}
-
-func (r *Response) actionResponse() *anybot.ActionResponse {
-	if r == nil {
-		return nil
-	}
-	return &anybot.ActionResponse{
-		Status:  r.Status,
-		RetCode: r.RetCode,
-		Message: r.Message,
-		Wording: r.Wording,
-		Echo:    r.Echo,
-		Data:    r.Data,
-		Raw:     r.Raw,
-	}
 }

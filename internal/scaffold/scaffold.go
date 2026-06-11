@@ -2,6 +2,7 @@ package scaffold
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"go/format"
 	"go/token"
@@ -9,20 +10,40 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"unicode"
+
+	"golang.org/x/mod/modfile"
+	modmodule "golang.org/x/mod/module"
 )
 
-// ProjectOptions 配置项目脚手架的目标目录、模块名和覆盖策略。
-type ProjectOptions struct {
-	Dir    string
-	Module string
-	Force  bool
-}
+//go:embed templates/plugin/*.tmpl
+var scaffoldTemplates embed.FS
+
+const (
+	pluginFileTemplate   = "templates/plugin/plugin.go.tmpl"
+	pluginTestTemplate   = "templates/plugin/plugin_test.go.tmpl"
+	pluginReadmeTemplate = "templates/plugin/README.md.tmpl"
+	pluginGoModTemplate  = "templates/plugin/go.mod.tmpl"
+	pluginGoSumTemplate  = "templates/plugin/go.sum.tmpl"
+)
 
 // PluginOptions 配置插件脚手架的目标项目、插件名和覆盖策略。
 type PluginOptions struct {
-	Dir   string
-	Name  string
-	Force bool
+	Dir           string
+	Name          string
+	Module        string
+	Force         bool
+	AnyBotVersion string
+	AnyBotReplace string
+}
+
+// PluginResult 描述插件脚手架写入结果。
+type PluginResult struct {
+	Name      string // 面向用户展示的插件名。
+	Package   string // 生成的 Go 包名和文件名前缀。
+	Module    string
+	TestReady bool
+	Files     []string
 }
 
 type scaffoldFile struct {
@@ -30,50 +51,108 @@ type scaffoldFile struct {
 	Content string
 }
 
-// InitProject 写入一个使用 OneBot v11 反向 WebSocket 的最小机器人项目。
-func InitProject(opts ProjectOptions) error {
-	if opts.Dir == "" {
-		opts.Dir = "."
-	}
-	if opts.Module == "" {
-		opts.Module = "example.com/bot"
-	}
-	files := []scaffoldFile{
-		{Name: "go.mod", Content: render(projectGoMod, opts)},
-		{Name: "main.go", Content: mustFormat(render(projectMain, opts))},
-		{Name: "anybot.yaml", Content: render(projectConfig, opts)},
-		{Name: ".env.example", Content: "ONEBOT_ACCESS_TOKEN=\n"},
-		{Name: "README.md", Content: render(projectReadme, opts)},
-	}
-	if err := checkFileConflicts(opts.Dir, files, opts.Force); err != nil {
-		return err
-	}
-	for _, file := range files {
-		if err := writeFile(filepath.Join(opts.Dir, file.Name), file.Content, opts.Force); err != nil {
-			return err
-		}
-	}
-	return nil
+type pluginScaffoldData struct {
+	Package       string
+	Manifest      string
+	DisplayName   string
+	Command       string
+	Module        string
+	AnyBotVersion string
+	AnyBotReplace string
 }
 
-// NewPlugin 在 plugins/<name> 下写入显式安装的插件骨架。
-func NewPlugin(opts PluginOptions) error {
+// NewPlugin 写入插件模块 starter。
+func NewPlugin(opts PluginOptions) (PluginResult, error) {
 	if opts.Dir == "" {
 		opts.Dir = "."
 	}
 	if opts.Name == "" {
-		return fmt.Errorf("插件名不能为空")
+		return PluginResult{}, fmt.Errorf("插件名不能为空")
+	}
+	opts.Module = strings.TrimSpace(opts.Module)
+	if opts.Module == "" {
+		return PluginResult{}, fmt.Errorf("插件模块路径不能为空")
 	}
 	pkg := packageName(opts.Name)
-	data := struct {
-		Name    string
-		Package string
-	}{
-		Name:    opts.Name,
-		Package: pkg,
+	displayName := pluginDisplayName(opts.Name, pkg)
+	data := pluginScaffoldData{
+		Package:       pkg,
+		Manifest:      displayName,
+		DisplayName:   displayName,
+		Command:       pkg,
+		Module:        opts.Module,
+		AnyBotVersion: anybotVersion(opts.AnyBotVersion),
+		AnyBotReplace: strings.TrimSpace(opts.AnyBotReplace),
 	}
-	dir := filepath.Join(opts.Dir, "plugins", pkg)
-	return writeFile(filepath.Join(dir, pkg+".go"), mustFormat(render(pluginFile, data)), opts.Force)
+	return newPluginModule(opts, data)
+}
+
+func newPluginModule(opts PluginOptions, data pluginScaffoldData) (PluginResult, error) {
+	if err := modmodule.CheckPath(opts.Module); err != nil {
+		return PluginResult{}, fmt.Errorf("插件模块路径 %q 无效: %w", opts.Module, err)
+	}
+	goMod, err := pluginGoMod(data)
+	if err != nil {
+		return PluginResult{}, err
+	}
+	files := []scaffoldFile{
+		{Name: "go.mod", Content: goMod},
+		{Name: data.Package + ".go", Content: mustFormat(renderTemplate(pluginFileTemplate, data))},
+		{Name: data.Package + "_test.go", Content: mustFormat(renderTemplate(pluginTestTemplate, data))},
+		{Name: "README.md", Content: renderTemplate(pluginReadmeTemplate, data)},
+	}
+	testReady := data.AnyBotReplace != ""
+	if testReady {
+		files = insertScaffoldFile(files, 1, scaffoldFile{Name: "go.sum", Content: renderTemplate(pluginGoSumTemplate, data)})
+	}
+	if err := checkFileConflicts(opts.Dir, files, opts.Force); err != nil {
+		return PluginResult{}, err
+	}
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		path := filepath.Join(opts.Dir, file.Name)
+		if err := writeFile(path, file.Content, opts.Force); err != nil {
+			return PluginResult{}, err
+		}
+		paths = append(paths, path)
+	}
+	return PluginResult{Name: data.Manifest, Package: data.Package, Module: opts.Module, TestReady: testReady, Files: paths}, nil
+}
+
+func insertScaffoldFile(files []scaffoldFile, index int, file scaffoldFile) []scaffoldFile {
+	files = append(files, scaffoldFile{})
+	copy(files[index+1:], files[index:])
+	files[index] = file
+	return files
+}
+
+func anybotVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "v0.0.0"
+	}
+	return version
+}
+
+func pluginGoMod(data pluginScaffoldData) (string, error) {
+	if data.AnyBotReplace == "" && data.AnyBotVersion == "v0.0.0" {
+		return "", fmt.Errorf("插件模块需要有效 AnyBot 版本，或使用 -replace 指向本地 AnyBot 源码")
+	}
+	goMod := renderTemplate(pluginGoModTemplate, data)
+	file, err := modfile.Parse("go.mod", []byte(goMod), nil)
+	if err != nil {
+		return "", fmt.Errorf("插件 go.mod 无效: %w", err)
+	}
+	if data.AnyBotReplace != "" {
+		if err := file.AddReplace("github.com/tty00a381/anybot", "", data.AnyBotReplace, ""); err != nil {
+			return "", fmt.Errorf("插件 go.mod replace 无效: %w", err)
+		}
+	}
+	out, err := file.Format()
+	if err != nil {
+		return "", fmt.Errorf("插件 go.mod 格式化失败: %w", err)
+	}
+	return string(out), nil
 }
 
 func writeFile(path, content string, force bool) error {
@@ -101,8 +180,12 @@ func checkFileConflicts(dir string, files []scaffoldFile, force bool) error {
 	return nil
 }
 
-func render(src string, data any) string {
-	tpl := template.Must(template.New("scaffold").Parse(src))
+func renderTemplate(name string, data any) string {
+	src, err := scaffoldTemplates.ReadFile(name)
+	if err != nil {
+		panic(err)
+	}
+	tpl := template.Must(template.New(filepath.Base(name)).Parse(string(src)))
 	var buf bytes.Buffer
 	if err := tpl.Execute(&buf, data); err != nil {
 		panic(err)
@@ -147,151 +230,30 @@ func packageName(name string) string {
 	return out
 }
 
-const projectGoMod = `module {{.Module}}
-
-go 1.24
-`
-
-const projectMain = `package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
-
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/adapters/onebot11"
-)
-
-func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
-		fmt.Println("用法：go run .")
-		fmt.Println("配置：编辑 anybot.yaml，并让 OneBot v11 协议端连接反向 WebSocket")
-		return
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	adapter, err := onebot11.LoadAdapter("anybot.yaml")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	app := anybot.New(anybot.WithAdapter(adapter))
-	app.Use(anybot.Recover(), anybot.Trace())
-
-	app.Command("ping").Handle(func(c *anybot.Context) error {
-		_, err := c.ReplyText("pong")
-		return err
-	})
-
-	if err := app.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Fatal(err)
-	}
-}
-`
-
-const projectConfig = `protocol: onebot11
-transport:
-  # AnyBot 监听该地址，OneBot v11 协议端通过反向 WebSocket 主动连接。
-  type: reverse_ws
-  listen: "127.0.0.1:6700"
-  path: "/"
-  access_token_env: ONEBOT_ACCESS_TOKEN
-  action_timeout: 10s
-`
-
-const projectReadme = `# AnyBot 机器人
-
-本项目由 ` + "`anybot init`" + ` 生成，模块名为 ` + "`{{.Module}}`" + `。它默认使用 OneBot v11 反向 WebSocket；下面以 NapCat 为例，其他 OneBot v11 协议端也按同样方式接入。
-
-## 运行
-
-` + "```sh" + `
-go mod tidy
-anybot doctor
-go run . --help
-go run .
-` + "```" + `
-
-## 协议端配置
-
-在 OneBot v11 协议端中启用反向 WebSocket，并连接到：
-
-` + "```text" + `
-ws://127.0.0.1:6700/
-` + "```" + `
-
-如果设置了访问令牌，请在运行前配置环境变量，并在协议端中填写同一个值：
-
-` + "```sh" + `
-export ONEBOT_ACCESS_TOKEN=你的令牌
-` + "```" + `
-
-## 目录
-
-- ` + "`main.go`" + `：机器人入口。
-- ` + "`anybot.yaml`" + `：本地运行配置，启动时由 ` + "`onebot11.LoadAdapter`" + ` 读取。
-- ` + "`.env.example`" + `：环境变量示例。
-- ` + "`plugins/`" + `：插件目录，按需生成。
-
-## 插件
-
-使用以下命令生成插件：
-
-` + "```sh" + `
-anybot new plugin hello
-` + "```" + `
-
-然后在 ` + "`main.go`" + ` 中显式安装插件：
-
-` + "```go" + `
-if err := app.UsePlugin(hello.New()); err != nil {
-	log.Fatal(err)
-}
-` + "```" + `
-
-## 部署
-
-生产环境建议先构建二进制，再用 systemd、supervisor 或容器托管进程。请给协议端与机器人配置相同的访问令牌，并避免把反向 WebSocket 端口直接暴露到公网。
-`
-
-const pluginFile = `package {{.Package}}
-
-import "github.com/tty00a381/anybot"
-
-// Config 配置 {{.Name}} 插件。
-type Config struct {
-	Enabled bool ` + "`yaml:\"enabled\"`" + `
-}
-
-// New 创建 {{.Name}} 插件。
-func New(config ...Config) anybot.Plugin {
-	cfg := Config{Enabled: true}
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-	return anybot.PluginFunc{
-		Info: anybot.Manifest{
-			Name: "{{.Name}}",
-			Version: "0.1.0",
-			Description: "{{.Name}} 插件",
-			Config: cfg,
-		},
-		Fn: func(app *anybot.App) error {
-			if !cfg.Enabled {
-				return nil
+func pluginDisplayName(name, fallback string) string {
+	name = strings.TrimSpace(name)
+	var b strings.Builder
+	lastSep := false
+	for _, r := range name {
+		switch {
+		case r == '"' || r == '\\' || r < 0x20 || r == 0x7f:
+			if b.Len() > 0 && !lastSep {
+				b.WriteByte('-')
+				lastSep = true
 			}
-			app.Command("{{.Name}}").Handle(func(c *anybot.Context) error {
-				_, err := c.ReplyText("{{.Name}} 已启动")
-				return err
-			})
-			return nil
-		},
+		case r == '_' || r == '-' || unicode.IsSpace(r):
+			if b.Len() > 0 && !lastSep {
+				b.WriteByte('-')
+				lastSep = true
+			}
+		default:
+			b.WriteRune(r)
+			lastSep = false
+		}
 	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return fallback
+	}
+	return out
 }
-`

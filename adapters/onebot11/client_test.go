@@ -3,11 +3,12 @@ package onebot11
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
-	"github.com/tty00a381/anybot"
-	"github.com/tty00a381/anybot/message"
+	"github.com/tty00a381/anybot/core"
+	"github.com/tty00a381/anybot/core/message"
 )
 
 func TestClientSendGroupMessage(t *testing.T) {
@@ -17,7 +18,7 @@ func TestClientSendGroupMessage(t *testing.T) {
 		Data:    json.RawMessage(`{"message_id":"321"}`),
 	}}
 	client := (&Adapter{transport: transport, client: &Client{transport: transport}}).Client()
-	receipt, err := client.Send(context.Background(), anybot.ReplyTarget{GroupID: "123"}, message.New(message.Text("hi"), At(456)))
+	receipt, err := client.Send(context.Background(), core.ReplyTarget{GroupID: "123"}, message.New(message.Text("hi"), At(456)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +41,14 @@ func TestClientActionError(t *testing.T) {
 	err := client.Call(context.Background(), "bad_action", nil, nil)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestClientSendRejectsUnsupportedTarget(t *testing.T) {
+	client := &Client{transport: &recordTransport{}}
+	_, err := client.Send(context.Background(), core.ReplyTarget{}, message.New(message.Text("hi")))
+	if !errors.Is(err, core.ErrReplyTargetUnavailable) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

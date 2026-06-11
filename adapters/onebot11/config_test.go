@@ -3,20 +3,22 @@ package onebot11
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoadAdapterFromConfig(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "anybot.yaml")
+	path := filepath.Join(dir, "core.yaml")
 	t.Setenv("TOKEN_FROM_ENV", "secret")
 	data := []byte(`protocol: onebot11
 transport:
   type: reverse_ws
   listen: "127.0.0.1:6700"
   path: "/onebot"
-  access_token_env: TOKEN_FROM_ENV
+  access_token: !env TOKEN_FROM_ENV
+  max_event_bytes: 2048
   action_timeout: 2s
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -31,8 +33,57 @@ transport:
 		t.Fatalf("action timeout = %s", client.actionTimeout)
 	}
 	server := adapter.transport.(*reverseWSServer)
-	if server.opts.path != "/onebot" || server.opts.accessToken != "secret" {
+	if server.opts.path != "/onebot" || server.opts.accessToken != "secret" || server.opts.maxEventBytes != 2048 {
 		t.Fatalf("options = %#v", server.opts)
+	}
+}
+
+func TestLoadConfigResolvesMissingEnvAsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "core.yaml")
+	envName := "ANYBOT_TEST_MISSING_ACCESS_TOKEN"
+	old, ok := os.LookupEnv(envName)
+	t.Cleanup(func() {
+		if ok {
+			if err := os.Setenv(envName, old); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := os.Unsetenv(envName); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if err := os.Unsetenv(envName); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`protocol: onebot11
+transport:
+  type: reverse_ws
+  listen: "127.0.0.1:6700"
+  access_token: !env ANYBOT_TEST_MISSING_ACCESS_TOKEN
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Transport.AccessToken != "" {
+		t.Fatalf("access token = %q", cfg.Transport.AccessToken)
+	}
+}
+
+func TestLoadConfigRejectsYMLExtension(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "core.yml")
+	if err := os.WriteFile(path, []byte("protocol: onebot11\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "必须使用 .yaml 扩展名") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

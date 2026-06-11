@@ -7,16 +7,22 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tty00a381/anybot"
+	"github.com/tty00a381/anybot/adapters/onebot11"
 )
 
 // API 包装 NapCat 扩展动作，并保留原始调用能力。
 type API struct {
-	client anybot.ActionClient
+	client Client
+}
+
+// Client 是 NapCat 扩展动作所需的 OneBot v11 调用能力。
+type Client interface {
+	Call(context.Context, string, any, any) error
+	CallRaw(context.Context, string, any) (*onebot11.Response, error)
 }
 
 // New 创建 NapCat 扩展 API 客户端。
-func New(client anybot.ActionClient) *API {
+func New(client Client) *API {
 	return &API{client: client}
 }
 
@@ -25,8 +31,8 @@ func (api *API) Call(ctx context.Context, action string, params any, out any) er
 	return api.client.Call(ctx, action, params, out)
 }
 
-// CallRaw 调用 NapCat 动作，并返回协议无关的原始响应封套。
-func (api *API) CallRaw(ctx context.Context, action string, params any) (*anybot.ActionResponse, error) {
+// CallRaw 调用 NapCat 动作，并返回 OneBot v11 原始响应封套。
+func (api *API) CallRaw(ctx context.Context, action string, params any) (*onebot11.Response, error) {
 	return api.client.CallRaw(ctx, action, params)
 }
 

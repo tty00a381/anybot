@@ -3,6 +3,7 @@ package onebot11
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tty00a381/anybot/core"
 )
 
 func TestWebSocketClientEventAndCall(t *testing.T) {
@@ -114,6 +116,108 @@ func TestWebSocketClientEventAndCall(t *testing.T) {
 	}
 }
 
+func TestWebSocketClientReportsDisconnectedOnDialFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not a websocket", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	states := make(chan core.AdapterState, 2)
+	transport := newWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), newOptions([]Option{
+		WithReconnectInterval(time.Hour),
+	}))
+	transport.opts.state.SetSink(func(_ context.Context, state core.AdapterState) {
+		states <- state
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		errc <- transport.Start(ctx, func(context.Context, *Event) error {
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-errc:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("start err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not stop")
+		}
+	}()
+
+	select {
+	case state := <-states:
+		if state.Kind != core.AdapterStateDisconnected || state.ActionReady || state.Transport != "websocket" {
+			t.Fatalf("state = %#v", state)
+		}
+		if state.Err == nil || !strings.Contains(state.Reason, "dial failed") {
+			t.Fatalf("state = %#v", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dial failure state was not reported")
+	}
+}
+
+func TestWebSocketClientReconnectsAfterOversizedMessage(t *testing.T) {
+	accepted := make(chan struct{}, 2)
+	events := make(chan *Event, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "done")
+		accepted <- struct{}{}
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"post_type":"message"}`))
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transport := newWebSocketClient("ws"+strings.TrimPrefix(server.URL, "http"), newOptions([]Option{
+		WithMaxEventBytes(8),
+		WithReconnectInterval(10 * time.Millisecond),
+		WithReconnectMaxInterval(10 * time.Millisecond),
+	}))
+	errc := make(chan error, 1)
+	go func() {
+		errc <- transport.Start(ctx, func(_ context.Context, event *Event) error {
+			events <- event
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-errc:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("start err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not stop")
+		}
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-accepted:
+		case <-time.After(time.Second):
+			t.Fatal("websocket client did not reconnect after oversized message")
+		}
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("oversized event should not be dispatched: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestSocketPeerAcceptsStringRetCodeProbe(t *testing.T) {
 	peer := newSocketPeer(nil)
 	ch := make(chan pendingResult, 1)
@@ -136,6 +240,47 @@ func TestSocketPeerAcceptsStringRetCodeProbe(t *testing.T) {
 	}
 	if result.response == nil || result.response.Echo != "echo-1" || result.response.RetCode != 0 {
 		t.Fatalf("response=%#v", result.response)
+	}
+}
+
+func TestSocketPeerUnavailableError(t *testing.T) {
+	peer := newSocketPeer(nil)
+	_, err := peer.callRaw(context.Background(), "get_login_info", nil)
+	if !errors.Is(err, core.ErrActionUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSocketPeerDisconnectOnlyFailsCurrentConnectionPending(t *testing.T) {
+	peer := newSocketPeer(nil)
+	oldConn := &websocket.Conn{}
+	newConn := &websocket.Conn{}
+	peer.setConn(newConn)
+	ch := make(chan pendingResult, 1)
+	peer.pending["echo-1"] = ch
+
+	if peer.disconnectConn(oldConn, errors.New("old disconnected")) {
+		t.Fatal("old connection should not disconnect current peer")
+	}
+	select {
+	case result := <-ch:
+		t.Fatalf("pending should remain active: %#v", result)
+	default:
+	}
+	if peer.currentConn() != newConn {
+		t.Fatal("new connection should remain current")
+	}
+
+	if !peer.disconnectConn(newConn, errors.New("new disconnected")) {
+		t.Fatal("current connection should be disconnected")
+	}
+	select {
+	case result := <-ch:
+		if result.err == nil || result.err.Error() != "new disconnected" {
+			t.Fatalf("result = %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending action was not failed")
 	}
 }
 

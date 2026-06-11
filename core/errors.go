@@ -1,0 +1,33 @@
+package core
+
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	// ErrPass 表示当前路由主动让出处理权，后续路由继续匹配。
+	ErrPass = errors.New("anybot: pass route")
+	// ErrStop 表示当前事件应停止向后续路由传播。
+	ErrStop = errors.New("anybot: stop route")
+	// ErrUnauthorized 表示当前事件没有通过权限检查。
+	ErrUnauthorized = errors.New("anybot: unauthorized")
+	// ErrRateLimited 表示当前限速窗口已被耗尽。
+	ErrRateLimited = errors.New("anybot: rate limited")
+	// ErrActionUnavailable 表示动作客户端当前暂不可用，通常是连接尚未建立或已临时断开。
+	ErrActionUnavailable = errors.New("anybot: action unavailable")
+	// ErrReplyTargetUnavailable 表示当前事件或目标无法映射到可回复的会话。
+	ErrReplyTargetUnavailable = errors.New("anybot: reply target unavailable")
+	// ErrSessionUnavailable 表示当前事件或运行时无法映射到请求的会话维度。
+	ErrSessionUnavailable = errors.New("anybot: session unavailable")
+)
+
+// PanicError 包装处理函数或中间件中恢复到的 panic 值和调用栈。
+type PanicError struct {
+	Value any
+	Stack []byte
+}
+
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("anybot: panic: %v", e.Value)
+}

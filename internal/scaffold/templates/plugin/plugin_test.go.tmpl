@@ -1,0 +1,20 @@
+package {{.Package}}
+
+import (
+	"testing"
+
+	"github.com/tty00a381/anybot/sdk/testkit"
+)
+
+func TestPluginRepliesToCommand(t *testing.T) {
+	app := testkit.NewApp()
+	if err := app.InstallDefault(Plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.DispatchText({{printf "%q" (printf "/%s" .Command)}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.LastReplyText(); got != {{printf "%q" (printf "%s 已启动" .DisplayName)}} {
+		t.Fatalf("reply = %q", got)
+	}
+}
