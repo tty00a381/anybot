@@ -41,19 +41,27 @@ func Trace(loggers ...*slog.Logger) Middleware {
 			}
 			event := c.Event()
 			if event == nil {
-				logger.Info("路由完成", "duration", time.Since(start), "error", err)
+				fields := []any{"duration", time.Since(start)}
+				if err != nil {
+					fields = append(fields, "error", err)
+				}
+				logger.Info("路由完成", fields...)
 				return err
 			}
-			logger.Info("路由完成",
+			fields := []any{
 				"protocol", event.Protocol,
 				"type", event.Type,
 				"detail_type", event.DetailType,
 				"user_id", event.UserID,
 				"group_id", event.GroupID,
+				"group_role", event.GroupRole,
 				"route", routeName(c.Route()),
 				"duration", time.Since(start),
-				"error", err,
-			)
+			}
+			if err != nil {
+				fields = append(fields, "error", err)
+			}
+			logger.Info("路由完成", fields...)
 			return err
 		}
 	}

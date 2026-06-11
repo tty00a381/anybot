@@ -225,6 +225,14 @@ func (c *Context) GroupID() string {
 	return c.event.GroupID
 }
 
+// GroupRole 返回当前事件发送者在群内的标准角色，例如 owner、manager 或 member。
+func (c *Context) GroupRole() string {
+	if c.event == nil {
+		return ""
+	}
+	return c.event.GroupRole
+}
+
 // IsPrivate 判断当前事件是否为私聊消息。
 func (c *Context) IsPrivate() bool {
 	event := c.Event()

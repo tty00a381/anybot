@@ -29,6 +29,19 @@ func RequireAdmin(ids ...string) Middleware {
 	return SuperUser(stringsToAny(allowed)...)
 }
 
+// RequirePermission 仅允许满足任一标准权限标识的事件进入后续处理链。
+func RequirePermission(permissions ...string) Middleware {
+	return func(next Handler) Handler {
+		return func(c *EventContext) error {
+			if !c.HasAnyPermission(permissions...) {
+				c.Stop()
+				return ErrUnauthorized
+			}
+			return next(c)
+		}
+	}
+}
+
 func cleanStringSet(values ...string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {

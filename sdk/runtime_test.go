@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/tty00a381/anybot/core"
@@ -157,5 +158,38 @@ func TestRequireAdminUsesConfiguredAdmins(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("hits = %d", hits)
+	}
+}
+
+func TestPermissionRulesSupportGroupRolesAndSuperUser(t *testing.T) {
+	app := NewApp(WithSuperUsers("root"))
+	var hits []string
+	app.Command("group").Use(RequirePermission("group.manager")).Handle(func(c *EventContext) error {
+		hits = append(hits, "group:"+c.GroupRole())
+		return nil
+	})
+	app.Command("root").Use(RequirePermission("superuser")).Handle(func(c *EventContext) error {
+		hits = append(hits, "root:"+c.UserID())
+		return nil
+	})
+
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "member", GroupID: "100", GroupRole: "member", Text: "/group"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("member should not pass group.manager: %#v", hits)
+	}
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "manager", GroupID: "100", GroupRole: "manager", Text: "/group"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "owner", GroupID: "100", GroupRole: "owner", Text: "/group"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dispatch(context.Background(), &Event{Type: "message", UserID: "root", Text: "/root"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"group:manager", "group:owner", "root:root"}
+	if !reflect.DeepEqual(hits, want) {
+		t.Fatalf("hits = %#v want %#v", hits, want)
 	}
 }

@@ -259,7 +259,7 @@ func runHost(args []string) error {
 		}
 		return runGeneratedHost(generatedHostRunOptions{dir: workDir, output: "anybot-bot"})
 	}
-	logger, err := host.NewLogger(cfg.Runtime.LogLevel, stderr)
+	logger, err := host.NewLogger(cfg.Runtime.LogLevel, cfg.Runtime.LogFormat, stderr)
 	if err != nil {
 		return err
 	}

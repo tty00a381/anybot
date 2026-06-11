@@ -22,7 +22,7 @@ func (err UnknownPluginError) Error() string {
 }
 
 // NewLogger 创建 anybot 使用的结构化日志器。
-func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
+func NewLogger(level, format string, out io.Writer) (*slog.Logger, error) {
 	var slogLevel slog.Level
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "", "info":
@@ -36,7 +36,17 @@ func NewLogger(level string, out io.Writer) (*slog.Logger, error) {
 	default:
 		return nil, fmt.Errorf("runtime.log_level 不支持 %q", level)
 	}
-	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slogLevel})), nil
+	opts := &slog.HandlerOptions{Level: slogLevel}
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "console":
+		return slog.New(newConsoleHandler(out, opts)), nil
+	case "json":
+		return slog.New(slog.NewJSONHandler(out, opts)), nil
+	case "text":
+		return slog.New(slog.NewTextHandler(out, opts)), nil
+	default:
+		return nil, fmt.Errorf("runtime.log_format 不支持 %q", format)
+	}
 }
 
 // AppOptions 描述框架运行时的附加参数。

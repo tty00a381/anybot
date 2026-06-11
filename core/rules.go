@@ -122,6 +122,16 @@ func FromSelf() Rule {
 	})
 }
 
+// Permission 匹配满足任一标准权限标识的事件。
+func Permission(permissions ...string) Rule {
+	return RuleFunc(func(_ context.Context, c *Context) (Match, bool) {
+		if c != nil && c.HasAnyPermission(permissions...) {
+			return Match{Score: 1, Reason: "permission"}, true
+		}
+		return Match{}, false
+	})
+}
+
 // NotFromSelf 排除当前机器人账号自己发送的消息。
 func NotFromSelf() Rule {
 	return Not(FromSelf())

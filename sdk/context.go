@@ -480,6 +480,30 @@ func (c *EventContext) GroupID() string {
 	return c.core.GroupID()
 }
 
+// GroupRole 返回当前事件发送者在群内的标准角色，例如 owner、manager 或 member。
+func (c *EventContext) GroupRole() string {
+	if c == nil || c.core == nil {
+		return ""
+	}
+	return c.core.GroupRole()
+}
+
+// HasPermission 判断当前事件是否满足一项标准权限标识。
+func (c *EventContext) HasPermission(permission string) bool {
+	if c == nil || c.core == nil {
+		return false
+	}
+	return c.core.HasPermission(permission)
+}
+
+// HasAnyPermission 判断当前事件是否满足任一标准权限标识。
+func (c *EventContext) HasAnyPermission(permissions ...string) bool {
+	if c == nil || c.core == nil {
+		return false
+	}
+	return c.core.HasAnyPermission(permissions...)
+}
+
 // IsPrivate 判断当前事件是否为私聊消息。
 func (c *EventContext) IsPrivate() bool {
 	return c != nil && c.core != nil && c.core.IsPrivate()

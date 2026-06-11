@@ -210,10 +210,24 @@ func (e *Event) Normalize() *core.Event {
 		SubType:    e.SubType,
 		UserID:     idString(e.UserID),
 		GroupID:    idString(e.GroupID),
+		GroupRole:  normalizeGroupRole(e.Sender.Role),
 		Text:       text,
 		Message:    e.Message,
 		Raw:        append(json.RawMessage(nil), e.Raw...),
 		Data:       e,
+	}
+}
+
+func normalizeGroupRole(role string) string {
+	switch role {
+	case "owner":
+		return "owner"
+	case "admin", "manager":
+		return "manager"
+	case "member":
+		return "member"
+	default:
+		return ""
 	}
 }
 

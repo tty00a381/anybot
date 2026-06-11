@@ -195,6 +195,13 @@ func InGroup(id string) EventOption {
 	}
 }
 
+// WithGroupRole 设置群消息发送者的标准群角色。
+func WithGroupRole(role string) EventOption {
+	return func(event *sdk.Event) {
+		event.GroupRole = strings.TrimSpace(role)
+	}
+}
+
 // WithMessage 设置完整消息链，并同步 Text 为消息链中的纯文本内容。
 func WithMessage(chain message.Chain) EventOption {
 	return func(event *sdk.Event) {

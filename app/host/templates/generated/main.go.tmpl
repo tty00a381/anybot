@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logger, err := host.NewLogger(cfg.Runtime.LogLevel, os.Stderr)
+	logger, err := host.NewLogger(cfg.Runtime.LogLevel, cfg.Runtime.LogFormat, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}
