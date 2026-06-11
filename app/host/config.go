@@ -24,12 +24,13 @@ type Config struct {
 
 // RuntimeConfig 描述框架运行时参数。
 type RuntimeConfig struct {
-	LogLevel string      `yaml:"log_level"`
-	Workers  string      `yaml:"workers"`
-	Buffer   int         `yaml:"buffer"`
-	Serial   string      `yaml:"serial"`
-	DataDir  string      `yaml:"data_dir"`
-	Store    StoreConfig `yaml:"store"`
+	LogLevel  string      `yaml:"log_level"`
+	LogFormat string      `yaml:"log_format"`
+	Workers   string      `yaml:"workers"`
+	Buffer    int         `yaml:"buffer"`
+	Serial    string      `yaml:"serial"`
+	DataDir   string      `yaml:"data_dir"`
+	Store     StoreConfig `yaml:"store"`
 }
 
 // StoreConfig 描述框架会话状态存储。
@@ -105,6 +106,9 @@ func rejectInlinePluginConfigs(path string, data []byte) error {
 func (cfg *Config) applyDefaults() {
 	if cfg.Runtime.LogLevel == "" {
 		cfg.Runtime.LogLevel = "info"
+	}
+	if cfg.Runtime.LogFormat == "" {
+		cfg.Runtime.LogFormat = "console"
 	}
 	if cfg.Runtime.Workers == "" {
 		cfg.Runtime.Workers = "auto"

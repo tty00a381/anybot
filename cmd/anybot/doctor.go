@@ -29,7 +29,7 @@ func runDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := host.NewLogger(cfg.Runtime.LogLevel, stderr); err != nil {
+	if _, err := host.NewLogger(cfg.Runtime.LogLevel, cfg.Runtime.LogFormat, stderr); err != nil {
 		return err
 	}
 	workDir := host.WorkDirForConfig(*configPath)

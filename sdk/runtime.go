@@ -312,6 +312,9 @@ func FromUser(ids ...any) Rule { return wrapRule(core.FromUser(ids...)) }
 // FromSelf 匹配由当前机器人账号自己发送的消息。
 func FromSelf() Rule { return wrapRule(core.FromSelf()) }
 
+// Permission 匹配满足任一标准权限标识的事件。
+func Permission(permissions ...string) Rule { return wrapRule(core.Permission(permissions...)) }
+
 // NotFromSelf 排除当前机器人账号自己发送的消息。
 func NotFromSelf() Rule { return wrapRule(core.NotFromSelf()) }
 

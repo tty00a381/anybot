@@ -21,6 +21,7 @@ type Event struct {
 
 	UserID    string
 	GroupID   string
+	GroupRole string
 	GuildID   string
 	ChannelID string
 

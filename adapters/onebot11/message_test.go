@@ -45,7 +45,7 @@ func TestEventUnmarshalAndNormalize(t *testing.T) {
 		"message_id": "88",
 		"group_id": "123",
 		"user_id": "456",
-		"sender": {"user_id": "456", "nickname": "alice"},
+		"sender": {"user_id": "456", "nickname": "alice", "role": "admin"},
 		"message": "hello [CQ:at,qq=10000]",
 		"x_napcat": true
 	}`), &event)
@@ -56,7 +56,7 @@ func TestEventUnmarshalAndNormalize(t *testing.T) {
 		t.Fatal("extra field not preserved")
 	}
 	normalized := event.Normalize()
-	if normalized.DetailType != "group" || normalized.GroupID != "123" || normalized.UserID != "456" {
+	if normalized.DetailType != "group" || normalized.GroupID != "123" || normalized.UserID != "456" || normalized.GroupRole != "manager" {
 		t.Fatalf("normalized = %#v", normalized)
 	}
 	if event.Sender.UserID != 456 {
